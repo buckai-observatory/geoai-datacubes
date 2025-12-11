@@ -1,0 +1,9 @@
+🛰️ Fetching Sentinel-1 data for ('2024-06-15', '2024-06-20') ...
+✅ Data fetched successfully.
+📂 Using image from: data/853de8cdfef01afe5935ff340561ca1e/response.tiff
+✅ Saved VV → data/853de8cdfef01afe5935ff340561ca1e/vv_backscatter.png
+✅ Saved VH → data/853de8cdfef01afe5935ff340561ca1e/vh_backscatter.png
+✅ Saved RGB radar composite → data/853de8cdfef01afe5935ff340561ca1e/radar_composite.png
+⚠️  No metadata file found for this scene.
+
+✅ Processing complete.

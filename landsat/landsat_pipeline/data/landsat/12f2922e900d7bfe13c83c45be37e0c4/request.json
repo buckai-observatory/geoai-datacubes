@@ -1,0 +1,65 @@
+{
+    "request": {
+        "headers": {
+            "accept": "image/tiff",
+            "content-type": "application/json"
+        },
+        "payload": {
+            "evalscript": "\n        // Simple Landsat-8 RGB composite\n        // Bands: B04 (Red), B03 (Green), B02 (Blue)\n        // Scale values to [0,1]\n        // (note: values >1 may be clipped)\n        // https://custom-scripts.sentinel-hub.com/landsat-8/true-color/\n        // VERSION=3\n        function setup() {\n            return {\n                input: [\"B04\", \"B03\", \"B02\"],\n                output: { bands: 3 }\n            };\n        }\n\n        function evaluatePixel(sample) {\n            return [sample.B04, sample.B03, sample.B02];\n        }\n    ",
+            "input": {
+                "bounds": {
+                    "bbox": [
+                        -118.3,
+                        34.0,
+                        -118.2,
+                        34.1
+                    ],
+                    "properties": {
+                        "crs": "http://www.opengis.net/def/crs/EPSG/0/4326"
+                    }
+                },
+                "data": [
+                    {
+                        "dataFilter": {
+                            "timeRange": {
+                                "from": "2024-06-15T00:00:00Z",
+                                "to": "2024-06-20T23:59:59Z"
+                            }
+                        },
+                        "type": "landsat-ot-l1"
+                    }
+                ]
+            },
+            "output": {
+                "height": 366,
+                "responses": [
+                    {
+                        "format": {
+                            "type": "image/tiff"
+                        },
+                        "identifier": "default"
+                    }
+                ],
+                "width": 312
+            }
+        },
+        "timestamp": "2025-11-05T17:06:44.568609",
+        "url": "https://services-uswest2.sentinel-hub.com/api/v1/process"
+    },
+    "response": {
+        "elapsed": 1.236435,
+        "headers": {
+            "Connection": "keep-alive",
+            "Content-Type": "image/tiff",
+            "Date": "Wed, 05 Nov 2025 22:06:44 GMT",
+            "Transfer-Encoding": "chunked",
+            "access-control-allow-credentials": "true",
+            "access-control-allow-headers": "origin,content-type,accept,accept-crs,authorization,cache-control",
+            "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+            "access-control-allow-origin": "*",
+            "access-control-max-age": "3600",
+            "x-processingunits-spent": "0.43560791015625"
+        },
+        "status_code": 200
+    }
+}
