@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Data & model artifacts (AI-ready cubes are regenerated, not versioned)
+data/
+**/data/
+*.tif
+*.tiff
+*.zarr/
+**/*.zarr/
+*_lmdb/
+**/*_lmdb/
+*.lmdb
+*.mdb
