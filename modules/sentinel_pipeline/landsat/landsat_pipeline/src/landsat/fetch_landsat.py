@@ -1,21 +1,19 @@
 from sentinelhub import SHConfig, BBox, CRS, DataCollection, MimeType, SentinelHubRequest, bbox_to_dimensions
-from config import get_config
+from config import get_config_from_env
 import os
 
-# 🛰️ SentinelHub credentials (same as used before)
-CLIENT_ID = "9f48a154-353b-4485-9439-e7955ce1357c"
-CLIENT_SECRET = "aU965GIFdgSzeZWFP8miAGwqj45fBC90"
-INSTANCE_ID = "9aaf1487-85e6-4b5d-90a8-058bdacddc56"
-
-config = get_config(CLIENT_ID, CLIENT_SECRET, INSTANCE_ID)
+# 🛰️ SentinelHub credentials are loaded from environment variables / a local
+# .env file. See .env.example at the repo root for setup instructions.
+config = get_config_from_env()
 
 # 🗺️ Define region of interest (same as Sentinel)
 roi = BBox(bbox=[-118.30, 34.00, -118.20, 34.10], crs=CRS.WGS84)
 resolution = 30
 time_interval = ("2024-06-15", "2024-06-20")
 
-# 📂 Output folder
-save_dir = "/home/jain.894/sentinel_pipeline/landsat/landsat_pipeline/data/landsat"
+# 📂 Output folder (resolved relative to this script: landsat_pipeline/data/landsat)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+save_dir = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "data", "landsat"))
 os.makedirs(save_dir, exist_ok=True)
 
 # ⚙️ Define Landsat request

@@ -1,5 +1,5 @@
 # main.py
-from config import get_config
+from config import get_config_from_env
 from fetch_data import fetch_sentinel_data
 from preprocess import normalize_band, compute_ndvi
 from visualize import show_image
@@ -20,10 +20,9 @@ MAX_CLOUD = 0.10               # ☁️ Cloud filter (<10% cloud cover)
 # --------------------------------------------------------------------
 # ---- CONFIG ----
 # --------------------------------------------------------------------
-CLIENT_ID = "9f48a154-353b-4485-9439-e7955ce1357c"
-CLIENT_SECRET = "aU965GIFdgSzeZWFP8miAGwqj45fBC90"
-INSTANCE_ID = "9aaf1487-85e6-4b5d-90a8-058bdacddc56"
-config = get_config(CLIENT_ID, CLIENT_SECRET, INSTANCE_ID)
+# Credentials are loaded from environment variables / a local .env file.
+# See .env.example at the repo root for setup instructions.
+config = get_config_from_env()
 
 # --------------------------------------------------------------------
 # ---- FETCH DATA FROM SENTINEL HUB ----
