@@ -39,7 +39,7 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 
 ## ✨ What it does
 
-- 🛰️ **Downloads satellite imagery** for any region of interest (ROI) and date range — Sentinel-2 (optical) or Sentinel-1 (SAR radar) — through the Sentinel Hub API.
+- 🛰️ **Downloads satellite imagery** for any region of interest (ROI) and date range — Sentinel-2 (optical), Sentinel-1 (SAR radar), or Landsat 8-9 (optical) — through the Sentinel Hub API.
 - ☁️ **Filters clouds** automatically using the Sentinel-2 Scene Classification Layer (SCL), keeping only low-cloud scenes (e.g. < 10% cloud cover) and masking cloud/shadow pixels.
 - 🌿 **Computes NDVI** (vegetation index) and saves quick-look visualizations.
 - 🌈 **Grabs all 13 Sentinel-2 bands** plus the **SCL, AOT, and WVP** atmospheric layers.
@@ -56,10 +56,12 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 
 | Platform | Type | Status | Notes |
 |---|---|:--:|---|
-| **Sentinel-2** | Optical (multispectral) | ✅ Available | Full pipeline: 13 bands + SCL/AOT/WVP, cloud filtering, NDVI, tiling, export. |
+| **Sentinel-2** | Optical (multispectral) | ✅ Available | Full pipeline: configurable bands + SCL/AOT/WVP, cloud filtering, NDVI, tiling, export. |
 | **Sentinel-1** | SAR (radar) | ✅ Available | VV/VH backscatter + composite, tiling, export. |
-| **Landsat** | Optical (multispectral) | 🧪 Experimental | A working prototype that fetches a Landsat-8 RGB composite and harmonizes it onto the Sentinel 10 m grid (reproject + resample). Not yet wired into the main pipeline and not beginner-ready — for advanced users exploring multi-sensor fusion. See [`landsat_pipeline`](modules/sentinel_pipeline/landsat). |
+| **Landsat 8-9** | Optical (multispectral) | ✅ Available | Runs through the **same** end-to-end pipeline as Sentinel-2: Collection-2 Level-2 surface reflectance, scene-level cloud filtering, `BQA` cloud/shadow masking, NDVI (B04/B05), tiling, and export. Just set `MISSION = "Landsat"`. |
 | **PlanetScope** | Optical (high-res) | 🔭 Planned | On the roadmap. **Not yet implemented** — listed here as a future target. |
+
+> Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.
 
 ---
 
@@ -122,15 +124,17 @@ Open `modules/sentinel_pipeline/main.py` and edit the **`USER INPUT`** block at 
 
 ```python
 # ---- USER INPUT ----
-MISSION    = "Sentinel-2"                        # or "Sentinel-1"
-BANDS      = ["B04", "B08"]                       # Red, NIR (SCL/AOT/WVP auto-added)
+MISSION    = "Sentinel-2"                        # "Sentinel-2", "Sentinel-1", or "Landsat"
+BANDS      = None                                 # None = use the mission's default bands
 TIME_RANGE = ("2024-06-15", "2024-06-20")         # start, end date
 ROI        = [-118.30, 34.00, -118.20, 34.10]     # [lon_min, lat_min, lon_max, lat_max]
 RESOLUTION = 10                                    # meters per pixel
 MAX_CLOUD  = 0.10                                  # keep scenes under 10% cloud cover
+TILE_SIZE  = 256                                   # training tile size
+SPLIT      = (0.8, 0.1, 0.1)                       # train / val / test fractions
 ```
 
-(Tile size and the train/val/test split are set a little further down in the same file.)
+Leaving `BANDS = None` picks sensible defaults per mission (Red+NIR for optical, VV+VH for radar) and auto-adds the cloud/quality bands. To run Landsat instead, just set `MISSION = "Landsat"` — everything else stays the same.
 
 ### 7. Run the pipeline
 
@@ -151,10 +155,10 @@ These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py
 
 | Parameter | What it controls | Example |
 |---|---|---|
-| `MISSION` | Which satellite to use | `"Sentinel-2"` or `"Sentinel-1"` |
+| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-1"`, or `"Landsat"` |
 | `ROI` | Region of interest as a bounding box `[lon_min, lat_min, lon_max, lat_max]` | `[-118.30, 34.00, -118.20, 34.10]` |
 | `TIME_RANGE` | Date window to search within `(start, end)` | `("2024-06-15", "2024-06-20")` |
-| `BANDS` | Spectral bands to download (SCL/AOT/WVP are added automatically for Sentinel-2) | `["B04", "B08"]` |
+| `BANDS` | Spectral bands to download; `None` uses the mission default. Cloud/quality bands (SCL for Sentinel-2, BQA for Landsat) are added automatically | `None`, `["B04", "B08"]` (S2), `["B04", "B05"]` (Landsat) |
 | `RESOLUTION` | Ground resolution in meters per pixel | `10` |
 | `MAX_CLOUD` | Maximum cloud cover fraction; scenes above this are skipped | `0.10` (= 10%) |
 | `tile_size` | Pixel size of each square training tile | `256` |
@@ -170,6 +174,7 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | Script | What it does |
 |---|---|
 | `main.py` | End-to-end run: fetch → cloud-mask/NDVI → tile → split → export. **Start here.** |
+| `missions.py` | Per-mission config (data collection, default bands, NDVI bands, cloud-mask rules). Add a new satellite here. |
 | `config.py` | Builds the Sentinel Hub config; reads credentials from your `.env` (`get_config_from_env`). |
 | `fetch_data.py` | Searches the Sentinel Hub catalog, picks the least-cloudy scene, and downloads the bands. |
 | `parallel_fetch.py` | Fetches multiple scenes/ROIs in parallel for faster throughput. |
@@ -182,7 +187,7 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | `dataset_loader.py` | A PyTorch `Dataset` / `DataLoader` that reads the tiles for training. |
 | `test_loader_v2.py` | Quick sanity check that the data loader and augmentations work. |
 | `create_stac_catalog.py` | Generates a STAC catalog/item for geospatial interoperability. |
-| `landsat/landsat_pipeline/` | 🧪 Experimental Landsat fetch + harmonization prototype. |
+| `landsat/landsat_pipeline/` | Optional multi-sensor harmonization helpers (reproject/resample onto a common grid). Landsat *downloads* go through `main.py` like any mission. |
 
 ---
 
@@ -214,6 +219,7 @@ geoai-datacubes/
     ├── README.md                 # detailed pipeline docs
     └── sentinel_pipeline/
         ├── main.py               # ← edit USER INPUT, then run this
+        ├── missions.py           # per-mission config (Sentinel-2, Sentinel-1, Landsat)
         ├── config.py
         ├── fetch_data.py
         ├── parallel_fetch.py

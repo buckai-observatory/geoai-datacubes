@@ -1,38 +1,52 @@
 # main.py
+import os
+import glob
+import json
+
+import numpy as np
+import rasterio
+import matplotlib.pyplot as plt
+
 from config import get_config_from_env
+from missions import get_profile
 from fetch_data import fetch_sentinel_data
-from preprocess import normalize_band, compute_ndvi
+from preprocess import normalize_band, compute_ndvi, cloud_mask
 from visualize import show_image
 from tiler import tile_geotiff
-import numpy as np
-import os, glob, rasterio, json, matplotlib.pyplot as plt
 
 # --------------------------------------------------------------------
 # ---- USER INPUT ----
 # --------------------------------------------------------------------
-MISSION = "Sentinel-2"        # 🛰️ Switch to Sentinel-2 for NDVI & atmospheric bands
-BANDS = ["B04", "B08"]        # Red, NIR (SCL, AOT, WVP auto-added)
+MISSION    = "Sentinel-2"                      # "Sentinel-2", "Sentinel-1", or "Landsat"
+BANDS      = None                              # None -> use the mission's default bands
 TIME_RANGE = ("2024-06-15", "2024-06-20")
-ROI = [-118.30, 34.00, -118.20, 34.10]    # Los Angeles
-RESOLUTION = 10
-MAX_CLOUD = 0.10               # ☁️ Cloud filter (<10% cloud cover)
+ROI        = [-118.30, 34.00, -118.20, 34.10]  # [lon_min, lat_min, lon_max, lat_max]
+RESOLUTION = 10                                # meters per pixel
+MAX_CLOUD  = 0.10                              # keep scenes under 10% cloud cover
+TILE_SIZE  = 256
+SPLIT      = (0.8, 0.1, 0.1)                   # train / val / test
 
 # --------------------------------------------------------------------
-# ---- CONFIG ----
+# ---- SETUP ----
 # --------------------------------------------------------------------
 # Credentials are loaded from environment variables / a local .env file.
 # See .env.example at the repo root for setup instructions.
+profile = get_profile(MISSION)
+if BANDS is None:
+    BANDS = list(profile["default_bands"])
+
 config = get_config_from_env()
 
 # --------------------------------------------------------------------
-# ---- FETCH DATA FROM SENTINEL HUB ----
+# ---- FETCH DATA ----
 # --------------------------------------------------------------------
-print(f"🛰️ Fetching {MISSION} data for {TIME_RANGE} with <{MAX_CLOUD*100}% clouds ...")
-data = fetch_sentinel_data(
+print(f"🛰️ Fetching {MISSION} data for {TIME_RANGE} ...")
+data, final_bands = fetch_sentinel_data(
     config, MISSION, BANDS, TIME_RANGE, ROI,
-    resolution=RESOLUTION, max_cloud_coverage=MAX_CLOUD
+    resolution=RESOLUTION, max_cloud_coverage=MAX_CLOUD,
 )
-print("✅ Data fetched successfully.")
+print(f"✅ Data fetched. Bands: {final_bands}")
+band_index = {name: i for i, name in enumerate(final_bands)}
 
 # --------------------------------------------------------------------
 # ---- LOCATE THE DOWNLOADED IMAGE ----
@@ -40,56 +54,57 @@ print("✅ Data fetched successfully.")
 tiff_files = glob.glob("data/*/response.tiff")
 if not tiff_files:
     print("⚠️ No response.tiff found in data folder. Please check ROI/date.")
-    exit()
+    raise SystemExit(1)
 
 tiff_path = max(tiff_files, key=os.path.getmtime)
 latest_dir = os.path.dirname(tiff_path)
 print(f"📂 Using image from: {tiff_path}")
 
+with rasterio.open(tiff_path) as src:
+    img = np.transpose(src.read(), (1, 2, 0))  # (H, W, bands)
+
 # --------------------------------------------------------------------
 # ---- PROCESSING ----
 # --------------------------------------------------------------------
-if MISSION == "Sentinel-2":
-    with rasterio.open(tiff_path) as src:
-        img = src.read()  # shape: (bands, H, W)
-        img = np.transpose(img, (1, 2, 0))  # -> (H, W, bands)
+if profile["ndvi"] is not None:
+    # Optical mission (Sentinel-2 / Landsat): NDVI + per-pixel cloud masking.
+    red_name, nir_name = profile["ndvi"]["red"], profile["ndvi"]["nir"]
+    if red_name not in band_index or nir_name not in band_index:
+        raise RuntimeError(
+            f"NDVI needs bands {red_name} and {nir_name}, but downloaded bands "
+            f"are {final_bands}. Add them to BANDS."
+        )
+    red = normalize_band(img[:, :, band_index[red_name]])
+    nir = normalize_band(img[:, :, band_index[nir_name]])
+    ndvi = compute_ndvi(red, nir)
 
-    # Extract indices for B04, B08, SCL, AOT, WVP dynamically
-    band_names = ["B04", "B08", "SCL", "AOT", "WVP"]
-    if img.shape[2] >= len(band_names):
-        print(f"✅ Found {img.shape[2]} bands — including SCL/AOT/WVP.")
-        red = normalize_band(img[:, :, 0])
-        nir = normalize_band(img[:, :, 1])
-        ndvi = compute_ndvi(red, nir)
-
-        # Optional: mask clouds using SCL
-        scl_band = img[:, :, 12] if img.shape[2] > 12 else None
-        if scl_band is not None:
-            cloud_mask = np.isin(scl_band, [3, 8, 9, 10])  # 3=shadow, 8-10=clouds
-            ndvi[cloud_mask] = np.nan
-            print("☁️ Cloud pixels masked from NDVI map.")
-
-        ndvi_path = os.path.join(latest_dir, "ndvi_map.png")
-        plt.imsave(ndvi_path, ndvi, cmap="RdYlGn")
-        print(f"✅ NDVI map saved → {ndvi_path}")
-
-        show_image(ndvi, title="Sentinel-2 NDVI (Cloud-Masked)", cmap="RdYlGn")
-
+    spec = profile["cloud_mask"]
+    if spec is not None and spec["band"] in band_index:
+        mask = cloud_mask(img[:, :, band_index[spec["band"]]], spec)
+        ndvi[mask] = np.nan
+        print(f"☁️ Masked {int(mask.sum())} cloud/shadow pixels using {spec['band']}.")
     else:
-        print(f"⚠️ Unexpected image shape: {img.shape} — expected (H, W, ≥13)")
+        print("ℹ️ No cloud-mask band available — NDVI left unmasked.")
 
-elif MISSION == "Sentinel-1":
-    with rasterio.open(tiff_path) as src:
-        img = np.transpose(src.read(), (1, 2, 0))
-    if img.ndim == 3 and img.shape[2] >= 2:
-        vv, vh = normalize_band(img[:, :, 0]), normalize_band(img[:, :, 1])
+    ndvi_path = os.path.join(latest_dir, "ndvi_map.png")
+    plt.imsave(ndvi_path, ndvi, cmap="RdYlGn")
+    print(f"✅ NDVI map saved → {ndvi_path}")
+    show_image(ndvi, title=f"{MISSION} NDVI (cloud-masked)", cmap="RdYlGn")
+
+else:
+    # Radar mission (Sentinel-1): save VV/VH backscatter + composite.
+    if img.shape[2] >= 2:
+        vv = normalize_band(img[:, :, 0])
+        vh = normalize_band(img[:, :, 1])
         plt.imsave(os.path.join(latest_dir, "vv_backscatter.png"), vv, cmap="gray")
         plt.imsave(os.path.join(latest_dir, "vh_backscatter.png"), vh, cmap="gray")
-        rgb_combo = np.stack([vv, vh, np.zeros_like(vv)], axis=2)
-        plt.imsave(os.path.join(latest_dir, "radar_composite.png"), rgb_combo)
+        plt.imsave(
+            os.path.join(latest_dir, "radar_composite.png"),
+            np.stack([vv, vh, np.zeros_like(vv)], axis=2),
+        )
         print("✅ Saved VV, VH, and composite radar maps.")
     else:
-        print(f"⚠️ Unexpected Sentinel-1 image shape: {img.shape}")
+        print(f"⚠️ Unexpected radar image shape: {img.shape}")
 
 # --------------------------------------------------------------------
 # ---- METADATA (if available) ----
@@ -107,17 +122,17 @@ else:
     print("⚠️ No metadata file found for this scene.")
 
 # --------------------------------------------------------------------
-# ---- TILE THE IMAGE ----
+# ---- TILE + SPLIT + EXPORT ----
 # --------------------------------------------------------------------
 tile_geotiff(
     input_tiff=tiff_path,
     output_dir=os.path.join(latest_dir, "tiles_v2"),
-    tile_size=256,
+    tile_size=TILE_SIZE,
     stride="auto",
     add_padding=False,
     augment=True,
     output_mode="geotiff",
-    train_val_test_split=(0.8, 0.1, 0.1)
+    train_val_test_split=SPLIT,
 )
 
-print("\n✅ Full Sentinel pipeline complete.")
+print("\n✅ Full pipeline complete.")

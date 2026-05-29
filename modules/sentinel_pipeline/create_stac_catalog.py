@@ -1,7 +1,6 @@
 # create_stac_catalog.py
 import os
 import pystac
-import stactools.sentinel2
 from datetime import datetime
 
 def create_stac_item(image_path, collection="Sentinel-2", output_dir="data/catalog"):
@@ -22,7 +21,7 @@ def create_stac_item(image_path, collection="Sentinel-2", output_dir="data/catal
             href=image_path,
             media_type="image/tiff; application=geotiff",
             roles=["data"],
-            title="Sentinel Tile"
+            title=f"{collection} Tile"
         )
     )
 
@@ -31,7 +30,8 @@ def create_stac_item(image_path, collection="Sentinel-2", output_dir="data/catal
     if os.path.exists(catalog_path):
         catalog = pystac.read_file(catalog_path)
     else:
-        catalog = pystac.Catalog(id="sentinel-catalog", description="Sentinel imagery catalog")
+        catalog = pystac.Catalog(id="geoai-datacubes-catalog",
+                                 description="geoai-datacubes imagery catalog")
 
     catalog.add_item(item)
     catalog.normalize_and_save(output_dir, catalog_type=pystac.CatalogType.SELF_CONTAINED)

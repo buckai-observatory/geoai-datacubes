@@ -15,8 +15,8 @@ import os, time
 # Credentials are loaded from environment variables / a local .env file.
 # See .env.example at the repo root for setup instructions.
 
-MISSION = "Sentinel-2"
-BANDS = ["B04", "B08"]
+MISSION = "Sentinel-2"   # "Sentinel-2", "Sentinel-1", or "Landsat"
+BANDS = ["B04", "B08"]   # for Landsat use ["B04", "B05"] (Red, NIR)
 RESOLUTION = 10
 TIME_RANGES = [
     ("2024-06-01", "2024-06-05"),
@@ -50,7 +50,7 @@ def download_task(roi, time_range):
     return {"roi": roi, "time_range": time_range, "status": "✅", "time": round(elapsed, 2)}
 
 if __name__ == "__main__":
-    print(f"🚀 Starting parallel Sentinel-{MISSION[-1]} downloads...")
+    print(f"🚀 Starting parallel {MISSION} downloads...")
     futures = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for roi, time_range in zip(ROIS, TIME_RANGES):

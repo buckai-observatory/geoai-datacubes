@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Sentinel Pipeline automates the entire workflow from raw satellite imagery to AI-ready datasets. It supports both Sentinel-1 (SAR radar) and Sentinel-2 (optical) imagery.
+This pipeline automates the entire workflow from raw satellite imagery to AI-ready datasets. It supports Sentinel-2 (optical), Sentinel-1 (SAR radar), and Landsat 8-9 (optical) imagery through one unified `main.py`. Each mission is described by a profile in `missions.py`.
 
 ## Features
 
-- Downloads Sentinel-1 or Sentinel-2 data using the Sentinel Hub API
-- Applies atmospheric and cloud filtering (cloud cover < 10%) using the Scene Classification Layer (SCL)
-- Includes all 13 Sentinel-2 bands plus SCL, AOT, and WVP
+- Downloads Sentinel-2, Sentinel-1, or Landsat 8-9 data using the Sentinel Hub API
+- Applies scene-level cloud filtering plus per-pixel cloud/shadow masking (Sentinel-2 Scene Classification Layer `SCL`; Landsat `BQA` quality bits)
+- Configurable bands; cloud/atmospheric helper bands (SCL/AOT/WVP for Sentinel-2, BQA for Landsat) are added automatically
 - Computes NDVI and generates visualizations
 - Tiles imagery into smaller patches for machine learning (ML) training
 - Exports data as GeoTIFF, LMDB, or Zarr (GPU-ready formats)
@@ -49,19 +49,28 @@ pip install sentinelhub rasterio numpy matplotlib tqdm zarr lmdb pystac
 
 ### 3️⃣ Configure Sentinel Hub Credentials
 
-Edit the credentials section in `main.py`:
+Credentials are read from environment variables — **never hardcode them**. Copy the
+template at the repo root and fill in your keys:
 
-```python
-CLIENT_ID = "your-client-id"
-CLIENT_SECRET = "your-client-secret"
-INSTANCE_ID = "your-instance-id"
+```bash
+cp ../../.env.example ../../.env   # then open ../../.env and edit it
 ```
+
+```bash
+SH_CLIENT_ID=your-client-id
+SH_CLIENT_SECRET=your-client-secret
+SH_INSTANCE_ID=            # optional
+```
+
+Get free credentials by registering at the Copernicus Data Space Ecosystem
+(https://dataspace.copernicus.eu/) and creating an OAuth client in the Sentinel
+Hub dashboard (https://shapps.dataspace.copernicus.eu/dashboard/).
 
 ---
 
 ### 4️⃣ Fetch Sentinel Data
 
-Run the main script to download Sentinel-2 (optical) or Sentinel-1 (radar) imagery:
+Run the main script to download Sentinel-2 (optical), Sentinel-1 (radar), or Landsat 8-9 (optical) imagery:
 
 ```bash
 python main.py
@@ -70,8 +79,8 @@ python main.py
 Inside `main.py`, you can set:
 
 ```python
-MISSION = "Sentinel-2"       # or "Sentinel-1"
-BANDS = ["B02", "B03", "B04", "B08"]  # Sentinel-2 optical bands
+MISSION = "Sentinel-2"       # "Sentinel-2", "Sentinel-1", or "Landsat"
+BANDS = None                  # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
 TIME_RANGE = ("2024-06-15", "2024-06-20")
 ROI = [-118.30, 34.00, -118.20, 34.10]  # [lon_min, lat_min, lon_max, lat_max]
 MAX_CLOUD = 0.10
