@@ -6,9 +6,9 @@ import numpy as np
 import rasterio
 from rasterio.windows import Window
 from tqdm import tqdm
-from skimage.util import random_noise
-from skimage.transform import rotate
-import torch
+
+# scikit-image and torch are only needed when `augment=True` or output_mode="tensor";
+# import them lazily to keep the no-augmentation path lightweight.
 
 
 def tile_geotiff(
@@ -103,6 +103,7 @@ def tile_geotiff(
                         dst.write(np.transpose(img, (2, 0, 1)))
 
                 elif output_mode == "tensor":
+                    import torch  # lazy
                     tensor_path = os.path.join(save_dir, base_name.replace(".tif", ".pt"))
                     torch.save(torch.tensor(img).permute(2, 0, 1).float(), tensor_path)
                     tile_path = tensor_path
@@ -126,7 +127,9 @@ def tile_geotiff(
 
 
 def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode):
-    """Apply common augmentations and save results."""
+    """Apply common augmentations and save results. Requires scikit-image."""
+    from skimage.util import random_noise   # lazy
+    from skimage.transform import rotate    # lazy
     aug_imgs = {
         "flipH": np.fliplr(img),
         "flipV": np.flipud(img),
@@ -148,6 +151,7 @@ def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, m
                 dst.write(np.transpose(im, (2, 0, 1)))
 
         elif mode == "tensor":
+            import torch  # lazy
             aug_path = os.path.join(save_dir, aug_name.replace(".tif", ".pt"))
             torch.save(torch.tensor(im).permute(2, 0, 1).float(), aug_path)
 

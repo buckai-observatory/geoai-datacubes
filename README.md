@@ -220,6 +220,7 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | `main.py` | End-to-end run: fetch → cloud-mask/NDVI → tile → split → export. **Start here.** |
 | `missions.py` | Per-mission, provider-aware config (collection, default bands, NDVI bands, cloud-mask rules, STAC asset names, Sentinel Hub collection enums). Add a new satellite here. |
 | `aoi.py` | `resolve_aoi(spec)` — turns any of the four supported AOI formats (bbox / shapefile / centre+side / S2-tile-around-point) into a WGS84 bbox. |
+| `fusion.py` | `fuse_response_tiffs(...)` — fuse per-mission `response.tiff` files into one multi-band cube on a common CRS + resolution grid. Bands are prefixed with their mission (e.g. `Sentinel-2_B04`, `Sentinel-1_VV`, `Landsat_BQA`). Use the intersection of the inputs' footprints (default) or their union. |
 | `fetch_data.py` | Provider dispatcher. `earthsearch` path: STAC search + COG reads via `rasterio` + `/vsicurl`. `sentinelhub` path: Sentinel Hub Process API. Both produce the same multi-band `response.tiff`. |
 | `config.py` | (Sentinel Hub only) reads OAuth credentials from `.env` via `get_config_from_env`. |
 | `parallel_fetch.py` | Fetches multiple scenes/ROIs in parallel for faster throughput. |
@@ -266,6 +267,7 @@ geoai-datacubes/
         ├── main.py               # ← edit USER INPUT, then run this
         ├── missions.py           # per-mission config (Sentinel-2, Sentinel-1, Landsat)
         ├── aoi.py                # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
+        ├── fusion.py             # multi-mission fusion onto a common CRS+resolution grid
         ├── config.py
         ├── fetch_data.py
         ├── parallel_fetch.py
