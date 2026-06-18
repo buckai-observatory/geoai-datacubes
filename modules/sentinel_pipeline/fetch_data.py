@@ -101,8 +101,13 @@ def fetch_sentinel_data(
     config : sentinelhub.SHConfig, optional
         Required only when ``provider="sentinelhub"``.
     """
-    if bands is None:
-        bands = list(get_profile(mission)["default_bands"])
+    # NOTE: we intentionally pass `bands` through as-is (incl. None) so each
+    # provider can distinguish "user wants the convenient defaults + helper
+    # bands" (bands=None) from "user explicitly listed bands -- give me
+    # exactly those" (bands=[...]). Auto-appending mission extras to an
+    # explicit list surprises callers; not auto-appending them when the
+    # caller asked for None loses helpful defaults. Each provider handles
+    # this fork.
 
     if provider == "auto":
         provider = PROVIDER_AUTO.get(mission, "earthsearch")
@@ -269,11 +274,17 @@ def _fetch_via_stac(
 ):
     profile = get_profile(mission)
 
-    # Final band list (user bands + mission helper bands like SCL/BQA)
-    final_bands = list(bands)
-    for b in profile["extra_bands"]:
-        if b not in final_bands:
-            final_bands.append(b)
+    # Final band list. If the caller passed bands=None they wanted the
+    # convenient default flow: mission defaults plus helper bands (SCL/BQA/
+    # AOT/WVP for atmospheric / QA work). If they passed an explicit list,
+    # honour it exactly -- never silently expand it.
+    if bands is None:
+        final_bands = list(profile["default_bands"])
+        for b in profile["extra_bands"]:
+            if b not in final_bands:
+                final_bands.append(b)
+    else:
+        final_bands = list(bands)
 
     # Validate every requested band is in the asset map for this mission.
     missing = [b for b in final_bands if b not in asset_map]
@@ -650,11 +661,15 @@ def fetch_planet(
     asset_map = cfg["asset_map"]
     udm2_map  = cfg["udm2_map"]
 
-    # Resolve which bands to download (user bands + mission helpers like udm2_clear)
-    final_bands = list(bands)
-    for b in profile["extra_bands"]:
-        if b not in final_bands:
-            final_bands.append(b)
+    # Resolve which bands to download. bands=None -> defaults + helpers; an
+    # explicit list is honoured exactly (no silent extras appended).
+    if bands is None:
+        final_bands = list(profile["default_bands"])
+        for b in profile["extra_bands"]:
+            if b not in final_bands:
+                final_bands.append(b)
+    else:
+        final_bands = list(bands)
 
     # Split into spectral bands (live in analytic asset) and UDM2 bands
     spectral = [b for b in final_bands if b in asset_map]
@@ -884,10 +899,14 @@ def fetch_sentinelhub(
     cfg = get_provider_config(mission, "sentinelhub")
     data_collection = getattr(DataCollection, cfg["collection"])
 
-    final_bands = list(bands)
-    for b in profile["extra_bands"]:
-        if b not in final_bands:
-            final_bands.append(b)
+    # bands=None -> defaults + helpers; explicit list honoured exactly.
+    if bands is None:
+        final_bands = list(profile["default_bands"])
+        for b in profile["extra_bands"]:
+            if b not in final_bands:
+                final_bands.append(b)
+    else:
+        final_bands = list(bands)
 
     bbox = BBox(bbox=roi, crs=CRS.WGS84)
     size = bbox_to_dimensions(bbox, resolution=resolution)
