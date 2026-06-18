@@ -1,6 +1,6 @@
 # fusion.py
 """
-Multi-mission fusion: combine per-mission ``response.tiff`` files into a single
+Multi-mission fusion: combine per-mission ``<Mission>_full_size.tiff`` files into a single
 multi-band AI data cube on a common CRS + resolution grid.
 
 Each band keeps its provenance via a ``<MissionTag>_<BandName>`` prefix
@@ -12,9 +12,9 @@ Typical use::
 
     fuse_response_tiffs(
         inputs=[
-            "data/Sentinel-2_2024-06-12_.../response.tiff",
-            "data/Sentinel-1_2024-06-29_.../response.tiff",
-            "data/Landsat_2024-09-14_.../response.tiff",
+            "data/Sentinel-2_2024-06-12_.../Sentinel-2_full_size.tiff",
+            "data/Sentinel-1_2024-06-29_.../Sentinel-1_full_size.tiff",
+            "data/Landsat_2024-09-14_.../Landsat_full_size.tiff",
         ],
         output_path="fused/columbus_cube.tiff",
         resolution=10,        # output pixel size in meters
@@ -25,9 +25,9 @@ Typical use::
 If you want a subset of bands per input, pass tuples instead::
 
     inputs=[
-        ("data/.../Sentinel-2.../response.tiff", ["B04", "B08"]),
-        ("data/.../Sentinel-1.../response.tiff", None),       # all bands
-        ("data/.../Landsat.../response.tiff",    ["B04", "B05"]),
+        ("data/.../Sentinel-2.../Sentinel-2_full_size.tiff", ["B04", "B08"]),
+        ("data/.../Sentinel-1.../Sentinel-1_full_size.tiff", None),       # all bands
+        ("data/.../Landsat.../Landsat_full_size.tiff",    ["B04", "B05"]),
     ]
 """
 import json
@@ -132,7 +132,7 @@ def fuse_response_tiffs(
     if xmin >= xmax or ymin >= ymax:
         raise RuntimeError(
             "No spatial overlap between inputs in the target CRS. "
-            "Check that the response.tiffs cover the same area."
+            "Check that the <Mission>_full_size.tiffs cover the same area."
         )
 
     out_w = max(1, int(np.ceil((xmax - xmin) / resolution)))

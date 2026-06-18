@@ -650,17 +650,39 @@ def tile_geotiff(
                   f"by chance. Either fetch a larger AOI or accept the imbalance.")
 
 
+def _add_gaussian_noise(img, sigma_frac=0.02):
+    """Per-band-scaled Gaussian noise: sigma is a fraction of each band's
+    standard deviation. Works across any DN scale (Sentinel-2 reflectance
+    0-10000+, Sentinel-1 backscatter 0-1, LULC class IDs 10-90, ...).
+
+    The previous implementation called ``skimage.random_noise(var=0.001)``
+    which assumes the image lives in [0, 1] -- for raw Sentinel-2 DN values
+    every pixel got clipped to 1, then stretch01 rendered the tile as a
+    solid black square. Scaling the noise to each band's own std avoids
+    that and looks like realistic sensor noise."""
+    out = img.astype(np.float32, copy=True)
+    if out.ndim == 2:
+        s = np.nanstd(out) * sigma_frac
+        if s > 0:
+            out += np.random.normal(0.0, s, out.shape).astype(np.float32)
+    else:
+        for c in range(out.shape[-1]):
+            s = np.nanstd(out[..., c]) * sigma_frac
+            if s > 0:
+                out[..., c] += np.random.normal(0.0, s, out[..., c].shape).astype(np.float32)
+    return out
+
+
 def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode,
                      tile_tags=None):
     """Apply common augmentations and save results. Requires scikit-image."""
-    from skimage.util import random_noise   # lazy
-    from skimage.transform import rotate    # lazy
+    from skimage.transform import rotate    # lazy (random_noise no longer needed)
     aug_imgs = {
         "flipH":  np.fliplr(img),
         "flipV":  np.flipud(img),
         "rot90":  rotate(img, 90,  preserve_range=True),
         "rot270": rotate(img, 270, preserve_range=True),
-        "noise":  random_noise(img, mode="gaussian", var=0.001),
+        "noise":  _add_gaussian_noise(img, sigma_frac=0.02),
     }
 
     for name, im in aug_imgs.items():

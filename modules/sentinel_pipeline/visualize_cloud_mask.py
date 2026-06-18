@@ -8,7 +8,11 @@ import os
 # Path to your cached Sentinel-2 image (.tiff) and (optional) SCL band
 # --------------------------------------------------------------------
 base_dir = "/home/jain.894/sentinel_pipeline/data/853de8cdfef01afe5935ff340561ca1e"
-tiff_path = os.path.join(base_dir, "response.tiff")
+import glob as _g
+_tiffs = sorted(_g.glob(os.path.join(base_dir, "*_full_size.tiff")))
+if not _tiffs:
+    raise FileNotFoundError(f"No <Mission>_full_size.tiff in {base_dir}")
+tiff_path = _tiffs[0]
 
 # If you have a Scene Classification Layer (SCL) TIFF saved separately,
 # put its path here; otherwise this will just simulate a cloud mask.

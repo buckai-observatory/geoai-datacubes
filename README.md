@@ -178,7 +178,7 @@ The same `main.py` can fetch through **four interchangeable providers**. The def
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in explicitly with `PROVIDER="planet"` and a key in `.env` |
 
-The output `response.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
+The output `<Mission>_full_size.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
 
 ### Switching to the Sentinel Hub provider
 
@@ -212,7 +212,7 @@ For commercial high-resolution PlanetScope imagery:
 3. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "planet"` and `MISSION = "PlanetScope-4b"` (legacy 4-band B/G/R/NIR, archive back to ~2016) or `MISSION = "PlanetScope-8b"` (SuperDove 8-band CB/B/GI/G/Y/R/RE/NIR, ~2022 onward).
 4. Pick a finer resolution — PlanetScope's native ground sampling is ~3 m, so `RESOLUTION = 3` is a sensible default.
 
-Under the hood, the `planet` provider uses Planet's **Data API** (`/quick-search`) to pick the lowest-cloud-cover scene matching your AOI/dates/instrument, then submits a single-scene **Orders API** request with server-side clip-to-AOI. The order is asynchronous — expect a few minutes for the order to reach `success` — and the pipeline polls automatically (default 60 min timeout, override via `max_wait_seconds`). The order delivers the analytic-SR COG and a UDM2 raster; both are downloaded, reprojected onto the same UTM grid we use for Sentinel/Landsat, and written into a multi-band `response.tiff` with descriptions like `"R"`, `"NIR"`, `"udm2_clear"` — so cloud masking in the tiler flows through unchanged.
+Under the hood, the `planet` provider uses Planet's **Data API** (`/quick-search`) to pick the lowest-cloud-cover scene matching your AOI/dates/instrument, then submits a single-scene **Orders API** request with server-side clip-to-AOI. The order is asynchronous — expect a few minutes for the order to reach `success` — and the pipeline polls automatically (default 60 min timeout, override via `max_wait_seconds`). The order delivers the analytic-SR COG and a UDM2 raster; both are downloaded, reprojected onto the same UTM grid we use for Sentinel/Landsat, and written into a multi-band `<Mission>_full_size.tiff` with descriptions like `"R"`, `"NIR"`, `"udm2_clear"` — so cloud masking in the tiler flows through unchanged.
 
 > ⚠️ **Never commit `.env`.** The repository's `.gitignore` already excludes it; keep it that way and never hardcode keys in source files.
 
@@ -247,8 +247,8 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | `main.py` | End-to-end run: fetch → cloud-mask/NDVI → tile → split → export. **Start here.** |
 | `missions.py` | Per-mission, provider-aware config (collection, default bands, NDVI bands, cloud-mask rules, STAC asset names, Sentinel Hub collection enums). Add a new satellite here. |
 | `aoi.py` | `resolve_aoi(spec)` — turns any of the four supported AOI formats (bbox / shapefile / centre+side / S2-tile-around-point) into a WGS84 bbox. |
-| `fusion.py` | `fuse_response_tiffs(...)` — fuse per-mission `response.tiff` files into one multi-band cube on a common CRS + resolution grid. Bands are prefixed with their mission (e.g. `Sentinel-2_B04`, `Sentinel-1_VV`, `Landsat_BQA`). Use the intersection of the inputs' footprints (default) or their union. |
-| `fetch_data.py` | Provider dispatcher. `earthsearch` path: STAC search + COG reads via `rasterio` + `/vsicurl`. `sentinelhub` path: Sentinel Hub Process API. Both produce the same multi-band `response.tiff`. |
+| `fusion.py` | `fuse_<Mission>_full_size.tiffs(...)` — fuse per-mission `<Mission>_full_size.tiff` files into one multi-band cube on a common CRS + resolution grid. Bands are prefixed with their mission (e.g. `Sentinel-2_B04`, `Sentinel-1_VV`, `Landsat_BQA`). Use the intersection of the inputs' footprints (default) or their union. |
+| `fetch_data.py` | Provider dispatcher. `earthsearch` path: STAC search + COG reads via `rasterio` + `/vsicurl`. `sentinelhub` path: Sentinel Hub Process API. Both produce the same multi-band `<Mission>_full_size.tiff`. |
 | `config.py` | (Sentinel Hub only) reads OAuth credentials from `.env` via `get_config_from_env`. |
 | `parallel_fetch.py` | Fetches multiple scenes/ROIs in parallel for faster throughput. |
 | `preprocess.py` | Normalizes bands to `[0, 1]` and computes NDVI. |

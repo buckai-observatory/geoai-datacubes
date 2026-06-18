@@ -22,7 +22,7 @@ the mission pick for them via ``provider="auto"``):
     ``planetary_computer`` for Sentinel-1 and Landsat.
 
 All paths return the same ``(data, final_bands)`` tuple and write a multi-band
-``response.tiff`` under ``<save_folder>/<scene_id>/`` so the downstream tiler
+``<Mission>_full_size.tiff`` under ``<save_folder>/<scene_id>/`` so the downstream tiler
 and exporter work unchanged regardless of provider.
 """
 
@@ -70,6 +70,7 @@ def fetch_sentinel_data(
     resolution=10,
     save_folder="data",
     max_cloud_coverage=0.10,
+    min_cloud_coverage=0.0,        # raise to force *cloudy* scenes (for demos)
     provider="auto",
     config=None,
 ):
@@ -93,7 +94,7 @@ def fetch_sentinel_data(
     resolution : float
         Output pixel size in metres (output CRS is the scene's native UTM/EPSG).
     save_folder : str
-        Where to write ``<scene_id>/response.tiff``.
+        Where to write ``<scene_id>/<Mission>_full_size.tiff``.
     max_cloud_coverage : float
         Scene-level cloud-cover threshold (0-1).
     provider : str
@@ -118,6 +119,7 @@ def fetch_sentinel_data(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
+            min_cloud_coverage=min_cloud_coverage,
         )
 
     if provider == "planetary_computer":
@@ -125,6 +127,7 @@ def fetch_sentinel_data(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
+            min_cloud_coverage=min_cloud_coverage,
         )
 
     if provider == "planet":
@@ -153,6 +156,94 @@ def fetch_sentinel_data(
 # ============================================================
 # Shared helpers for the STAC-based providers
 # ============================================================
+def _select_scenes_for_mosaic(items, roi, profile,
+                              max_scenes=6, coverage_target=0.95):
+    """For non-static missions: greedily build a list of scenes that together
+    cover the AOI. Starts from the best-ranked candidate and adds same-day
+    neighbours that contribute new geographic coverage. Falls back to a
+    single scene when one already exceeds the coverage target. The greedy
+    bbox-overlap heuristic is approximate (orbit-strip polygons are not
+    axis-aligned) but adequate to push multi-scene cases like Sentinel-1
+    from "97% NaN" to "fully covered" without pulling shapely in.
+    """
+    if not items:
+        return []
+    # All items already have ._aoi_overlap set by the caller.
+    primary = items[0]
+    if primary["_aoi_overlap"] >= coverage_target:
+        return [primary]
+
+    selected = [primary]
+    primary_day = (primary["properties"].get("datetime") or "")[:10]
+
+    # Walk same-day candidates first (keeps temporal consistency), then
+    # spill into other days only if we still need coverage.
+    same_day  = [it for it in items[1:]
+                 if (it["properties"].get("datetime") or "")[:10] == primary_day]
+    other_day = [it for it in items[1:]
+                 if (it["properties"].get("datetime") or "")[:10] != primary_day]
+
+    for cand in same_day + other_day:
+        if len(selected) >= max_scenes:
+            break
+        cb = cand.get("bbox") or []
+        # Skip candidates whose bbox is mostly subsumed by an already-picked
+        # scene -- they would not add new coverage.
+        redundant = any(
+            _bbox_overlap_ratio(cb, sel.get("bbox") or []) > 0.95
+            for sel in selected
+        )
+        if redundant or cand["_aoi_overlap"] < 0.05:
+            continue
+        selected.append(cand)
+
+    return selected
+
+
+def _bbox_overlap_ratio(item_bbox, aoi_bbox):
+    """Fraction of the AOI bbox covered by the scene's bbox (0.0 .. 1.0).
+
+    Cheap rectangle-rectangle overlap; used as a fast pre-filter and as a
+    fallback when an item has no usable geometry.
+    """
+    if not item_bbox or len(item_bbox) < 4 or not aoi_bbox or len(aoi_bbox) < 4:
+        return 0.0
+    ix0 = max(item_bbox[0], aoi_bbox[0])
+    iy0 = max(item_bbox[1], aoi_bbox[1])
+    ix1 = min(item_bbox[2], aoi_bbox[2])
+    iy1 = min(item_bbox[3], aoi_bbox[3])
+    if ix0 >= ix1 or iy0 >= iy1:
+        return 0.0
+    intersect = (ix1 - ix0) * (iy1 - iy0)
+    aoi_area  = (aoi_bbox[2] - aoi_bbox[0]) * (aoi_bbox[3] - aoi_bbox[1])
+    return float(intersect / aoi_area) if aoi_area > 0 else 0.0
+
+
+def _scene_overlap_ratio(item, aoi_bbox):
+    """Fraction of the AOI covered by the scene's ACTUAL polygon (0.0 .. 1.0).
+
+    Sentinel-1 scenes are orbit-strip parallelograms whose axis-aligned
+    bbox covers far more area than the scene itself -- relying on bbox
+    alone says "100% covered" while the real swath only triangles a corner
+    of the AOI. Using shapely on the STAC item's `geometry` field gives
+    the honest coverage so the mosaic selector picks adjacent same-day
+    scenes when needed. Falls back to bbox overlap if no geometry exists.
+    """
+    geom = item.get("geometry")
+    if not geom:
+        return _bbox_overlap_ratio(item.get("bbox") or [], aoi_bbox)
+    try:
+        from shapely.geometry import shape, box
+        scene_poly = shape(geom)
+        aoi_poly   = box(aoi_bbox[0], aoi_bbox[1], aoi_bbox[2], aoi_bbox[3])
+        if aoi_poly.area <= 0:
+            return 0.0
+        return float(scene_poly.intersection(aoi_poly).area / aoi_poly.area)
+    except Exception:
+        # shapely missing or weird geometry -> fall back to bbox heuristic
+        return _bbox_overlap_ratio(item.get("bbox") or [], aoi_bbox)
+
+
 def _resampling_for_band(band_name, cloud_mask_spec):
     """SCL / BQA / quality-class bands MUST use nearest-neighbour resampling."""
     if cloud_mask_spec and band_name == cloud_mask_spec.get("band"):
@@ -269,7 +360,8 @@ def _resolve_pc_href(href):
 def _fetch_via_stac(
     mission, bands, time_range, roi,
     *,
-    resolution, save_folder, max_cloud_coverage,
+    resolution, save_folder,
+    max_cloud_coverage, min_cloud_coverage=0.0,
     stac_url, collection, asset_map, url_resolver, provider_label,
 ):
     profile = get_profile(mission)
@@ -301,11 +393,14 @@ def _fetch_via_stac(
     if not is_static:
         body["datetime"] = f"{time_range[0]}T00:00:00Z/{time_range[1]}T23:59:59Z"
         if profile["cloud_filter"]:
-            body["query"] = {"eo:cloud_cover": {"lt": max_cloud_coverage * 100}}
+            cc_filter = {"lt": max_cloud_coverage * 100}
+            if min_cloud_coverage > 0:
+                cc_filter["gte"] = min_cloud_coverage * 100
+            body["query"] = {"eo:cloud_cover": cc_filter}
 
     print(f"🔎 Searching {provider_label} for '{collection}' over {roi}"
           + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
-          + (f" with cloud<{int(max_cloud_coverage*100)}%" if profile["cloud_filter"] else "")
+          + ((f" with cloud {int(min_cloud_coverage*100)}%-{int(max_cloud_coverage*100)}%" if min_cloud_coverage > 0 else f" with cloud<{int(max_cloud_coverage*100)}%") if profile["cloud_filter"] else "")
           + " ...")
     r = requests.post(stac_url, json=body, timeout=60)
     r.raise_for_status()
@@ -333,14 +428,37 @@ def _fetch_via_stac(
         print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI "
               f"(latest version {latest_dt[:10] or 'n/a'})")
     else:
+        # Rank scenes by AOI coverage (and cloud cover when relevant), then
+        # greedily build a same-day mosaic when one scene does not cover the
+        # whole AOI. Orbit-strip products like Sentinel-1 routinely need 2-3
+        # adjacent scenes to fully cover a 10-mile box.
+        # Use the actual scene polygon (geometry) -- bbox-only overlap
+        # masquerades as "100% covered" for Sentinel-1 orbit-strip products.
+        for it in items:
+            it["_aoi_overlap"] = _scene_overlap_ratio(it, roi)
         if profile["cloud_filter"]:
-            items.sort(key=lambda x: x["properties"].get("eo:cloud_cover", 100))
+            items.sort(key=lambda x: (x["properties"].get("eo:cloud_cover", 100),
+                                       -x["_aoi_overlap"]))
+        else:
+            items.sort(key=lambda x: -x["_aoi_overlap"])
+
+        items = _select_scenes_for_mosaic(items, roi, profile)
         representative = items[0]
         scene_id_print = representative["id"]
         scene_dt_print = representative["properties"]["datetime"]
         cc = representative["properties"].get("eo:cloud_cover")
         cc_note = f" cloud={cc:.1f}%" if cc is not None else ""
-        print(f"✅ Selected scene {scene_id_print} ({scene_dt_print[:10]}){cc_note}")
+        ov = representative["_aoi_overlap"]
+        ov_note = f" AOI-overlap={ov*100:.0f}%"
+        print(f"✅ Selected scene {scene_id_print} ({scene_dt_print[:10]}){cc_note}{ov_note}")
+        if len(items) > 1:
+            extra_overlap = sum(it["_aoi_overlap"] for it in items[1:])
+            print(f"📦 Mosaicking {len(items)} same-day scenes "
+                  f"(+{int(min(100, extra_overlap * 100))}% additional bbox coverage)")
+        elif ov < 0.8:
+            print(f"⚠️  Best matching scene covers only {ov*100:.0f}% of the AOI "
+                  f"and no other same-day scenes overlap. Widen the time range "
+                  f"or accept the partial coverage.")
 
     # Validate requested bands are in the representative item's assets
     scene_assets = set(representative["assets"].keys())
@@ -398,14 +516,17 @@ def _fetch_via_stac(
     dst_transform = from_bounds(*roi_proj, out_w, out_h)
     print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
 
-    # 5. Pull each requested band into the output grid (mosaic for static)
+    # 5. Pull each requested band into the output grid. Whenever the
+    #    selection step picked more than one item we mosaic them -- static
+    #    products (DEM, WorldCover) and now also non-static missions where
+    #    a single scene did not cover the AOI (e.g. Sentinel-1 orbit strips).
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
     for i, b in enumerate(final_bands):
         rs = _resampling_for_band(b, profile["cloud_mask"])
-        if is_static and len(items) > 1:
+        if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_map[b]]["href"]) for it in items]
             print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  "
-                  f"mosaic of {len(urls)} tile(s)")
+                  f"mosaic of {len(urls)} scene(s)")
             stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform, (out_h, out_w), rs)
         else:
             url = url_resolver(representative["assets"][asset_map[b]]["href"])
@@ -413,7 +534,7 @@ def _fetch_via_stac(
             print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
             stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
 
-    # 6. Validate nodata coverage and write multi-band response.tiff with
+    # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which
     #    pixels are invalid.
     invalid_per_band = []
@@ -426,7 +547,11 @@ def _fetch_via_stac(
         pct = 100.0 * n_invalid / total
         per_band = ", ".join(f"{b}={n}" for b, n in invalid_per_band if n > 0)
         print(f"⚠️  NaN pixels in output: {n_invalid}/{total} ({pct:.3f}%) -- {per_band}")
-    response_tiff = os.path.join(out_dir, "response.tiff")
+    # Mission-tagged filename so the file is self-describing if copied out of
+    # its folder. The folder already encodes mission+date+scene_id; the file
+    # name encodes the mission so downstream code (and humans) can immediately
+    # tell what they are looking at.
+    response_tiff = os.path.join(out_dir, f"{mission}_full_size.tiff")
     with rasterio.open(
         response_tiff, "w",
         driver="GTiff", width=out_w, height=out_h, count=len(final_bands),
@@ -461,7 +586,8 @@ def _fetch_via_stac(
 # ============================================================
 def fetch_earthsearch(
     mission, bands, time_range, roi,
-    resolution=10, save_folder="data", max_cloud_coverage=0.10,
+    resolution=10, save_folder="data",
+    max_cloud_coverage=0.10, min_cloud_coverage=0.0,
 ):
     """Earth Search STAC + AWS Open-Data COGs (anonymous HTTPS)."""
     cfg = get_provider_config(mission, "earthsearch")
@@ -469,6 +595,7 @@ def fetch_earthsearch(
         mission, bands, time_range, roi,
         resolution=resolution, save_folder=save_folder,
         max_cloud_coverage=max_cloud_coverage,
+        min_cloud_coverage=min_cloud_coverage,
         stac_url=EARTH_SEARCH_URL,
         collection=cfg["collection"],
         asset_map=cfg["asset_map"],
@@ -479,7 +606,8 @@ def fetch_earthsearch(
 
 def fetch_planetary_computer(
     mission, bands, time_range, roi,
-    resolution=10, save_folder="data", max_cloud_coverage=0.10,
+    resolution=10, save_folder="data",
+    max_cloud_coverage=0.10, min_cloud_coverage=0.0,
 ):
     """Microsoft Planetary Computer STAC + Azure blob (anonymous, SAS-signed)."""
     cfg = get_provider_config(mission, "planetary_computer")
@@ -487,6 +615,7 @@ def fetch_planetary_computer(
         mission, bands, time_range, roi,
         resolution=resolution, save_folder=save_folder,
         max_cloud_coverage=max_cloud_coverage,
+        min_cloud_coverage=min_cloud_coverage,
         stac_url=PC_STAC_URL,
         collection=cfg["collection"],
         asset_map=cfg["asset_map"],
@@ -502,7 +631,7 @@ def fetch_planetary_computer(
 # AOI + time + instrument; Orders API submits a single-scene order with
 # server-side clip to the AOI; we poll until success, download the analytic
 # SR COG + UDM2 raster, reproject both onto the same UTM grid we use for
-# the other providers, and write a multi-band response.tiff that includes
+# the other providers, and write a multi-band <Mission>_full_size.tiff that includes
 # the requested spectral bands plus the requested UDM2 bands (so cloud
 # masking in the tiler "just works").
 # ============================================================
@@ -651,7 +780,7 @@ def fetch_planet(
     Submits a server-side clip-to-AOI order for the single lowest-cloud-cover
     scene matching the requested AOI / time / instrument, polls until success,
     downloads the analytic-SR COG + UDM2 raster, and writes a multi-band
-    response.tiff on a common UTM grid -- with the same band-description
+    <Mission>_full_size.tiff on a common UTM grid -- with the same band-description
     convention and userdata.json sidecar the rest of the pipeline expects.
 
     ``resolution`` defaults to 3 m (PlanetScope's native ground sampling).
@@ -832,7 +961,7 @@ def fetch_planet(
     stack = np.stack(arrays, axis=0) if arrays else np.empty(
         (0, out_h, out_w), dtype=np.float32)
 
-    # 6) Validate nodata + write multi-band response.tiff with nodata=NaN
+    # 6) Validate nodata + write multi-band <Mission>_full_size.tiff with nodata=NaN
     invalid_per_band = [(b, int(np.isnan(a).sum())) for b, a in zip(band_order, arrays)]
     total = stack.size or 1
     n_invalid = sum(n for _, n in invalid_per_band)
@@ -840,7 +969,7 @@ def fetch_planet(
         pct = 100.0 * n_invalid / total
         per_band = ", ".join(f"{b}={n}" for b, n in invalid_per_band if n > 0)
         print(f"⚠️  NaN pixels in output: {n_invalid}/{total} ({pct:.3f}%) -- {per_band}")
-    response_tiff = os.path.join(out_dir, "response.tiff")
+    response_tiff = os.path.join(out_dir, f"{mission}_full_size.tiff")
     with rasterio.open(
         response_tiff, "w",
         driver="GTiff", width=out_w, height=out_h, count=len(band_order),

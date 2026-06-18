@@ -40,5 +40,8 @@ def create_stac_item(image_path, collection="Sentinel-2", output_dir="data/catal
 
 
 if __name__ == "__main__":
-    image_path = "data/853de8cdfef01afe5935ff340561ca1e/response.tiff"
+    import glob as _g; _t = sorted(_g.glob("data/*/*_full_size.tiff"))
+    if not _t:
+        raise FileNotFoundError("No <Mission>_full_size.tiff found in data/")
+    image_path = _t[-1]
     create_stac_item(image_path)

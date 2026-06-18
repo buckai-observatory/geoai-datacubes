@@ -115,7 +115,7 @@ See the [top-level README](../README.md#defining-the-aoi) for the other three AO
 ✅ The pipeline will:
 - Select the least cloudy (<10%) Sentinel-2 scene
 - Download 13 bands + SCL + AOT + WVP
-- Save data in `/data/<scene_id>/response.tiff`
+- Save data in `/data/<scene_id>/<Mission>_full_size.tiff`
 
 ---
 
@@ -238,7 +238,7 @@ This will:
 
 ```
 data/
- ├── response.tiff             # Original Sentinel image
+ ├── <Mission>_full_size.tiff             # Original Sentinel image
  ├── ndvi_map.png              # NDVI visualization
  ├── radar_composite.png       # Sentinel-1 composite
  ├── tiles_v2/                 # Training/validation/test tiles

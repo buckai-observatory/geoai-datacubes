@@ -81,9 +81,9 @@ band_index = {name: i for i, name in enumerate(final_bands)}
 # --------------------------------------------------------------------
 # ---- LOCATE THE DOWNLOADED IMAGE ----
 # --------------------------------------------------------------------
-tiff_files = glob.glob("data/*/response.tiff")
+tiff_files = glob.glob("data/*/*_full_size.tiff")
 if not tiff_files:
-    print("⚠️ No response.tiff found in data folder. Please check ROI/date.")
+    print("⚠️ No <Mission>_full_size.tiff found in data folder. Please check ROI/date.")
     raise SystemExit(1)
 
 tiff_path = max(tiff_files, key=os.path.getmtime)
