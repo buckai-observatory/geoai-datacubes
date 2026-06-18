@@ -148,8 +148,19 @@ def _resampling_for_band(band_name, cloud_mask_spec):
 
 
 def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling):
-    """Open a COG via /vsicurl from a ready-to-use URL and reproject one band."""
-    out = np.zeros(dst_shape, dtype=np.float32)
+    """Open a COG via /vsicurl from a ready-to-use URL and reproject one band.
+
+    Nodata handling (critical -- prevents zero-smearing at source edges):
+
+      - The destination is initialised to NaN (not zero), so any pixel that
+        ``reproject`` doesn't fill stays distinguishable from a real 0.
+      - ``src_nodata`` is propagated from the COG's declared nodata value so
+        bilinear/cubic resampling near the source's edges or holes does not
+        sample garbage from invalid pixels into valid ones.
+      - ``dst_nodata=NaN`` tells rasterio to emit NaN wherever the resampler
+        couldn't produce a clean value.
+    """
+    out = np.full(dst_shape, np.nan, dtype=np.float32)
     with rasterio.open(f"/vsicurl/{asset_url}") as src:
         # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
         src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
@@ -158,8 +169,10 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling)
             destination=out,
             src_transform=src.transform,
             src_crs=src_crs,
+            src_nodata=src.nodata,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
+            dst_nodata=float("nan"),
             resampling=resampling,
         )
     return out
@@ -168,10 +181,12 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling)
 def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling):
     """Mosaic multiple tessellated COG tiles into a single output grid.
 
-    Each source is reprojected into a NaN-initialised temp array; pixels that
-    came back as valid (not NaN) are composited into the output. Tessellated
-    static datasets (Copernicus DEM tiles, ESA WorldCover tiles) don't overlap,
-    so this composite is essentially additive.
+    Each source is reprojected into a NaN-initialised temp array; only the
+    pixels that came back as valid (not NaN) are composited into the output.
+    Source nodata is propagated so resampling never smears 0s across tile
+    boundaries. NaN is preserved -- callers are expected to declare
+    ``nodata=NaN`` on the output GeoTIFF so the rest of the pipeline (tiler,
+    fusion) treats those pixels correctly.
     """
     out = np.full(dst_shape, np.nan, dtype=np.float32)
     for url in asset_urls:
@@ -191,8 +206,7 @@ def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampli
             )
         mask = ~np.isnan(tmp)
         out[mask] = tmp[mask]
-    # Replace any remaining NaN (pixels not covered by any source) with 0.
-    return np.nan_to_num(out, nan=0.0)
+    return out
 
 
 # ---- earthsearch URL resolver (s3:// -> https://) ----
@@ -377,13 +391,26 @@ def _fetch_via_stac(
             print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
             stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
 
-    # 6. Write multi-band response.tiff
+    # 6. Validate nodata coverage and write multi-band response.tiff with
+    #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which
+    #    pixels are invalid.
+    invalid_per_band = []
+    for i, b in enumerate(final_bands):
+        n_nan = int(np.isnan(stack[i]).sum())
+        invalid_per_band.append((b, n_nan))
+    total = stack.size
+    n_invalid = sum(n for _, n in invalid_per_band)
+    if n_invalid:
+        pct = 100.0 * n_invalid / total
+        per_band = ", ".join(f"{b}={n}" for b, n in invalid_per_band if n > 0)
+        print(f"⚠️  NaN pixels in output: {n_invalid}/{total} ({pct:.3f}%) -- {per_band}")
     response_tiff = os.path.join(out_dir, "response.tiff")
     with rasterio.open(
         response_tiff, "w",
         driver="GTiff", width=out_w, height=out_h, count=len(final_bands),
         dtype="float32", crs=dst_crs, transform=dst_transform,
         compress="deflate", tiled=True,
+        nodata=float("nan"),
     ) as dst:
         dst.write(stack)
         for i, b in enumerate(final_bands, start=1):

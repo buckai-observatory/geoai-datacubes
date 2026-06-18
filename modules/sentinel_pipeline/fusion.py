@@ -161,7 +161,11 @@ def fuse_response_tiffs(
                     indices.append(descriptions.index(b))
 
             for i in indices:
-                out = np.zeros((out_h, out_w), dtype=np.float32)
+                # NaN-initialised destination + src_nodata + dst_nodata=NaN
+                # prevents nodata edges from being smeared by bilinear/cubic
+                # resampling. See fetch_data._read_band_to_grid for the same
+                # discipline.
+                out = np.full((out_h, out_w), np.nan, dtype=np.float32)
                 bname = descriptions[i]
                 rs = _resampling_for(bname)
                 reproject(
@@ -169,8 +173,10 @@ def fuse_response_tiffs(
                     destination=out,
                     src_transform=src.transform,
                     src_crs=src.crs,
+                    src_nodata=src.nodata,
                     dst_transform=dst_transform,
                     dst_crs=dst_crs,
+                    dst_nodata=float("nan"),
                     resampling=rs,
                 )
                 fused_bands.append(out)
@@ -178,6 +184,15 @@ def fuse_response_tiffs(
                 print(f"  ↓ {f'{mission_tag}_{bname}':<32s}  {rs.name:<8s}")
 
     stack = np.stack(fused_bands, axis=0)   # (C, H, W)
+
+    # Report invalid-pixel coverage per band before write
+    invalid_per_band = [(name, int(np.isnan(b).sum())) for name, b in zip(fused_names, fused_bands)]
+    n_total = stack.size
+    n_invalid = sum(n for _, n in invalid_per_band)
+    if n_invalid:
+        pct = 100.0 * n_invalid / n_total
+        offenders = ", ".join(f"{n}={c}" for n, c in invalid_per_band if c > 0)
+        print(f"⚠️  NaN pixels in fused cube: {n_invalid}/{n_total} ({pct:.3f}%) -- {offenders}")
 
     out_meta = {
         "driver":    "GTiff",
@@ -189,6 +204,7 @@ def fuse_response_tiffs(
         "transform": dst_transform,
         "compress":  "deflate",
         "tiled":     True,
+        "nodata":    float("nan"),       # declare NaN so downstream readers honour it
     }
 
     out_dir = os.path.dirname(output_path)
