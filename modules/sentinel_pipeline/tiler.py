@@ -248,6 +248,64 @@ def _assign_split(
     )
 
 
+def _gather_source_metadata(input_tiff):
+    """Look for sidecar metadata next to the input GeoTIFF and return a flat
+    str-valued dict suitable for embedding as GeoTIFF tags.
+
+    Recognised sidecars:
+      * ``userdata.json`` (written by fetch_data._fetch_via_stac)
+        -- holds satellite, acquisitionDate, scene/tile id, provider,
+        collection, bands list, static flag, mosaic_tiles count.
+      * ``<basename>.meta.json`` (written by fusion.fuse_response_tiffs)
+        -- holds the band list, source paths, fusion bbox_mode, resolution.
+
+    Keys are prefixed ``source_`` so they don't collide with our tile-level
+    ``tile_*`` tags.
+    """
+    import json
+    out = {}
+
+    src_dir  = os.path.dirname(input_tiff) or "."
+    base, _  = os.path.splitext(input_tiff)
+
+    # 1. fetch_data sidecar
+    userdata_path = os.path.join(src_dir, "userdata.json")
+    if os.path.exists(userdata_path):
+        try:
+            with open(userdata_path) as f:
+                ud = json.load(f)
+            for k, v in ud.items():
+                out[f"source_{k}"] = _flatten_for_tag(v)
+        except Exception as e:
+            print(f"⚠️  Could not parse {userdata_path}: {e}")
+
+    # 2. fusion sidecar
+    meta_json_path = base + ".meta.json"
+    if os.path.exists(meta_json_path):
+        try:
+            with open(meta_json_path) as f:
+                md = json.load(f)
+            for k, v in md.items():
+                if k == "sources":
+                    # Keep only the per-mission folder names, not full paths
+                    out["source_" + k] = ",".join(
+                        os.path.basename(os.path.dirname(p)) for p in v
+                    )
+                else:
+                    out["source_" + k] = _flatten_for_tag(v)
+        except Exception as e:
+            print(f"⚠️  Could not parse {meta_json_path}: {e}")
+
+    return out
+
+
+def _flatten_for_tag(v):
+    """GDAL tag values must be strings; flatten lists/tuples to comma-joined."""
+    if isinstance(v, (list, tuple)):
+        return ",".join(str(x) for x in v)
+    return str(v)
+
+
 def _resolve_region_specs(spec_dict):
     """Map a ``{"train": aoi_spec, "val": ..., "test": ...}`` dict to WGS84 bboxes."""
     if not isinstance(spec_dict, dict):
@@ -355,6 +413,9 @@ def tile_geotiff(
         else:
             train_dir = val_dir = test_dir = ""
 
+        # --- Gather source metadata once for embedding in every tile ---
+        src_metadata_tags = _gather_source_metadata(input_tiff)
+
         # --- Detect cloud / QA bands once (used per tile if cloud_mask=True) ---
         cloud_bands = []
         if cloud_mask:
@@ -438,6 +499,25 @@ def tile_geotiff(
                 base_name = f"tile_{tile_id:05d}.tif"
                 tile_path = os.path.join(save_dir, base_name)
 
+                # Compose the per-tile metadata tag dict once. The same set is
+                # embedded in the base tile and (with a different augmentation
+                # label) in every augmented variant below.
+                tile_tags_base = {
+                    **src_metadata_tags,
+                    "tile_size":               str(tile_size),
+                    "tile_stride":             str(stride),
+                    "tile_window_x":           str(x),
+                    "tile_window_y":           str(y),
+                    "tile_split_method":       str(split_method),
+                    "tile_split_assigned":     str(split),
+                    "tile_nan_handling":       str(nan_handling),
+                    "tile_cloud_mask_applied": str(bool(cloud_bands)),
+                    "tile_has_valid_mask_band": str(nan_info["added_mask_band"]),
+                    "tile_n_nan_before":       str(nan_info["n_nan_before"]),
+                    "tile_n_filled":           str(nan_info["n_filled"]),
+                    "tile_n_cloud_masked":     str(n_cloud_this_tile),
+                }
+
                 if output_mode == "geotiff":
                     meta.update({
                         "height":    tile_size,
@@ -448,16 +528,15 @@ def tile_geotiff(
                     })
                     with rasterio.open(tile_path, "w", **meta) as dst:
                         dst.write(np.transpose(img, (2, 0, 1)))
-                        # Carry the source's band descriptions onto each tile so
-                        # downstream readers can identify bands by name (e.g.
-                        # "Sentinel-2_B04", "Copernicus-DEM_DEM"). The extra
-                        # "valid_mask" band is named when present.
                         for bi in range(1, src.count + 1):
                             d = src.descriptions[bi - 1]
                             if d:
                                 dst.set_band_description(bi, d)
                         if nan_info["added_mask_band"]:
                             dst.set_band_description(img.shape[-1], "valid_mask")
+                        # Source provenance + tiling parameters travel with the tile.
+                        # Read back via rasterio.open(tile).tags().
+                        dst.update_tags(**tile_tags_base, tile_augmentation="none")
 
                 elif output_mode == "tensor":
                     import torch  # lazy
@@ -476,7 +555,8 @@ def tile_geotiff(
 
                 if augment:
                     do_augmentations(img, save_dir, tile_id, metadata_path,
-                                     x, y, tile_size, tile_size, split, output_mode)
+                                     x, y, tile_size, tile_size, split, output_mode,
+                                     tile_tags=tile_tags_base)
 
                 tile_id += 1
 
@@ -493,7 +573,8 @@ def tile_geotiff(
     print("   " + "  ".join(parts))
 
 
-def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode):
+def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode,
+                     tile_tags=None):
     """Apply common augmentations and save results. Requires scikit-image."""
     from skimage.util import random_noise   # lazy
     from skimage.transform import rotate    # lazy
@@ -516,6 +597,8 @@ def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, m
                 count=im.shape[2], dtype=im.dtype,
             ) as dst:
                 dst.write(np.transpose(im, (2, 0, 1)))
+                if tile_tags:
+                    dst.update_tags(**tile_tags, tile_augmentation=name)
 
         elif mode == "tensor":
             import torch  # lazy
