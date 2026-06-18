@@ -43,6 +43,59 @@ _SPLITS = ("train", "val", "test")
 
 
 # ============================================================
+# Cloud / quality masking
+# ============================================================
+# Bands the tiler knows how to interpret as "cloudy / shadow / cirrus" QA.
+# Keys are the bare band names; the same lookup also matches descriptions like
+# "Sentinel-2_SCL" or "Landsat_BQA" via suffix matching, so fused cubes work too.
+#   SCL classes (Sentinel-2 L2A Scene Classification Layer):
+#     3 = cloud shadow, 8 = cloud medium prob, 9 = cloud high prob, 10 = thin cirrus
+#   BQA bits (Landsat C2 L2 QA_PIXEL):
+#     1 = dilated cloud, 3 = cloud, 4 = cloud shadow
+_KNOWN_CLOUD_BANDS = {
+    "SCL":      {"kind": "scl",     "flag_values": [3, 8, 9, 10]},
+    "BQA":      {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
+    "qa_pixel": {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
+    "QA_PIXEL": {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
+}
+
+
+def _find_cloud_bands(descriptions):
+    """Return ``[(band_index_0based, spec, display_name), ...]`` for every cloud-QA
+    band found in a list of GeoTIFF band descriptions.
+
+    Matches both bare names (``SCL``) and mission-prefixed names from fused cubes
+    (``Sentinel-2_SCL``, ``Landsat_BQA``). When multiple mission cloud bands are
+    present (a fused cube with both Sentinel-2 and Landsat) all of them are
+    applied -- a pixel is masked if any one flags it.
+    """
+    out = []
+    for i, d in enumerate(descriptions or []):
+        if not d:
+            continue
+        for key, spec in _KNOWN_CLOUD_BANDS.items():
+            if d == key or d.endswith("_" + key):
+                out.append((i, spec, d))
+                break
+    return out
+
+
+def _cloud_mask_from_spec(qa_band, spec):
+    """Boolean mask: True where pixel is cloud/shadow/cirrus per the given spec."""
+    kind = spec.get("kind")
+    if kind == "scl":
+        classes = np.rint(qa_band).astype(np.int64)
+        return np.isin(classes, spec["flag_values"])
+    if kind == "qa_bits":
+        qa = np.rint(qa_band).astype(np.int64)
+        mask = np.zeros(qa.shape, dtype=bool)
+        for bit in spec["flag_bits"]:
+            mask |= ((qa >> bit) & 1).astype(bool)
+        return mask
+    raise ValueError(f"Unknown cloud-mask kind: {kind!r}")
+
+
+# ============================================================
 # NaN handling
 # ============================================================
 def _fill_nan_nearest_2d(band, max_dist=3):
@@ -236,6 +289,8 @@ def tile_geotiff(
     nan_handling="drop",           # "drop" | "interpolate" | "mask"
     nan_max_fraction=0.05,         # tiles with more than this fraction NaN are dropped
     nan_interp_max_dist=3,         # nearest-neighbour fill radius, in pixels (for "interpolate")
+    cloud_mask=False,              # when True, NaN-out cloudy pixels using SCL / BQA / QA_PIXEL
+                                   # bands found in the input (then NaN-handling kicks in)
 ):
     """
     Tile a multi-band GeoTIFF into AI-ready patches with a chosen split strategy.
@@ -300,23 +355,52 @@ def tile_geotiff(
         else:
             train_dir = val_dir = test_dir = ""
 
+        # --- Detect cloud / QA bands once (used per tile if cloud_mask=True) ---
+        cloud_bands = []
+        if cloud_mask:
+            cloud_bands = _find_cloud_bands(list(src.descriptions or []))
+            if cloud_bands:
+                names = ", ".join(b[2] for b in cloud_bands)
+                print(f"☁️  cloud_mask=True: NaN-ing cloudy pixels using {names}")
+            else:
+                print("⚠️  cloud_mask=True but no SCL / BQA / QA_PIXEL band found in input.")
+
         # --- Initialize metadata CSV ---
         with open(metadata_path, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["filename", "x_offset", "y_offset", "width", "height",
                              "augmentation", "split",
-                             "n_nan_before", "n_filled", "has_mask_band"])
+                             "n_nan_before", "n_filled", "has_mask_band",
+                             "n_cloud_masked"])
 
         tile_id = 0
         counts = {"train": 0, "val": 0, "test": 0,
                   "skipped_region": 0, "skipped_nan": 0,
-                  "filled_tiles": 0, "masked_tiles": 0}
+                  "filled_tiles": 0, "masked_tiles": 0,
+                  "cloud_masked_pixels": 0}
 
         for y in tqdm(range(0, height - tile_size + 1, stride)):
             for x in range(0, width - tile_size + 1, stride):
                 window = Window(x, y, tile_size, tile_size)
                 img = src.read(window=window)         # (bands, H, W)
                 img = np.transpose(img, (1, 2, 0)).astype(np.float32, copy=False)
+
+                # Cloud / quality masking. We NaN-out the cloudy pixels in the
+                # data bands; the QA band itself is left untouched so the user
+                # can still see which pixels were masked and why.
+                n_cloud_this_tile = 0
+                if cloud_bands:
+                    cloudy = np.zeros(img.shape[:2], dtype=bool)
+                    qa_idxs = set(b[0] for b in cloud_bands)
+                    for bi, spec, _ in cloud_bands:
+                        cloudy |= _cloud_mask_from_spec(img[..., bi], spec)
+                    n_cloud_this_tile = int(cloudy.sum())
+                    if n_cloud_this_tile:
+                        for ci in range(img.shape[-1]):
+                            if ci in qa_idxs:
+                                continue
+                            img[cloudy, ci] = np.nan
+                        counts["cloud_masked_pixels"] += n_cloud_this_tile
 
                 # NaN handling: drop | interpolate (fill via nearest-neighbour) |
                 # mask (keep, append validity-mask band).
@@ -387,7 +471,8 @@ def tile_geotiff(
                 _write_metadata(metadata_path, os.path.basename(tile_path),
                                 x, y, tile_size, tile_size, "none", split,
                                 nan_info["n_nan_before"], nan_info["n_filled"],
-                                nan_info["added_mask_band"])
+                                nan_info["added_mask_band"],
+                                n_cloud_masked=n_cloud_this_tile)
 
                 if augment:
                     do_augmentations(img, save_dir, tile_id, metadata_path,
@@ -403,6 +488,8 @@ def tile_geotiff(
     if counts["skipped_nan"]:    parts.append(f"skipped(NaN)={counts['skipped_nan']}")
     if counts["filled_tiles"]:   parts.append(f"filled={counts['filled_tiles']}")
     if counts["masked_tiles"]:   parts.append(f"masked={counts['masked_tiles']}")
+    if counts["cloud_masked_pixels"]:
+        parts.append(f"cloud_masked_px={counts['cloud_masked_pixels']}")
     print("   " + "  ".join(parts))
 
 
@@ -443,9 +530,11 @@ def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, m
 
 
 def _write_metadata(csv_path, filename, x, y, w, h, aug_type, split,
-                    n_nan_before=0, n_filled=0, has_mask_band=False):
+                    n_nan_before=0, n_filled=0, has_mask_band=False,
+                    n_cloud_masked=0):
     """Append metadata record."""
     with open(csv_path, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow([filename, x, y, w, h, aug_type, split,
-                         n_nan_before, n_filled, int(bool(has_mask_band))])
+                         n_nan_before, n_filled, int(bool(has_mask_band)),
+                         n_cloud_masked])
