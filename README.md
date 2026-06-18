@@ -7,6 +7,9 @@
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg?style=flat-square)](#-supported-platforms)
 [![Earth Observation](https://img.shields.io/badge/focus-Earth%20Observation-2E7D32.svg?style=flat-square)](https://buckai-observatory.org)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+
+> **New here?** Click the **Open in Colab** badge above to launch the interactive tour notebook in your browser — no install, no credentials needed. It clones the repo into the Colab runtime, fetches Columbus satellite data live, and walks you through every feature with figures.
 
 ---
 
@@ -261,13 +264,27 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 
 ---
 
-## 📓 Try the example notebook
+## 📓 Try the notebooks
 
-New here? The fastest way to understand what a data cube gives you is the demo notebook:
+The repo ships with **two complementary notebooks**:
+
+### 1. The grand tour (start here if you are new)
+
+➡️ [`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+
+A pedagogical walkthrough of every feature in the pipeline — the four AOI formats, fetching from each free mission, cloud masking, NaN handling, tiling with/without overlap, the four train/val/test split strategies, multi-mission fusion, reading metadata back from a tile, augmentation, and submitting jobs to SLURM. Click the Colab badge to launch it in your browser — the first cell clones the repo and installs everything you need, no local Python required.
+
+```bash
+# local: launch with Jupyter from anywhere in the repo
+jupyter notebook notebooks/00_geoai_datacubes_tour.ipynb
+```
+
+### 2. End-to-end ML demo on bundled data
 
 ➡️ [`notebooks/example_datacube_ml.ipynb`](notebooks/example_datacube_ml.ipynb)
 
-It walks through loading a data cube and **training a small ML/DL model** on it, end to end. It runs on a **bundled sample data cube — no API keys and no download required** — so you can launch it right after `pip install -r requirements.txt`:
+Walks through **training a small ML/DL model** on a data cube, end to end. Runs on a **bundled sample data cube — no API keys and no download required** — so you can launch it right after `pip install -r requirements.txt`:
 
 ```bash
 jupyter notebook notebooks/example_datacube_ml.ipynb
@@ -284,7 +301,8 @@ geoai-datacubes/
 ├── requirements.txt
 ├── .env.example                  # copy to .env and add your keys
 ├── notebooks/
-│   └── example_datacube_ml.ipynb # runnable demo on bundled sample data
+│   ├── 00_geoai_datacubes_tour.ipynb  # pedagogical tour (Colab-ready)
+│   └── example_datacube_ml.ipynb      # runnable ML demo on bundled sample data
 └── modules/
     ├── README.md                 # detailed pipeline docs
     └── sentinel_pipeline/
