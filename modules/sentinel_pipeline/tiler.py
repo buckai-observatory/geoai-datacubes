@@ -43,6 +43,90 @@ _SPLITS = ("train", "val", "test")
 
 
 # ============================================================
+# NaN handling
+# ============================================================
+def _fill_nan_nearest_2d(band, max_dist=3):
+    """Fill NaN pixels in a 2-D array using the nearest valid neighbour.
+
+    Only pixels whose nearest valid neighbour is within ``max_dist`` pixels are
+    filled; the rest stay NaN. Works for both continuous and categorical bands
+    (categorical class IDs are preserved because we copy, not interpolate).
+    Returns ``(filled_array, n_filled)``.
+    """
+    nan_mask = np.isnan(band)
+    if not nan_mask.any():
+        return band, 0
+    # scipy is lazy-imported so users not running NaN-fill modes don't need it.
+    from scipy.ndimage import distance_transform_edt
+    dist, indices = distance_transform_edt(
+        nan_mask, return_distances=True, return_indices=True,
+    )
+    fillable = nan_mask & (dist > 0) & (dist <= max_dist)
+    n_filled = int(fillable.sum())
+    if n_filled == 0:
+        return band, 0
+    out = band.copy()
+    nearest = band[tuple(indices)]
+    out[fillable] = nearest[fillable]
+    return out, n_filled
+
+
+def _fill_nan_nearest(img, max_dist=3):
+    """Apply nearest-neighbour NaN-fill to every band of an ``(H, W, C)`` tile."""
+    if img.ndim == 2:
+        return _fill_nan_nearest_2d(img, max_dist)
+    out = img.copy()
+    total_filled = 0
+    for c in range(img.shape[-1]):
+        out[..., c], n = _fill_nan_nearest_2d(img[..., c], max_dist)
+        total_filled += n
+    return out, total_filled
+
+
+def _handle_nan(img, mode, max_fraction, max_dist):
+    """Apply the chosen NaN-handling policy to a tile ``(H, W, C)``.
+
+    Returns ``(img_out, action, info)`` where ``action`` is ``"kept"`` or
+    ``"dropped"`` and ``info`` is a dict with the counts. In ``"mask"`` mode
+    the returned image has one extra band -- a binary validity mask -- so
+    callers must update their output band count accordingly.
+    """
+    n_nan = int(np.isnan(img).sum())
+    info = {"n_nan_before": n_nan, "n_filled": 0, "added_mask_band": False}
+
+    if n_nan == 0:
+        return img, "kept", info
+
+    frac_nan = n_nan / img.size
+    if mode == "drop":
+        return img, "dropped", info
+    if frac_nan > max_fraction:
+        # Too many NaNs to safely fill or mask — bail out regardless of mode.
+        return img, "dropped", info
+
+    if mode == "interpolate":
+        filled, n_filled = _fill_nan_nearest(img, max_dist=max_dist)
+        info["n_filled"] = n_filled
+        if np.isnan(filled).any():
+            # Some NaNs were too far from a valid pixel to be safely filled.
+            return img, "dropped", info
+        return filled, "kept", info
+
+    if mode == "mask":
+        # Per-pixel validity: True where ALL bands are valid.
+        pixel_valid = ~np.isnan(img).any(axis=-1)
+        img_filled = np.where(np.isnan(img), 0.0, img)
+        mask_chan = pixel_valid.astype(img.dtype)[..., None]
+        with_mask = np.concatenate([img_filled, mask_chan], axis=-1)
+        info["added_mask_band"] = True
+        return with_mask, "kept", info
+
+    raise ValueError(
+        f"Unknown nan_handling {mode!r}. Use 'drop', 'interpolate', or 'mask'."
+    )
+
+
+# ============================================================
 # Split-assignment helpers
 # ============================================================
 def _draw_split(ratios, rng):
@@ -145,10 +229,13 @@ def tile_geotiff(
     output_mode="geotiff",         # "geotiff", "tensor", or "on_the_fly"
     train_val_test_split=(0.8, 0.1, 0.1),
     split_method="block",          # "random" | "block" | "stripes" | "regions"
-    split_block_size_tiles=4,      # block side, in tiles (for split_method="block")
-    split_stripe_axis="horizontal",  # for split_method="stripes"
-    split_stripe_size_tiles=4,       # stripe thickness in tiles
-    split_regions=None,              # for split_method="regions"
+    split_block_size_tiles=4,
+    split_stripe_axis="horizontal",
+    split_stripe_size_tiles=4,
+    split_regions=None,
+    nan_handling="drop",           # "drop" | "interpolate" | "mask"
+    nan_max_fraction=0.05,         # tiles with more than this fraction NaN are dropped
+    nan_interp_max_dist=3,         # nearest-neighbour fill radius, in pixels (for "interpolate")
 ):
     """
     Tile a multi-band GeoTIFF into AI-ready patches with a chosen split strategy.
@@ -217,21 +304,35 @@ def tile_geotiff(
         with open(metadata_path, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["filename", "x_offset", "y_offset", "width", "height",
-                             "augmentation", "split"])
+                             "augmentation", "split",
+                             "n_nan_before", "n_filled", "has_mask_band"])
 
         tile_id = 0
-        counts = {"train": 0, "val": 0, "test": 0, "skipped_region": 0, "skipped_nan": 0}
+        counts = {"train": 0, "val": 0, "test": 0,
+                  "skipped_region": 0, "skipped_nan": 0,
+                  "filled_tiles": 0, "masked_tiles": 0}
 
         for y in tqdm(range(0, height - tile_size + 1, stride)):
             for x in range(0, width - tile_size + 1, stride):
                 window = Window(x, y, tile_size, tile_size)
                 img = src.read(window=window)         # (bands, H, W)
-                img = np.transpose(img, (1, 2, 0))    # (H, W, bands)
+                img = np.transpose(img, (1, 2, 0)).astype(np.float32, copy=False)
 
-                # Drop tiles with NaNs (e.g. tile-edge gaps after reprojection)
-                if np.isnan(img).any():
+                # NaN handling: drop | interpolate (fill via nearest-neighbour) |
+                # mask (keep, append validity-mask band).
+                img, action, nan_info = _handle_nan(
+                    img,
+                    mode=nan_handling,
+                    max_fraction=nan_max_fraction,
+                    max_dist=nan_interp_max_dist,
+                )
+                if action == "dropped":
                     counts["skipped_nan"] += 1
                     continue
+                if nan_info["n_filled"]:
+                    counts["filled_tiles"] += 1
+                if nan_info["added_mask_band"]:
+                    counts["masked_tiles"] += 1
 
                 # Decide which split this tile belongs to
                 split = _assign_split(
@@ -257,10 +358,22 @@ def tile_geotiff(
                     meta.update({
                         "height":    tile_size,
                         "width":     tile_size,
+                        "count":     img.shape[-1],   # may be src.count + 1 in "mask" mode
+                        "dtype":     "float32",       # NaN handling forces float32
                         "transform": rasterio.windows.transform(window, src.transform),
                     })
                     with rasterio.open(tile_path, "w", **meta) as dst:
                         dst.write(np.transpose(img, (2, 0, 1)))
+                        # Carry the source's band descriptions onto each tile so
+                        # downstream readers can identify bands by name (e.g.
+                        # "Sentinel-2_B04", "Copernicus-DEM_DEM"). The extra
+                        # "valid_mask" band is named when present.
+                        for bi in range(1, src.count + 1):
+                            d = src.descriptions[bi - 1]
+                            if d:
+                                dst.set_band_description(bi, d)
+                        if nan_info["added_mask_band"]:
+                            dst.set_band_description(img.shape[-1], "valid_mask")
 
                 elif output_mode == "tensor":
                     import torch  # lazy
@@ -272,7 +385,9 @@ def tile_geotiff(
                     tile_path = "in_memory"
 
                 _write_metadata(metadata_path, os.path.basename(tile_path),
-                                x, y, tile_size, tile_size, "none", split)
+                                x, y, tile_size, tile_size, "none", split,
+                                nan_info["n_nan_before"], nan_info["n_filled"],
+                                nan_info["added_mask_band"])
 
                 if augment:
                     do_augmentations(img, save_dir, tile_id, metadata_path,
@@ -281,10 +396,14 @@ def tile_geotiff(
                 tile_id += 1
 
     print(f"✅ Done. Metadata saved → {metadata_path}")
-    print(f"🧩 Total tiles created: {tile_id} | split_method={split_method!r}")
-    print(f"   train={counts['train']}  val={counts['val']}  test={counts['test']}"
-          + (f"  skipped(outside_regions)={counts['skipped_region']}" if counts['skipped_region'] else "")
-          + (f"  skipped(NaN)={counts['skipped_nan']}" if counts['skipped_nan'] else ""))
+    print(f"🧩 Total tiles created: {tile_id} | split_method={split_method!r} | "
+          f"nan_handling={nan_handling!r}")
+    parts = [f"train={counts['train']}", f"val={counts['val']}", f"test={counts['test']}"]
+    if counts["skipped_region"]: parts.append(f"skipped(regions)={counts['skipped_region']}")
+    if counts["skipped_nan"]:    parts.append(f"skipped(NaN)={counts['skipped_nan']}")
+    if counts["filled_tiles"]:   parts.append(f"filled={counts['filled_tiles']}")
+    if counts["masked_tiles"]:   parts.append(f"masked={counts['masked_tiles']}")
+    print("   " + "  ".join(parts))
 
 
 def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode):
@@ -323,8 +442,10 @@ def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, m
                         x, y, w, h, name, split)
 
 
-def _write_metadata(csv_path, filename, x, y, w, h, aug_type, split):
+def _write_metadata(csv_path, filename, x, y, w, h, aug_type, split,
+                    n_nan_before=0, n_filled=0, has_mask_band=False):
     """Append metadata record."""
     with open(csv_path, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow([filename, x, y, w, h, aug_type, split])
+        writer.writerow([filename, x, y, w, h, aug_type, split,
+                         n_nan_before, n_filled, int(bool(has_mask_band))])

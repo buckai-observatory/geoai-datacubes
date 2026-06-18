@@ -227,7 +227,7 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | `config.py` | (Sentinel Hub only) reads OAuth credentials from `.env` via `get_config_from_env`. |
 | `parallel_fetch.py` | Fetches multiple scenes/ROIs in parallel for faster throughput. |
 | `preprocess.py` | Normalizes bands to `[0, 1]` and computes NDVI. |
-| `tiler.py` / `run_tiler.py` | Cuts a scene (or a fused cube) into AI-ready tiles with configurable stride, optional augmentation, and one of four train/val/test split strategies: `random` (per-tile coin flip), `block` (default — whole K-tile blocks; removes near-neighbour leakage), `stripes` (N-tile-wide rows or columns), or `regions` (explicit per-split AOIs using the same spec language as `aoi.py`). |
+| `tiler.py` / `run_tiler.py` | Cuts a scene (or a fused cube) into AI-ready tiles with configurable stride, optional augmentation, and one of four train/val/test split strategies (`random` / `block` (default) / `stripes` / `regions`, reusing the `aoi.py` spec language). NaN handling is selectable: `drop` (strict — skip any tile that contains a NaN), `interpolate` (nearest-neighbour fill up to `nan_interp_max_dist` pixels — for isolated holes and 1-pixel mosaic seams), or `mask` (keep the tile, replace NaNs with 0, append a binary `valid_mask` channel so training can be loss-masked — the standard pad-and-ignore approach). All band names are propagated to tiles for downstream identification. |
 | `visualize_cloud_mask.py` | Saves an NDVI-vs-cloud-mask comparison image to confirm cloud filtering. |
 | `visualize.py` | Helper for displaying/saving imagery. |
 | `export_zarr.py` | Exports tiles (+ metadata) to a **Zarr** dataset. |
