@@ -696,24 +696,62 @@ def fetch_planet(
     cc_note = f" cloud={cc*100:.1f}%" if cc is not None else ""
     print(f"✅ Selected scene {item_id} ({acquired[:10]}){cc_note}")
 
-    # 2) Submit + poll the order
-    order_name = f"geoai-datacubes {mission} {item_id}"
-    print(f"📦 Submitting Planet order ({cfg['product_bundle']})...")
-    order_id = _planet_submit_order(
-        item_id=item_id, item_type=cfg["item_type"],
-        product_bundle=cfg["product_bundle"], geometry=geometry, name=order_name,
-    )
-    print(f"⏳ Polling order {order_id}...")
-    order_info = _planet_wait_for_order(
-        order_id, poll_seconds=poll_seconds, max_wait_seconds=max_wait_seconds)
-
-    # 3) Output directory + download
+    # 2) Output directory -- computed here (not after the order) so we can
+    #    look for a prior order marker before consuming quota on a fresh one.
     date_str = acquired[:10] if acquired else "unknown"
     safe_id  = re.sub(r"[/\\:\s]", "_", item_id)
     out_id   = f"{mission}_{date_str}_{safe_id}"
     out_dir  = os.path.join(save_folder, out_id)
     raw_dir  = os.path.join(out_dir, "_planet_raw")
-    files    = _planet_download_results(order_info, raw_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    order_marker = os.path.join(out_dir, ".planet_order.json")
+
+    # 3) Submit OR resume the order. The marker file is written immediately
+    #    after a successful submit, so a crashed/interrupted run on its next
+    #    invocation reuses the same order_id (no fresh quota burn). Markers
+    #    in terminal-failure states are deleted so the next run starts clean.
+    order_name = f"geoai-datacubes {mission} {item_id}"
+    resumed    = False
+    order_id   = None
+    if os.path.exists(order_marker):
+        try:
+            with open(order_marker) as fp:
+                prior = json.load(fp)
+            prior_id = prior.get("order_id")
+            if prior_id:
+                print(f"♻️  Found prior order marker for this scene -> resuming {prior_id}")
+                order_id, resumed = prior_id, True
+        except (OSError, ValueError):
+            pass  # corrupt marker -> fall through to fresh submit
+    if order_id is None:
+        print(f"📦 Submitting Planet order ({cfg['product_bundle']})...")
+        order_id = _planet_submit_order(
+            item_id=item_id, item_type=cfg["item_type"],
+            product_bundle=cfg["product_bundle"], geometry=geometry, name=order_name,
+        )
+        with open(order_marker, "w") as fp:
+            json.dump({
+                "order_id":       order_id,
+                "order_name":     order_name,
+                "item_id":        item_id,
+                "item_type":      cfg["item_type"],
+                "product_bundle": cfg["product_bundle"],
+                "instrument":     pick["properties"].get("instrument"),
+                "submitted_at":   __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            }, fp, indent=2)
+
+    print(f"⏳ Polling order {order_id}...")
+    try:
+        order_info = _planet_wait_for_order(
+            order_id, poll_seconds=poll_seconds, max_wait_seconds=max_wait_seconds)
+    except RuntimeError:
+        # Order ended in failed/cancelled. Remove the marker so the next run
+        # places a fresh order instead of stubbornly re-resuming the dead one.
+        if os.path.exists(order_marker):
+            os.remove(order_marker)
+        raise
+
+    files = _planet_download_results(order_info, raw_dir)
 
     # Find the analytic + UDM2 files among the downloaded set.
     # Planet's Orders API delivers filenames like
@@ -815,6 +853,7 @@ def fetch_planet(
         "bands":             band_order,
         "static":            False,
         "order_id":          order_id,
+        "order_resumed":     resumed,
     }
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)
