@@ -15,7 +15,8 @@
 - [What is this?](#-what-is-this)
 - [What it does](#-what-it-does)
 - [Supported platforms](#-supported-platforms)
-- [Quickstart for beginners](#-quickstart-for-beginners)
+- [Quickstart for beginners — no credentials needed](#-quickstart-for-beginners--no-credentials-needed)
+- [Two data providers — when to use which](#-two-data-providers--when-to-use-which)
 - [Configuration & parameters](#-configuration--parameters)
 - [Pipeline scripts](#-pipeline-scripts)
 - [Try the example notebook](#-try-the-example-notebook)
@@ -56,18 +57,21 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 
 | Platform | Type | Status | Notes |
 |---|---|:--:|---|
-| **Sentinel-2** | Optical (multispectral) | ✅ Available | Full pipeline: configurable bands + SCL/AOT/WVP, cloud filtering, NDVI, tiling, export. |
-| **Sentinel-1** | SAR (radar) | ✅ Available | VV/VH backscatter + composite, tiling, export. |
-| **Landsat 8-9** | Optical (multispectral) | ✅ Available | Runs through the **same** end-to-end pipeline as Sentinel-2: Collection-2 Level-2 surface reflectance, scene-level cloud filtering, `BQA` cloud/shadow masking, NDVI (B04/B05), tiling, and export. Just set `MISSION = "Landsat"`. |
-| **PlanetScope** | Optical (high-res) | 🔭 Planned | On the roadmap. **Not yet implemented** — listed here as a future target. |
+| Platform | Mission name | Type | Default provider | Notes |
+|---|---|---|:--:|---|
+| **Sentinel-2 L2A** | `Sentinel-2` | Optical surface reflectance | earthsearch ✅ / sentinelhub ✅ | Bands + SCL/AOT/WVP, scene cloud filter, `SCL` per-pixel masking, NDVI, tiling, export. |
+| **Sentinel-2 L1C** | `Sentinel-2-L1C` | Optical top-of-atmosphere | earthsearch ✅ | Same flow as L2A; no `SCL` (use L2A if you need per-pixel cloud masking). |
+| **Sentinel-1 GRD** | `Sentinel-1` | SAR (radar) | earthsearch ✅ / sentinelhub ✅ | VV/VH (and HH/HV in EW mode), tiling, export. |
+| **Landsat 8-9 C2 L2** | `Landsat` | Optical surface reflectance + thermal | earthsearch ✅ / sentinelhub ✅ | Same flow as Sentinel-2: scene cloud filter, `BQA` bit-decoded cloud/shadow masking, NDVI (B04/B05), tiling, export. |
+| PlanetScope | — | Optical (high-res) | — | 🔭 On the roadmap — **not yet implemented**. |
 
 > Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.
 
 ---
 
-## 🚀 Quickstart for beginners
+## 🚀 Quickstart for beginners — no credentials needed
 
-Follow these steps in order. Each block can be copy-pasted into your terminal.
+The default pipeline downloads imagery from **free, public AWS Open-Data buckets** via [Element 84's Earth Search STAC API](https://github.com/Element84/earth-search). You do not need an account, API key, or `.env` file to run it. Just clone, install, edit a few parameters, and go.
 
 ### 1. Clone the repository
 
@@ -78,7 +82,7 @@ cd geoai-datacubes
 
 ### 2. Create and activate a clean Python environment
 
-We recommend [conda](https://docs.conda.io/en/latest/miniconda.html). This keeps the tool's dependencies separate from everything else on your machine.
+We recommend [conda](https://docs.conda.io/en/latest/miniconda.html) so the tool's dependencies stay isolated:
 
 ```bash
 conda create -n geoai python=3.11 -y
@@ -91,52 +95,44 @@ conda activate geoai
 pip install -r requirements.txt
 ```
 
-### 4. Get your free Sentinel Hub credentials
+> 💡 If you only intend to use the free default path you can skip the optional `sentinelhub` and `python-dotenv` packages — see the comments inside `requirements.txt`.
 
-The imagery comes from the **Copernicus Data Space Ecosystem**, which is free to use. You need to create an OAuth client (an ID + secret that lets the tool log in on your behalf).
-
-1. Register for a free account at the **Copernicus Data Space Ecosystem**: <https://dataspace.copernicus.eu/>
-2. Open the **Sentinel Hub dashboard**: <https://shapps.dataspace.copernicus.eu/dashboard/>
-3. Go to **User settings → OAuth clients → "Create new"**.
-4. Copy the generated **client ID** and **client secret** somewhere safe (you will paste them in the next step). An **instance ID** is optional.
-
-### 5. Add your credentials to a `.env` file
-
-Copy the provided template and fill in your keys:
-
-```bash
-cp .env.example .env
-```
-
-Then open `.env` in any text editor and fill in the values:
-
-```bash
-SH_CLIENT_ID=your-client-id-here
-SH_CLIENT_SECRET=your-client-secret-here
-SH_INSTANCE_ID=            # optional — leave blank if you don't have one
-```
-
-> ⚠️ **Never commit your `.env` file and never hardcode your keys in the code.** Your `.env` is personal and secret. Keep it out of version control (it should be listed in `.gitignore`).
-
-### 6. Choose what to download
+### 4. Choose what to download
 
 Open `modules/sentinel_pipeline/main.py` and edit the **`USER INPUT`** block at the top to describe the data you want:
 
 ```python
 # ---- USER INPUT ----
-MISSION    = "Sentinel-2"                        # "Sentinel-2", "Sentinel-1", or "Landsat"
-BANDS      = None                                 # None = use the mission's default bands
+PROVIDER   = "earthsearch"                       # default, no credentials
+MISSION    = "Sentinel-2"                        # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
+BANDS      = None                                 # None = mission default bands
+
+# Area of interest -- the default is a ~5-mile square around OSU in Columbus, OH.
+# Three other formats are supported; see "Defining the AOI" below.
+AOI        = {"bbox": [-83.077, 39.964, -82.983, 40.036]}
+ROI        = resolve_aoi(AOI)
+
 TIME_RANGE = ("2024-06-15", "2024-06-20")         # start, end date
-ROI        = [-118.30, 34.00, -118.20, 34.10]     # [lon_min, lat_min, lon_max, lat_max]
-RESOLUTION = 10                                    # meters per pixel
+RESOLUTION = 10                                    # metres per pixel
 MAX_CLOUD  = 0.10                                  # keep scenes under 10% cloud cover
-TILE_SIZE  = 256                                   # training tile size
+TILE_SIZE  = 256
 SPLIT      = (0.8, 0.1, 0.1)                       # train / val / test fractions
 ```
 
 Leaving `BANDS = None` picks sensible defaults per mission (Red+NIR for optical, VV+VH for radar) and auto-adds the cloud/quality bands. To run Landsat instead, just set `MISSION = "Landsat"` — everything else stays the same.
 
-### 7. Run the pipeline
+#### Defining the AOI
+
+`AOI` is a small dict. Pick one of four formats:
+
+| Format | Example | Use when |
+|---|---|---|
+| **Rectangular bbox** | `{"bbox": [lon_min, lat_min, lon_max, lat_max]}` | You already have the corners in WGS84. |
+| **Polygon file** | `{"shapefile": "/path/to/aoi.shp"}` (or `.gpkg`, `.geojson`) | You have an existing polygon. Requires `geopandas`. The polygon's bounding box is used. |
+| **Square around a point** | `{"center": (40.0067, -83.0305), "side_miles": 5}` | You know roughly where, just want a square AOI of size N miles. |
+| **Native S2 tile around a point** | `{"tile_around": (40.0067, -83.0305)}` | Quickest first look — returns the full ~100×100 km MGRS tile containing the point. |
+
+### 5. Run the pipeline
 
 ```bash
 cd modules/sentinel_pipeline
@@ -149,16 +145,55 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ---
 
+## 🔀 Two data providers — when to use which
+
+The same `main.py` can fetch imagery through **two interchangeable providers**. The default is the no-credentials one.
+
+| | `PROVIDER = "earthsearch"` (default) | `PROVIDER = "sentinelhub"` (advanced) |
+|---|---|---|
+| **Credentials** | None — works out of the box | Free Sentinel Hub OAuth, set up in a `.env` file |
+| **Data source** | Element 84's Earth Search STAC API + AWS Open-Data COG buckets (`sentinel-cogs`, `sentinel-s1-l1-grd-public`, `usgs-landsat`) | Sentinel Hub Process API + Catalog |
+| **Missions** | Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1 GRD, Landsat 8-9 C2 L2 | Sentinel-2 L2A, Sentinel-1 IW, Landsat 8-9 C2 L2 |
+| **Cost / quota** | Free — anonymous HTTPS reads of COGs | Free tier, then Processing Units; needs an account |
+| **Server-side resampling / reprojection / band math** | No — done client-side by `rasterio` from the COG | Yes — Sentinel Hub does it for you and returns exactly the array you asked for |
+| **Custom evalscripts (band ratios, index math, custom masking, etc.)** | No | Yes |
+| **Best for** | Teaching, demos, getting started, public reproducibility | Production runs, custom band math, very large ROIs, when PU is no concern |
+
+**Bottom line:** **Stay on `earthsearch` unless you need an evalscript or server-side processing.** The output `response.tiff` is functionally identical; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which provider was used.
+
+### Switching to the Sentinel Hub provider
+
+If you need the advanced features above, opt in by:
+
+1. **Register** for a free account at the [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/).
+2. Open the **Sentinel Hub dashboard** at <https://shapps.dataspace.copernicus.eu/dashboard/> and go to **User settings → OAuth clients → Create new**. Copy the **client ID** and **client secret** somewhere safe.
+3. Copy the bundled template and paste in your keys:
+   ```bash
+   cp .env.example .env       # then open .env in your editor
+   ```
+   ```
+   SH_CLIENT_ID=your-client-id-here
+   SH_CLIENT_SECRET=your-client-secret-here
+   SH_INSTANCE_ID=           # optional
+   ```
+4. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "sentinelhub"`.
+
+> ⚠️ **Never commit `.env`.** The repository's `.gitignore` already excludes it; keep it that way and never hardcode keys in source files.
+
+---
+
 ## ⚙️ Configuration & parameters
 
 These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py`).
 
 | Parameter | What it controls | Example |
 |---|---|---|
-| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-1"`, or `"Landsat"` |
-| `ROI` | Region of interest as a bounding box `[lon_min, lat_min, lon_max, lat_max]` | `[-118.30, 34.00, -118.20, 34.10]` |
+| `PROVIDER` | Where to fetch the imagery from | `"earthsearch"` (default, no credentials) or `"sentinelhub"` |
+| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-2-L1C"`, `"Sentinel-1"`, or `"Landsat"` |
+| `AOI` | Area of interest, in any of four formats (see [Defining the AOI](#defining-the-aoi)). Resolved to `ROI` via `resolve_aoi()`. | `{"bbox": [-83.077, 39.964, -82.983, 40.036]}` (default: OSU, Columbus OH) |
+| `ROI` | The resolved bounding box `[lon_min, lat_min, lon_max, lat_max]` in WGS84 — populated automatically from `AOI` | `[-83.077, 39.964, -82.983, 40.036]` |
 | `TIME_RANGE` | Date window to search within `(start, end)` | `("2024-06-15", "2024-06-20")` |
-| `BANDS` | Spectral bands to download; `None` uses the mission default. Cloud/quality bands (SCL for Sentinel-2, BQA for Landsat) are added automatically | `None`, `["B04", "B08"]` (S2), `["B04", "B05"]` (Landsat) |
+| `BANDS` | Spectral bands to download; `None` uses the mission default. Cloud/quality bands (SCL for Sentinel-2 L2A, BQA for Landsat) are added automatically | `None`, `["B04", "B08"]` (S2), `["B04", "B05"]` (Landsat) |
 | `RESOLUTION` | Ground resolution in meters per pixel | `10` |
 | `MAX_CLOUD` | Maximum cloud cover fraction; scenes above this are skipped | `0.10` (= 10%) |
 | `tile_size` | Pixel size of each square training tile | `256` |
@@ -174,9 +209,10 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 | Script | What it does |
 |---|---|
 | `main.py` | End-to-end run: fetch → cloud-mask/NDVI → tile → split → export. **Start here.** |
-| `missions.py` | Per-mission config (data collection, default bands, NDVI bands, cloud-mask rules). Add a new satellite here. |
-| `config.py` | Builds the Sentinel Hub config; reads credentials from your `.env` (`get_config_from_env`). |
-| `fetch_data.py` | Searches the Sentinel Hub catalog, picks the least-cloudy scene, and downloads the bands. |
+| `missions.py` | Per-mission, provider-aware config (collection, default bands, NDVI bands, cloud-mask rules, STAC asset names, Sentinel Hub collection enums). Add a new satellite here. |
+| `aoi.py` | `resolve_aoi(spec)` — turns any of the four supported AOI formats (bbox / shapefile / centre+side / S2-tile-around-point) into a WGS84 bbox. |
+| `fetch_data.py` | Provider dispatcher. `earthsearch` path: STAC search + COG reads via `rasterio` + `/vsicurl`. `sentinelhub` path: Sentinel Hub Process API. Both produce the same multi-band `response.tiff`. |
+| `config.py` | (Sentinel Hub only) reads OAuth credentials from `.env` via `get_config_from_env`. |
 | `parallel_fetch.py` | Fetches multiple scenes/ROIs in parallel for faster throughput. |
 | `preprocess.py` | Normalizes bands to `[0, 1]` and computes NDVI. |
 | `tiler.py` / `run_tiler.py` | Cuts a scene into tiles with augmentation and a train/val/test split. |
@@ -220,6 +256,7 @@ geoai-datacubes/
     └── sentinel_pipeline/
         ├── main.py               # ← edit USER INPUT, then run this
         ├── missions.py           # per-mission config (Sentinel-2, Sentinel-1, Landsat)
+        ├── aoi.py                # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
         ├── config.py
         ├── fetch_data.py
         ├── parallel_fetch.py
@@ -236,13 +273,17 @@ geoai-datacubes/
 
 ## 🔐 Credentials & security
 
-- Credentials are read from **environment variables**, loaded from a local **`.env`** file that you create by copying `.env.example`.
-- The required variables are exactly:
+The default `earthsearch` provider needs **no credentials at all**. Skip this section unless you opt into `PROVIDER = "sentinelhub"`.
+
+For the Sentinel Hub path:
+
+- Credentials are read from **environment variables**, loaded from a local **`.env`** file at the repo root that you create by copying `.env.example`.
+- The variables are:
   - `SH_CLIENT_ID`
   - `SH_CLIENT_SECRET`
   - `SH_INSTANCE_ID` *(optional)*
-- Get or manage your OAuth client in the Sentinel Hub dashboard: <https://shapps.dataspace.copernicus.eu/dashboard/>
-- **Never commit `.env` to git, and never hardcode keys in source files.** If you ever accidentally expose a secret, revoke it in the dashboard and create a new one.
+- Get or manage your OAuth client at <https://shapps.dataspace.copernicus.eu/dashboard/>.
+- **Never commit `.env` to git, and never hardcode keys in source files.** If you ever expose a secret accidentally, revoke it in the dashboard and create a new one.
 
 ---
 

@@ -2,13 +2,20 @@
 
 ## Overview
 
-This pipeline automates the entire workflow from raw satellite imagery to AI-ready datasets. It supports Sentinel-2 (optical), Sentinel-1 (SAR radar), and Landsat 8-9 (optical) imagery through one unified `main.py`. Each mission is described by a profile in `missions.py`.
+This pipeline automates the entire workflow from raw satellite imagery to AI-ready datasets. It supports Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1 GRD, and Landsat 8-9 Collection-2 Level-2 imagery through one unified `main.py`. Each mission is described by a profile in `missions.py`.
+
+It runs against **either** of two interchangeable backends, chosen with `PROVIDER` in `main.py`:
+
+- **`earthsearch`** (default) — Element 84's free Earth Search STAC API + public AWS Open-Data COG buckets. **No credentials needed**.
+- **`sentinelhub`** (advanced, opt-in) — Sentinel Hub Process API with server-side band reprojection/resampling and arbitrary evalscripts. Requires a free Sentinel Hub OAuth client in a `.env` at the repo root.
+
+See the top-level [README](../README.md) for a side-by-side comparison and how to opt in to Sentinel Hub.
 
 ## Features
 
-- Downloads Sentinel-2, Sentinel-1, or Landsat 8-9 data using the Sentinel Hub API
-- Applies scene-level cloud filtering plus per-pixel cloud/shadow masking (Sentinel-2 Scene Classification Layer `SCL`; Landsat `BQA` quality bits)
-- Configurable bands; cloud/atmospheric helper bands (SCL/AOT/WVP for Sentinel-2, BQA for Landsat) are added automatically
+- Downloads Sentinel-2 L2A/L1C, Sentinel-1 GRD, or Landsat 8-9 C2 L2 imagery
+- Scene-level cloud filtering plus per-pixel cloud/shadow masking (Sentinel-2 L2A `SCL`; Landsat `BQA` quality bits)
+- Configurable bands; cloud/atmospheric helper bands (SCL/AOT/WVP for Sentinel-2 L2A, BQA for Landsat) are added automatically
 - Computes NDVI and generates visualizations
 - Tiles imagery into smaller patches for machine learning (ML) training
 - Exports data as GeoTIFF, LMDB, or Zarr (GPU-ready formats)
@@ -47,10 +54,18 @@ pip install sentinelhub rasterio numpy matplotlib tqdm zarr lmdb pystac
 
 ---
 
-### 3️⃣ Configure Sentinel Hub Credentials
+### 3️⃣ (Default path) Run the pipeline — no credentials needed
 
-Credentials are read from environment variables — **never hardcode them**. Copy the
-template at the repo root and fill in your keys:
+The default `PROVIDER = "earthsearch"` reads public COGs anonymously. Just run:
+
+```bash
+python main.py
+```
+
+### 3️⃣′ (Optional) Configure Sentinel Hub credentials
+
+Only required if you set `PROVIDER = "sentinelhub"`. Copy the template at the
+repo root and paste your OAuth client:
 
 ```bash
 cp ../../.env.example ../../.env   # then open ../../.env and edit it
@@ -62,15 +77,15 @@ SH_CLIENT_SECRET=your-client-secret
 SH_INSTANCE_ID=            # optional
 ```
 
-Get free credentials by registering at the Copernicus Data Space Ecosystem
-(https://dataspace.copernicus.eu/) and creating an OAuth client in the Sentinel
-Hub dashboard (https://shapps.dataspace.copernicus.eu/dashboard/).
+Get free credentials at the Copernicus Data Space Ecosystem
+(https://dataspace.copernicus.eu/) → Sentinel Hub dashboard
+(https://shapps.dataspace.copernicus.eu/dashboard/).
 
 ---
 
-### 4️⃣ Fetch Sentinel Data
+### 4️⃣ Fetch Imagery
 
-Run the main script to download Sentinel-2 (optical), Sentinel-1 (radar), or Landsat 8-9 (optical) imagery:
+Run the main script to download Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1, or Landsat 8-9:
 
 ```bash
 python main.py
@@ -79,12 +94,20 @@ python main.py
 Inside `main.py`, you can set:
 
 ```python
-MISSION = "Sentinel-2"       # "Sentinel-2", "Sentinel-1", or "Landsat"
-BANDS = None                  # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
+PROVIDER = "earthsearch"      # default (no credentials) or "sentinelhub"
+MISSION  = "Sentinel-2"       # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
+BANDS    = None                # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
+
+# AOI is flexible -- bbox / shapefile / centre+miles / S2-tile-around-point.
+# Default: a ~5-mile square around OSU in Columbus, OH.
+AOI = {"bbox": [-83.077, 39.964, -82.983, 40.036]}
+ROI = resolve_aoi(AOI)        # resolved bbox the rest of the pipeline uses
+
 TIME_RANGE = ("2024-06-15", "2024-06-20")
-ROI = [-118.30, 34.00, -118.20, 34.10]  # [lon_min, lat_min, lon_max, lat_max]
-MAX_CLOUD = 0.10
+MAX_CLOUD  = 0.10
 ```
+
+See the [top-level README](../README.md#defining-the-aoi) for the other three AOI formats (shapefile, square-around-a-point, native Sentinel-2 tile).
 
 ✅ The pipeline will:
 - Select the least cloudy (<10%) Sentinel-2 scene

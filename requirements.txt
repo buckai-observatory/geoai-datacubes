@@ -1,4 +1,10 @@
-sentinelhub
+# Core runtime dependencies for the geoai-datacubes pipeline.
+# The default earthsearch provider (no credentials) only needs the packages
+# below the "core" header. The sentinelhub package is only needed if you opt
+# into the advanced PROVIDER="sentinelhub" path (which also requires a .env).
+
+# --- core: needed by the default (earthsearch) pipeline ----------------------
+requests
 rasterio
 numpy
 matplotlib
@@ -10,4 +16,10 @@ pandas
 torch
 torchvision
 pillow
+
+# --- optional / advanced (Sentinel Hub provider + .env loading) --------------
 python-dotenv
+sentinelhub
+
+# --- optional (shapefile / geopackage AOI; only needed for AOI={"shapefile":..}) -
+geopandas

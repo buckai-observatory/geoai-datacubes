@@ -7,43 +7,69 @@ import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
 
-from config import get_config_from_env
 from missions import get_profile
 from fetch_data import fetch_sentinel_data
 from preprocess import normalize_band, compute_ndvi, cloud_mask
 from visualize import show_image
 from tiler import tile_geotiff
+from aoi import resolve_aoi
 
 # --------------------------------------------------------------------
 # ---- USER INPUT ----
 # --------------------------------------------------------------------
-MISSION    = "Sentinel-2"                      # "Sentinel-2", "Sentinel-1", or "Landsat"
+# Provider:  "earthsearch" (default, no credentials, runs out of the box)
+#            "sentinelhub" (advanced; requires SH credentials in a .env file
+#                           -- see README "Advanced: Sentinel Hub provider")
+PROVIDER   = "earthsearch"
+
+# Mission:   "Sentinel-2"      (L2A surface reflectance; the default optical mission)
+#            "Sentinel-2-L1C"  (L1C top-of-atmosphere; earthsearch only)
+#            "Sentinel-1"      (SAR radar)
+#            "Landsat"         (Landsat 8-9 Collection 2 L2)
+MISSION    = "Sentinel-2"
 BANDS      = None                              # None -> use the mission's default bands
+
+# ---- Area of interest (AOI). Pick ONE of the four options below. ----
+# All four resolve to a WGS84 bbox [lon_min, lat_min, lon_max, lat_max].
+# Defaults below are centred on The Ohio State University in Columbus, OH.
+
+# (1) Rectangular bbox in WGS84 -- a ~5-mile square around OSU's main campus.
+AOI = {"bbox": [-83.077, 39.964, -82.983, 40.036]}
+
+# (2) Polygon from a shapefile / geopackage / GeoJSON. The polygon's bbox is used.
+#     Requires `geopandas`.
+# AOI = {"shapefile": "/path/to/aoi.shp"}
+
+# (3) Square around a centre point: (lat, lon) + side length in miles.
+#     Example: 5-mile square centred on Mendenhall Lab at OSU.
+# AOI = {"center": (40.0067, -83.0305), "side_miles": 5}
+
+# (4) Native Sentinel-2 MGRS tile around a single point -- the 100x100 km tile
+#     that contains it. Fastest way to grab a wide first-look cube.
+# AOI = {"tile_around": (40.0067, -83.0305)}
+
+ROI        = resolve_aoi(AOI)                   # bbox [lon_min, lat_min, lon_max, lat_max]
 TIME_RANGE = ("2024-06-15", "2024-06-20")
-ROI        = [-118.30, 34.00, -118.20, 34.10]  # [lon_min, lat_min, lon_max, lat_max]
-RESOLUTION = 10                                # meters per pixel
-MAX_CLOUD  = 0.10                              # keep scenes under 10% cloud cover
+RESOLUTION = 10                                 # metres per pixel (output grid)
+MAX_CLOUD  = 0.10                               # keep scenes under 10% cloud cover
 TILE_SIZE  = 256
-SPLIT      = (0.8, 0.1, 0.1)                   # train / val / test
+SPLIT      = (0.8, 0.1, 0.1)                    # train / val / test
 
 # --------------------------------------------------------------------
 # ---- SETUP ----
 # --------------------------------------------------------------------
-# Credentials are loaded from environment variables / a local .env file.
-# See .env.example at the repo root for setup instructions.
 profile = get_profile(MISSION)
 if BANDS is None:
     BANDS = list(profile["default_bands"])
 
-config = get_config_from_env()
-
 # --------------------------------------------------------------------
 # ---- FETCH DATA ----
 # --------------------------------------------------------------------
-print(f"🛰️ Fetching {MISSION} data for {TIME_RANGE} ...")
+print(f"🛰️ Fetching {MISSION} via {PROVIDER} for {TIME_RANGE} ...")
 data, final_bands = fetch_sentinel_data(
-    config, MISSION, BANDS, TIME_RANGE, ROI,
+    MISSION, BANDS, TIME_RANGE, ROI,
     resolution=RESOLUTION, max_cloud_coverage=MAX_CLOUD,
+    provider=PROVIDER,
 )
 print(f"✅ Data fetched. Bands: {final_bands}")
 band_index = {name: i for i, name in enumerate(final_bands)}

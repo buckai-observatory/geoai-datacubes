@@ -8,43 +8,45 @@ using ThreadPoolExecutor for faster throughput.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fetch_data import fetch_sentinel_data
-from config import get_config_from_env
+from aoi import resolve_aoi
 import os, time
 
 # === USER CONFIG ===
-# Credentials are loaded from environment variables / a local .env file.
-# See .env.example at the repo root for setup instructions.
+# Provider:  "earthsearch" (default, no credentials) or "sentinelhub" (requires .env).
+PROVIDER = "earthsearch"
 
-MISSION = "Sentinel-2"   # "Sentinel-2", "Sentinel-1", or "Landsat"
+MISSION = "Sentinel-2"   # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
 BANDS = ["B04", "B08"]   # for Landsat use ["B04", "B05"] (Red, NIR)
 RESOLUTION = 10
 TIME_RANGES = [
     ("2024-06-01", "2024-06-05"),
     ("2024-06-10", "2024-06-15"),
-    ("2024-06-20", "2024-06-25")
+    ("2024-06-20", "2024-06-25"),
 ]
-ROIS = [
-    [-118.30, 34.00, -118.20, 34.10],
-    [-83.00, 40.00, -82.80, 40.20],
-    [-122.40, 37.70, -122.30, 37.80]
+# AOIs to fetch in parallel. Each entry uses the same flexible spec as main.py
+# (see aoi.py): a {"bbox": ...}, {"shapefile": ...}, {"center": ..., "side_miles": ...},
+# or {"tile_around": ...} dict. Example below: three 5-mile squares in/around Columbus.
+AOIS = [
+    {"center": (40.0067, -83.0305), "side_miles": 5},   # OSU main campus
+    {"center": (39.9612, -82.9988), "side_miles": 5},   # downtown Columbus
+    {"center": (40.0992, -83.1141), "side_miles": 5},   # Dublin / Olentangy floodplain
 ]
+ROIS = [resolve_aoi(a) for a in AOIS]
 
 MAX_WORKERS = 3  # concurrent downloads
 
-# === SETUP ===
-config = get_config_from_env()
 os.makedirs("data_parallel", exist_ok=True)
 
 def download_task(roi, time_range):
     start = time.time()
-    data = fetch_sentinel_data(
-        config=config,
+    data, _ = fetch_sentinel_data(
         mission=MISSION,
         bands=BANDS,
         time_range=time_range,
         roi=roi,
         resolution=RESOLUTION,
-        save_folder="data_parallel"
+        save_folder="data_parallel",
+        provider=PROVIDER,
     )
     elapsed = time.time() - start
     return {"roi": roi, "time_range": time_range, "status": "✅", "time": round(elapsed, 2)}
