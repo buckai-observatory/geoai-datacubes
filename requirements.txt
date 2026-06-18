@@ -23,3 +23,7 @@ sentinelhub
 
 # --- optional (shapefile / geopackage AOI; only needed for AOI={"shapefile":..}) -
 geopandas
+
+# --- optional (OpenStreetMap basemap in the tour notebook's AOI plot) --------
+# Pulls XYZ basemap tiles; not required by any pipeline module. Skip safely.
+contextily

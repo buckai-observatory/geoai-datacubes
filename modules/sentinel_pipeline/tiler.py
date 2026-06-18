@@ -198,6 +198,23 @@ def _draw_split(ratios, rng):
     return "test"
 
 
+def _auto_block_size_tiles(n_x_tiles, n_y_tiles, target_blocks=12):
+    """Pick a block_size_tiles value that yields ~``target_blocks`` blocks across
+    the tile grid. Chosen so the smallest train/val/test bucket still receives
+    multiple blocks of tiles on small AOIs. For very small grids the value
+    floors at 1 (in which case 'block' behaves the same as 'random' — the best
+    we can do when there isn't enough scene to slice into distinct blocks)."""
+    total_tiles = max(1, int(n_x_tiles) * int(n_y_tiles))
+    return max(1, int(math.floor(math.sqrt(total_tiles / max(1, target_blocks)))))
+
+
+def _auto_stripe_size_tiles(n_x_tiles, n_y_tiles, stripe_axis, target_stripes=6):
+    """Pick a stripe_size_tiles value that yields ~``target_stripes`` stripes
+    along the chosen axis. Floors at 1 for tiny grids."""
+    n_along = int(n_y_tiles) if stripe_axis == "horizontal" else int(n_x_tiles)
+    return max(1, n_along // max(1, target_stripes))
+
+
 def _assign_split(
     x, y, tile_size,
     src_transform, src_crs,
@@ -348,9 +365,9 @@ def tile_geotiff(
     output_mode="geotiff",         # "geotiff", "tensor", or "on_the_fly"
     train_val_test_split=(0.8, 0.1, 0.1),
     split_method="block",          # "random" | "block" | "stripes" | "regions"
-    split_block_size_tiles=4,
+    split_block_size_tiles=None,   # None -> auto-scale from grid size (see _auto_block_size_tiles)
     split_stripe_axis="horizontal",
-    split_stripe_size_tiles=4,
+    split_stripe_size_tiles=None,  # None -> auto-scale from grid size
     split_regions=None,
     nan_handling="drop",           # "drop" | "interpolate" | "mask"
     nan_max_fraction=0.05,         # tiles with more than this fraction NaN are dropped
@@ -366,10 +383,13 @@ def tile_geotiff(
 
       * ``block``   (default) -- whole K-tile x K-tile blocks go to one split.
                                  Removes near-neighbour leakage.
-                                 Tune via ``split_block_size_tiles``.
+                                 Tune via ``split_block_size_tiles``; leaving it
+                                 as ``None`` auto-scales the block size so the
+                                 train/val/test buckets stay populated even on
+                                 small AOIs.
       * ``stripes`` -- N-tile-wide rows or columns go to one split.
                        Tune via ``split_stripe_axis`` ("horizontal"/"vertical")
-                       and ``split_stripe_size_tiles``.
+                       and ``split_stripe_size_tiles``. Auto-scales when None.
       * ``regions`` -- explicit train/val/test AOIs (uses the same aoi.py
                        spec language as ``main.py``). Tiles outside every
                        region are skipped. Tune via ``split_regions={"train":...,
@@ -420,6 +440,24 @@ def tile_geotiff(
                 os.makedirs(d, exist_ok=True)
         else:
             train_dir = val_dir = test_dir = ""
+
+        # --- Auto-scale block / stripe sizes based on actual grid dimensions ---
+        # We need to know n_x_tiles and n_y_tiles to pick sensible block sizes
+        # so even small AOIs (< 100 tiles) produce non-empty train/val/test.
+        n_x_tiles = max(1, (width  - tile_size) // stride + 1)
+        n_y_tiles = max(1, (height - tile_size) // stride + 1)
+        if split_block_size_tiles is None:
+            split_block_size_tiles = _auto_block_size_tiles(n_x_tiles, n_y_tiles)
+            if split_method == "block":
+                print(f"📏 Auto-picked split_block_size_tiles={split_block_size_tiles} "
+                      f"(grid is {n_x_tiles}x{n_y_tiles} tiles)")
+        if split_stripe_size_tiles is None:
+            split_stripe_size_tiles = _auto_stripe_size_tiles(
+                n_x_tiles, n_y_tiles, split_stripe_axis)
+            if split_method == "stripes":
+                print(f"📏 Auto-picked split_stripe_size_tiles={split_stripe_size_tiles} "
+                      f"(grid is {n_x_tiles}x{n_y_tiles} tiles, "
+                      f"{split_stripe_axis} stripes)")
 
         # --- Gather source metadata once for embedding in every tile ---
         src_metadata_tags = _gather_source_metadata(input_tiff)
@@ -579,6 +617,37 @@ def tile_geotiff(
     if counts["cloud_masked_pixels"]:
         parts.append(f"cloud_masked_px={counts['cloud_masked_pixels']}")
     print("   " + "  ".join(parts))
+
+    # --- Empty-bucket warning ---
+    # If the user asked for a non-zero share of any bucket and that bucket ended
+    # up with zero tiles, that's almost always a configuration mismatch (the
+    # tile grid is smaller than the spatial block, or the regions don't overlap
+    # the scene). Print a hint pointing at the right knob.
+    target_train, target_val, target_test = train_val_test_split
+    empty = []
+    for name, target in [("train", target_train), ("val", target_val), ("test", target_test)]:
+        if target > 0 and counts[name] == 0:
+            empty.append(name)
+    if empty and tile_id > 0:
+        print(f"⚠️  Empty bucket(s): {', '.join(empty)} — got 0 tiles even though you "
+              f"asked for >0 share of each.")
+        if split_method == "block":
+            print(f"    The {n_x_tiles}x{n_y_tiles}-tile grid is too small to hold "
+                  f"{(n_x_tiles*n_y_tiles)//(split_block_size_tiles**2)+1} distinct "
+                  f"blocks of size {split_block_size_tiles}. Try one of:")
+            print(f"      - lower split_block_size_tiles "
+                  f"(currently {split_block_size_tiles}; 1 ≡ pure random)")
+            print(f"      - use split_method='random' or 'regions'")
+            print(f"      - widen the AOI, or shrink tile_size")
+        elif split_method == "stripes":
+            print(f"    Try lowering split_stripe_size_tiles "
+                  f"(currently {split_stripe_size_tiles}) or use split_method='random'.")
+        elif split_method == "regions":
+            print(f"    Check that split_regions['{empty[0]}'] overlaps the scene "
+                  f"-- 'regions' silently drops tiles whose centres lie outside every region.")
+        elif split_method == "random":
+            print(f"    With only {tile_id} tile(s), random sampling can miss a bucket "
+                  f"by chance. Either fetch a larger AOI or accept the imbalance.")
 
 
 def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode,
