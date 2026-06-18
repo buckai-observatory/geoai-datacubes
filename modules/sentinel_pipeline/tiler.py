@@ -84,21 +84,37 @@ def _find_cloud_bands(descriptions):
 
 
 def _cloud_mask_from_spec(qa_band, spec):
-    """Boolean mask: True where pixel is cloud/shadow/cirrus per the given spec."""
+    """Boolean mask: True where pixel is cloud/shadow/cirrus per the given spec.
+
+    NaN handling: NaN in the QA band means "no QA information at this pixel"
+    (typical when a fused cube contains a mission whose footprint does not
+    cover the whole AOI -- pixels outside that footprint are NaN). We treat
+    those pixels as NOT cloudy so the feature bands at the same location
+    are not falsely NaN'd out. Without this guard, ``int64(NaN)`` produces
+    an all-bits-set value that flips every flag bit in qa_bits mode -- which
+    historically masked entire tiles outside the smaller mission's coverage.
+    """
     kind = spec.get("kind")
     if kind == "scl":
-        classes = np.rint(qa_band).astype(np.int64)
-        return np.isin(classes, spec["flag_values"])
+        nan = np.isnan(qa_band)
+        classes = np.where(nan, 0, np.rint(qa_band)).astype(np.int64)
+        cloudy = np.isin(classes, spec["flag_values"])
+        cloudy[nan] = False
+        return cloudy
     if kind == "qa_bits":
-        qa = np.rint(qa_band).astype(np.int64)
+        nan = np.isnan(qa_band)
+        qa = np.where(nan, 0, np.rint(qa_band)).astype(np.int64)
         mask = np.zeros(qa.shape, dtype=bool)
         for bit in spec["flag_bits"]:
             mask |= ((qa >> bit) & 1).astype(bool)
+        mask[nan] = False
         return mask
     if kind == "udm2_clear":
         # UDM2 band-1 ("clear"): 1 = clear, 0 = NOT clear (cloud OR shadow OR haze).
-        # Mask wherever the pixel is not flagged clear. NaN counts as "not clear".
-        classes = np.where(np.isnan(qa_band), 0, np.rint(qa_band)).astype(np.int64)
+        # NaN gets treated as "no info" (False) rather than "not clear" so
+        # we do not mask pixels that simply lie outside the UDM2 raster.
+        nan = np.isnan(qa_band)
+        classes = np.where(nan, 1, np.rint(qa_band)).astype(np.int64)
         return classes == 0
     raise ValueError(f"Unknown cloud-mask kind: {kind!r}")
 
