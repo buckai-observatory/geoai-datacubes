@@ -221,7 +221,12 @@ MISSION_PROFILES = {
         "providers": {
             "planet": {
                 "item_type":      "PSScene",
-                "instrument":     "PS2",                 # legacy 4-band
+                # 4-band SR is available from all PlanetScope Dove generations:
+                # PS2 (2014-2022, retired), PS2.SD (2019-2021 transition),
+                # and PSB.SD (2022+). We accept all three so the full archive
+                # is reachable; the product_bundle is what actually controls
+                # whether we get 4-band SR delivered.
+                "instrument":     ["PS2", "PS2.SD", "PSB.SD"],
                 "product_bundle": "analytic_sr_udm2",
                 "analytic_asset": "ortho_analytic_4b_sr",
                 "udm2_asset":     "ortho_udm2",
@@ -251,7 +256,9 @@ MISSION_PROFILES = {
         "providers": {
             "planet": {
                 "item_type":      "PSScene",
-                "instrument":     "PSB.SD",              # 8-band SuperDove
+                # 8-band SR is only delivered by the SuperDove constellation
+                # (PSB.SD), available from March 2022 onward.
+                "instrument":     ["PSB.SD"],
                 "product_bundle": "analytic_8b_sr_udm2",
                 "analytic_asset": "ortho_analytic_8b_sr",
                 "udm2_asset":     "ortho_udm2",

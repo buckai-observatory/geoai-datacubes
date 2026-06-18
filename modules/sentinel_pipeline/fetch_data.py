@@ -516,7 +516,11 @@ def _planet_auth_header():
 
 
 def _planet_quick_search(*, item_type, instrument, geometry, time_range, max_cloud):
-    """Query the Planet Data API. Returns a list of feature dicts."""
+    """Query the Planet Data API. Returns a list of feature dicts.
+
+    ``instrument`` may be a single string (e.g. "PSB.SD"), a list of strings
+    (e.g. ["PS2", "PSB.SD"] -- covers the whole 4-band archive), or None
+    (no instrument filter at all)."""
     filters = [
         {"type": "GeometryFilter",  "field_name": "geometry",   "config": geometry},
         {"type": "DateRangeFilter", "field_name": "acquired",
@@ -524,9 +528,11 @@ def _planet_quick_search(*, item_type, instrument, geometry, time_range, max_clo
                     "lte": f"{time_range[1]}T23:59:59Z"}},
         {"type": "RangeFilter",     "field_name": "cloud_cover",
          "config": {"lte": float(max_cloud)}},
-        {"type": "StringInFilter",  "field_name": "instrument",
-         "config": [instrument]},
     ]
+    if instrument is not None:
+        insts = [instrument] if isinstance(instrument, str) else list(instrument)
+        filters.append({"type": "StringInFilter", "field_name": "instrument",
+                        "config": insts})
     body = {"item_types": [item_type],
             "filter":     {"type": "AndFilter", "config": filters}}
     r = requests.post(PL_SEARCH_URL, json=body, headers=_planet_auth_header(), timeout=60)
@@ -669,7 +675,9 @@ def fetch_planet(
             [lon_min, lat_min],
         ]],
     }
-    print(f"🔎 Searching planet for PSScene/{cfg['instrument']} over {roi} "
+    inst_label = (",".join(cfg['instrument']) if isinstance(cfg['instrument'], (list, tuple))
+                  else cfg['instrument'])
+    print(f"🔎 Searching planet for PSScene/[{inst_label}] over {roi} "
           f"in {time_range[0]}..{time_range[1]} with cloud<{int(max_cloud_coverage*100)}%...")
     feats = _planet_quick_search(
         item_type=cfg["item_type"], instrument=cfg["instrument"],
@@ -707,22 +715,31 @@ def fetch_planet(
     raw_dir  = os.path.join(out_dir, "_planet_raw")
     files    = _planet_download_results(order_info, raw_dir)
 
-    # Find the analytic + UDM2 files among the downloaded set
+    # Find the analytic + UDM2 files among the downloaded set.
+    # Planet's Orders API delivers filenames like
+    #   <scene_id>_3B_AnalyticMS_SR_clip.tif     (4-band SR)
+    #   <scene_id>_3B_AnalyticMS_SR_8b_clip.tif  (8-band SR)
+    #   <scene_id>_3B_udm2_clip.tif              (UDM2 mask)
+    # rather than the STAC-style asset keys ("ortho_analytic_4b_sr", etc.).
+    # We detect by substring on the lowercased filename so both bundles work.
     analytic_path = None
     udm2_path     = None
     for name, path in files.items():
-        if cfg["analytic_asset"] in name and name.endswith(".tif"):
-            analytic_path = path
-        elif cfg["udm2_asset"] in name and name.endswith(".tif"):
+        lname = name.lower()
+        if not lname.endswith(".tif"):
+            continue
+        if "udm" in lname:
             udm2_path = path
+        elif "analytic" in lname:
+            analytic_path = path
     if analytic_path is None:
         raise RuntimeError(
-            f"Downloaded order does not contain a {cfg['analytic_asset']} GeoTIFF. "
+            f"Downloaded order does not contain an Analytic SR GeoTIFF. "
             f"Got: {sorted(files)}")
     if udm2 and udm2_path is None:
         raise RuntimeError(
-            f"UDM2 bands {udm2} requested but no {cfg['udm2_asset']} file "
-            f"in the order delivery. Got: {sorted(files)}")
+            f"UDM2 bands {udm2} requested but no *udm*.tif file in the order "
+            f"delivery. Got: {sorted(files)}")
 
     # 4) Build the common output grid. Reproject from analytic asset's CRS to
     #    local UTM (mirroring _fetch_via_stac so resolution stays in metres).
@@ -782,19 +799,22 @@ def fetch_planet(
         for i, b in enumerate(band_order, start=1):
             dst.set_band_description(i, b)
 
-    # 7) Sidecar metadata
+    # 7) Sidecar metadata. Prefer the actual scene's instrument/serial rather
+    #    than the filter we searched with, so downstream tags reflect what we
+    #    really fetched (e.g. instrument="PSB.SD", satellite_serial="24f4").
     userdata = {
-        "satellite":       pick["properties"].get("satellite_id", "PlanetScope"),
-        "acquisitionDate": acquired,
-        "cloudCover":      cc,
-        "tileId":          item_id,
-        "provider":        "planet",
-        "collection":      cfg["item_type"],
-        "instrument":      cfg["instrument"],
-        "product_bundle":  cfg["product_bundle"],
-        "bands":           band_order,
-        "static":          False,
-        "order_id":        order_id,
+        "satellite":         "PlanetScope",
+        "satellite_serial":  pick["properties"].get("satellite_id"),
+        "acquisitionDate":   acquired,
+        "cloudCover":        cc,
+        "tileId":            item_id,
+        "provider":          "planet",
+        "collection":        cfg["item_type"],
+        "instrument":        pick["properties"].get("instrument"),
+        "product_bundle":    cfg["product_bundle"],
+        "bands":             band_order,
+        "static":            False,
+        "order_id":          order_id,
     }
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)
