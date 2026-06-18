@@ -41,7 +41,7 @@ from rasterio.warp import Resampling, reproject, transform_bounds
 
 # QA / classification bands MUST use nearest-neighbour resampling to preserve
 # integer class values.
-_NEAREST_BANDS = {"SCL", "BQA", "qa_pixel", "QA_PIXEL"}
+_NEAREST_BANDS = {"SCL", "BQA", "qa_pixel", "QA_PIXEL", "LULC"}
 
 
 def _resampling_for(band_name):

@@ -50,6 +50,8 @@ PROVIDER_AUTO = {
     "Sentinel-2-L1C": "earthsearch",
     "Sentinel-1":     "planetary_computer", # ES has GRD only (no native CRS)
     "Landsat":        "planetary_computer", # ES bucket is requester-pays
+    "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
+    "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
 }
 
 
@@ -139,7 +141,8 @@ def _resampling_for_band(band_name, cloud_mask_spec):
     """SCL / BQA / quality-class bands MUST use nearest-neighbour resampling."""
     if cloud_mask_spec and band_name == cloud_mask_spec.get("band"):
         return Resampling.nearest
-    if band_name in {"SCL", "BQA"}:
+    if band_name in {"SCL", "BQA", "LULC"}:
+        # Categorical / classification bands -- MUST be nearest neighbour.
         return Resampling.nearest
     return Resampling.bilinear
 
@@ -162,6 +165,36 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling)
     return out
 
 
+def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling):
+    """Mosaic multiple tessellated COG tiles into a single output grid.
+
+    Each source is reprojected into a NaN-initialised temp array; pixels that
+    came back as valid (not NaN) are composited into the output. Tessellated
+    static datasets (Copernicus DEM tiles, ESA WorldCover tiles) don't overlap,
+    so this composite is essentially additive.
+    """
+    out = np.full(dst_shape, np.nan, dtype=np.float32)
+    for url in asset_urls:
+        tmp = np.full(dst_shape, np.nan, dtype=np.float32)
+        with rasterio.open(f"/vsicurl/{url}") as src:
+            src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=tmp,
+                src_transform=src.transform,
+                src_crs=src_crs,
+                src_nodata=src.nodata,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                dst_nodata=float("nan"),
+                resampling=resampling,
+            )
+        mask = ~np.isnan(tmp)
+        out[mask] = tmp[mask]
+    # Replace any remaining NaN (pixels not covered by any source) with 0.
+    return np.nan_to_num(out, nan=0.0)
+
+
 # ---- earthsearch URL resolver (s3:// -> https://) ----
 _ANONYMOUS_S3_BUCKETS = {
     "sentinel-cogs":                  "us-west-2",   # Element 84 S2 L2A COGs
@@ -169,6 +202,8 @@ _ANONYMOUS_S3_BUCKETS = {
     "sentinel-s2-l2a":                "eu-central-1",
     "sentinel-s1-l1c":                "eu-central-1",  # Sinergise S1 GRD
     "e84-earth-search-sentinel-data": "us-west-2",
+    "copernicus-dem-30m":             None,          # region-agnostic; AWS auto-redirects
+    "copernicus-dem-90m":             None,
 }
 
 
@@ -178,14 +213,16 @@ def _resolve_es_href(href):
         return href
     if href.startswith("s3://"):
         bucket, _, key = href[5:].partition("/")
-        region = _ANONYMOUS_S3_BUCKETS.get(bucket)
-        if region is None:
+        if bucket not in _ANONYMOUS_S3_BUCKETS:
             raise RuntimeError(
                 f"Asset is in s3://{bucket}/, which is not on the known "
                 f"anonymous-readable list (it may be requester-pays). "
                 f"Either configure AWS credentials, fall back to "
                 f"provider='planetary_computer' (free), or use 'sentinelhub'."
             )
+        region = _ANONYMOUS_S3_BUCKETS[bucket]
+        if region is None:    # region-agnostic / AWS auto-redirects
+            return f"https://{bucket}.s3.amazonaws.com/{key}"
         return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
     raise ValueError(f"Unrecognized asset href scheme: {href}")
 
@@ -221,18 +258,17 @@ def _fetch_via_stac(
             f"Available: {sorted(asset_map)}."
         )
 
-    # 1. STAC search (anonymous)
-    body = {
-        "collections": [collection],
-        "bbox": roi,
-        "datetime": f"{time_range[0]}T00:00:00Z/{time_range[1]}T23:59:59Z",
-        "limit": 100,
-    }
-    if profile["cloud_filter"]:
-        body["query"] = {"eo:cloud_cover": {"lt": max_cloud_coverage * 100}}
+    is_static = bool(profile.get("static"))
 
-    print(f"🔎 Searching {provider_label} for '{collection}' over {roi} "
-          f"in {time_range[0]}..{time_range[1]}"
+    # 1. STAC search (anonymous). Static products skip datetime/cloud filtering.
+    body = {"collections": [collection], "bbox": roi, "limit": 100}
+    if not is_static:
+        body["datetime"] = f"{time_range[0]}T00:00:00Z/{time_range[1]}T23:59:59Z"
+        if profile["cloud_filter"]:
+            body["query"] = {"eo:cloud_cover": {"lt": max_cloud_coverage * 100}}
+
+    print(f"🔎 Searching {provider_label} for '{collection}' over {roi}"
+          + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
           + (f" with cloud<{int(max_cloud_coverage*100)}%" if profile["cloud_filter"] else "")
           + " ...")
     r = requests.post(stac_url, json=body, timeout=60)
@@ -244,57 +280,102 @@ def _fetch_via_stac(
             + (" or raising max_cloud_coverage." if profile["cloud_filter"] else ".")
         )
 
-    # 2. Pick the best scene
-    if profile["cloud_filter"]:
-        items.sort(key=lambda x: x["properties"].get("eo:cloud_cover", 100))
-    best = items[0]
-    scene_id = best["id"]
-    scene_dt = best["properties"]["datetime"]
-    cc = best["properties"].get("eo:cloud_cover")
-    cc_note = f" cloud={cc:.1f}%" if cc is not None else ""
-    print(f"✅ Selected scene {scene_id} ({scene_dt[:10]}){cc_note}")
+    # 2. Pick scene(s)
+    if is_static:
+        # Deduplicate by spatial bbox; keep the most-recent version of each tile
+        # (handles ESA WorldCover 2020 vs 2021, etc.).
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for it in items:
+            groups[tuple(round(x, 4) for x in it["bbox"])].append(it)
+        items = [
+            sorted(g, key=lambda x: x["properties"].get("datetime") or "", reverse=True)[0]
+            for g in groups.values()
+        ]
+        representative = items[0]
+        latest_dt = max((it["properties"].get("datetime") or "") for it in items)
+        print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI "
+              f"(latest version {latest_dt[:10] or 'n/a'})")
+    else:
+        if profile["cloud_filter"]:
+            items.sort(key=lambda x: x["properties"].get("eo:cloud_cover", 100))
+        representative = items[0]
+        scene_id_print = representative["id"]
+        scene_dt_print = representative["properties"]["datetime"]
+        cc = representative["properties"].get("eo:cloud_cover")
+        cc_note = f" cloud={cc:.1f}%" if cc is not None else ""
+        print(f"✅ Selected scene {scene_id_print} ({scene_dt_print[:10]}){cc_note}")
 
-    # Validate requested bands are present in this scene's assets
-    scene_assets = set(best["assets"].keys())
+    # Validate requested bands are in the representative item's assets
+    scene_assets = set(representative["assets"].keys())
     not_in_scene = [b for b in final_bands if asset_map[b] not in scene_assets]
     if not_in_scene:
         raise RuntimeError(
-            f"Requested bands {not_in_scene} not present in selected scene's assets. "
+            f"Requested bands {not_in_scene} not present in the scene's assets. "
             f"Scene exposes: {sorted(scene_assets)}. "
             f"Try a different time range / acquisition mode."
         )
 
-    # 3. Output directory: human-readable name "<Mission>_<YYYY-MM-DD>_<scene_id>"
-    date_str = scene_dt[:10]                            # YYYY-MM-DD
-    safe_id = re.sub(r"[/\\:\s]", "_", scene_id)        # filesystem-safe scene id
-    out_id = f"{mission}_{date_str}_{safe_id}"
+    # 3. Output directory name
+    if is_static:
+        # e.g. Copernicus-DEM_cop-dem-glo-30_mosaic_2021-04-22
+        date_str = (representative["properties"].get("datetime") or "")[:10] or "static"
+        safe_col = re.sub(r"[/\\:\s]", "_", collection)
+        out_id = f"{mission}_{safe_col}_mosaic_{date_str}"
+        rep_scene_id = f"{collection}_mosaic_{len(items)}tiles"
+        scene_dt_for_userdata = representative["properties"].get("datetime")
+    else:
+        rep_scene_id = representative["id"]
+        scene_dt_for_userdata = representative["properties"]["datetime"]
+        date_str = scene_dt_for_userdata[:10]
+        safe_id = re.sub(r"[/\\:\s]", "_", rep_scene_id)
+        out_id = f"{mission}_{date_str}_{safe_id}"
     out_dir = os.path.join(save_folder, out_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    # 4. Determine output grid (use first band's CRS, usually UTM).
-    first_url = url_resolver(best["assets"][asset_map[final_bands[0]]]["href"])
+    # 4. Determine output grid.
+    #    Use the representative item's first asset CRS, EXCEPT when it is
+    #    geographic (lat/lon, EPSG:4326) -- in that case the user's
+    #    ``resolution`` is in metres but the source CRS uses degrees, so
+    #    we project to the local UTM zone covering the ROI centre so the
+    #    meter-based resolution makes sense.
+    first_url = url_resolver(representative["assets"][asset_map[final_bands[0]]]["href"])
     with rasterio.open(f"/vsicurl/{first_url}") as src:
-        dst_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-    if dst_crs is None:
+        src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
+    if src_crs is None:
         raise RuntimeError(
             f"Could not determine a CRS for the selected scene's first asset. "
             f"Try a different provider or mission combination."
         )
+    if src_crs.is_geographic:
+        cx = (roi[0] + roi[2]) / 2.0
+        cy = (roi[1] + roi[3]) / 2.0
+        zone = int((cx + 180) // 6) + 1
+        epsg = (32600 if cy >= 0 else 32700) + zone
+        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
+        print(f"   (source CRS is geographic; output in {dst_crs} so resolution={resolution} m is correct)")
+    else:
+        dst_crs = src_crs
     roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
     out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
     out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
     dst_transform = from_bounds(*roi_proj, out_w, out_h)
     print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
 
-    # 5. Pull each requested band into the output grid
+    # 5. Pull each requested band into the output grid (mosaic for static)
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
     for i, b in enumerate(final_bands):
-        url = url_resolver(best["assets"][asset_map[b]]["href"])
         rs = _resampling_for_band(b, profile["cloud_mask"])
-        # Show just the filename, stripping any SAS query string.
-        leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-        print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
-        stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
+        if is_static and len(items) > 1:
+            urls = [url_resolver(it["assets"][asset_map[b]]["href"]) for it in items]
+            print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  "
+                  f"mosaic of {len(urls)} tile(s)")
+            stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform, (out_h, out_w), rs)
+        else:
+            url = url_resolver(representative["assets"][asset_map[b]]["href"])
+            leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
+            print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
+            stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
 
     # 6. Write multi-band response.tiff
     response_tiff = os.path.join(out_dir, "response.tiff")
@@ -310,13 +391,15 @@ def _fetch_via_stac(
 
     # 7. Sidecar metadata
     userdata = {
-        "satellite":       best["properties"].get("platform", mission),
-        "acquisitionDate": scene_dt,
-        "cloudCover":      cc,
-        "tileId":          scene_id,
+        "satellite":       representative["properties"].get("platform", mission),
+        "acquisitionDate": scene_dt_for_userdata,
+        "cloudCover":      representative["properties"].get("eo:cloud_cover"),
+        "tileId":          rep_scene_id,
         "provider":        provider_label,
         "collection":      collection,
         "bands":           final_bands,
+        "static":          is_static,
+        "mosaic_tiles":    len(items) if is_static else 1,
     }
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)

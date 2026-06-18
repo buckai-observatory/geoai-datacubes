@@ -61,8 +61,10 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 |---|---|---|:--:|---|
 | **Sentinel-2 L2A** | `Sentinel-2` | Optical surface reflectance | earthsearch ✅ / sentinelhub ✅ | Bands + SCL/AOT/WVP, scene cloud filter, `SCL` per-pixel masking, NDVI, tiling, export. |
 | **Sentinel-2 L1C** | `Sentinel-2-L1C` | Optical top-of-atmosphere | earthsearch ✅ | Same flow as L2A; no `SCL` (use L2A if you need per-pixel cloud masking). |
-| **Sentinel-1 GRD** | `Sentinel-1` | SAR (radar) | earthsearch ✅ / sentinelhub ✅ | VV/VH (and HH/HV in EW mode), tiling, export. |
-| **Landsat 8-9 C2 L2** | `Landsat` | Optical surface reflectance + thermal | earthsearch ✅ / sentinelhub ✅ | Same flow as Sentinel-2: scene cloud filter, `BQA` bit-decoded cloud/shadow masking, NDVI (B04/B05), tiling, export. |
+| **Sentinel-1 RTC** | `Sentinel-1` | SAR (radar) | planetary_computer ✅ / sentinelhub ✅ | VV/VH (HH/HV in EW mode), radiometric-terrain-corrected, tiling, export. |
+| **Landsat 8-9 C2 L2** | `Landsat` | Optical surface reflectance + thermal | planetary_computer ✅ / sentinelhub ✅ | Same flow as Sentinel-2: scene cloud filter, `BQA` bit-decoded cloud/shadow masking, NDVI (B04/B05), tiling, export. |
+| **Copernicus DEM (GLO-30)** | `Copernicus-DEM` | 30 m global elevation (static) | earthsearch ✅ / planetary_computer ✅ | Static layer — TIME_RANGE is ignored. Multiple 1° tiles are mosaicked when an AOI straddles tile boundaries. Output reprojected to local UTM at the requested metre resolution. |
+| **ESA WorldCover** | `ESA-WorldCover` | 10 m global land-cover (static, 2020 + 2021) | planetary_computer ✅ | Static layer. Latest version (2021 v200) is selected per geographic tile. Nearest-neighbour resampling preserves class IDs. |
 | PlanetScope | — | Optical (high-res) | — | 🔭 On the roadmap — **not yet implemented**. |
 
 > Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.

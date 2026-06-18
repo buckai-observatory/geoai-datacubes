@@ -153,6 +153,43 @@ MISSION_PROFILES = {
             "sentinelhub": {"collection": "LANDSAT_OT_L2"},
         },
     },
+
+    # ============================================================
+    # Static ancillary layers (no time component, mosaic of multiple tiles)
+    # ============================================================
+    "Copernicus-DEM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,             # static dataset -> ignore TIME_RANGE, mosaic items
+        "providers": {
+            "earthsearch": {
+                "collection": "cop-dem-glo-30",
+                "asset_map":  {"DEM": "data"},
+            },
+            "planetary_computer": {
+                "collection": "cop-dem-glo-30",
+                "asset_map":  {"DEM": "data"},
+            },
+        },
+    },
+
+    "ESA-WorldCover": {
+        "default_bands": ["LULC"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,             # static dataset -> ignore TIME_RANGE, mosaic items
+        "providers": {
+            "planetary_computer": {
+                "collection": "esa-worldcover",
+                "asset_map":  {"LULC": "map"},
+            },
+        },
+    },
 }
 
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)
