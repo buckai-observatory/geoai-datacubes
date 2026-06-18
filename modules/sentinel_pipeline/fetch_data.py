@@ -26,9 +26,9 @@ All paths return the same ``(data, final_bands)`` tuple and write a multi-band
 and exporter work unchanged regardless of provider.
 """
 
-import hashlib
 import json
 import os
+import re
 
 import numpy as np
 import rasterio
@@ -264,8 +264,10 @@ def _fetch_via_stac(
             f"Try a different time range / acquisition mode."
         )
 
-    # 3. Output directory mirrors the SentinelHubRequest layout
-    out_id = hashlib.md5(scene_id.encode()).hexdigest()
+    # 3. Output directory: human-readable name "<Mission>_<YYYY-MM-DD>_<scene_id>"
+    date_str = scene_dt[:10]                            # YYYY-MM-DD
+    safe_id = re.sub(r"[/\\:\s]", "_", scene_id)        # filesystem-safe scene id
+    out_id = f"{mission}_{date_str}_{safe_id}"
     out_dir = os.path.join(save_folder, out_id)
     os.makedirs(out_dir, exist_ok=True)
 
