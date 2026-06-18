@@ -6,8 +6,10 @@ This pipeline automates the entire workflow from raw satellite imagery to AI-rea
 
 It runs against **either** of two interchangeable backends, chosen with `PROVIDER` in `main.py`:
 
-- **`earthsearch`** (default) — Element 84's free Earth Search STAC API + public AWS Open-Data COG buckets. **No credentials needed**.
-- **`sentinelhub`** (advanced, opt-in) — Sentinel Hub Process API with server-side band reprojection/resampling and arbitrary evalscripts. Requires a free Sentinel Hub OAuth client in a `.env` at the repo root.
+- **`auto`** (default) — picks the best free provider per mission: `earthsearch` for Sentinel-2, `planetary_computer` for Sentinel-1 RTC and Landsat C2 L2. **No credentials needed**.
+- **`earthsearch`** — Element 84's Earth Search STAC + AWS Open-Data COG buckets. Best for Sentinel-2 (no per-asset sign step). No credentials.
+- **`planetary_computer`** — Microsoft Planetary Computer STAC + Azure blob storage (anonymously SAS-signed). Required for Sentinel-1 RTC and Landsat. No credentials.
+- **`sentinelhub`** (advanced, opt-in) — Sentinel Hub Process API with server-side band reprojection/resampling and evalscripts. Requires a free Sentinel Hub OAuth client in a `.env` at the repo root.
 
 See the top-level [README](../README.md) for a side-by-side comparison and how to opt in to Sentinel Hub.
 
@@ -94,7 +96,7 @@ python main.py
 Inside `main.py`, you can set:
 
 ```python
-PROVIDER = "earthsearch"      # default (no credentials) or "sentinelhub"
+PROVIDER = "auto"             # picks the best free provider per mission (ES for S2, PC for S1/Landsat)
 MISSION  = "Sentinel-2"       # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
 BANDS    = None                # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
 

@@ -16,7 +16,7 @@
 - [What it does](#-what-it-does)
 - [Supported platforms](#-supported-platforms)
 - [Quickstart for beginners — no credentials needed](#-quickstart-for-beginners--no-credentials-needed)
-- [Two data providers — when to use which](#-two-data-providers--when-to-use-which)
+- [Data providers — when to use which](#-data-providers--when-to-use-which)
 - [Configuration & parameters](#-configuration--parameters)
 - [Pipeline scripts](#-pipeline-scripts)
 - [Try the example notebook](#-try-the-example-notebook)
@@ -103,7 +103,7 @@ Open `modules/sentinel_pipeline/main.py` and edit the **`USER INPUT`** block at 
 
 ```python
 # ---- USER INPUT ----
-PROVIDER   = "earthsearch"                       # default, no credentials
+PROVIDER   = "auto"                              # default: ES for S2, PC for S1/Landsat (all no-creds)
 MISSION    = "Sentinel-2"                        # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
 BANDS      = None                                 # None = mission default bands
 
@@ -145,21 +145,30 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ---
 
-## 🔀 Two data providers — when to use which
+## 🔀 Data providers — when to use which
 
-The same `main.py` can fetch imagery through **two interchangeable providers**. The default is the no-credentials one.
+The same `main.py` can fetch through **three interchangeable providers**. The default is `"auto"`, which routes each mission to the best free option:
 
-| | `PROVIDER = "earthsearch"` (default) | `PROVIDER = "sentinelhub"` (advanced) |
+| | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "sentinelhub"` (advanced) |
+|---|---|---|---|
+| **Credentials** | None | None | Free Sentinel Hub OAuth in a `.env` |
+| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Sentinel Hub Process API |
+| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | ✅ |
+| **Sentinel-2 L1C** | ✅ | ✅ | (not wired) |
+| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | ✅ |
+| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | ✅ |
+| **Server-side band math** | No | No | Yes (evalscripts) |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC and Landsat (the missions earthsearch can't serve cleanly) | Production runs, custom band math, very large ROIs |
+
+**`PROVIDER = "auto"` (the default)** wires this up for you automatically:
+
+| Mission | Routed to | Why |
 |---|---|---|
-| **Credentials** | None — works out of the box | Free Sentinel Hub OAuth, set up in a `.env` file |
-| **Data source** | Element 84's Earth Search STAC API + AWS Open-Data COG buckets (`sentinel-cogs`, `sentinel-s1-l1-grd-public`, `usgs-landsat`) | Sentinel Hub Process API + Catalog |
-| **Missions** | Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1 GRD, Landsat 8-9 C2 L2 | Sentinel-2 L2A, Sentinel-1 IW, Landsat 8-9 C2 L2 |
-| **Cost / quota** | Free — anonymous HTTPS reads of COGs | Free tier, then Processing Units; needs an account |
-| **Server-side resampling / reprojection / band math** | No — done client-side by `rasterio` from the COG | Yes — Sentinel Hub does it for you and returns exactly the array you asked for |
-| **Custom evalscripts (band ratios, index math, custom masking, etc.)** | No | Yes |
-| **Best for** | Teaching, demos, getting started, public reproducibility | Production runs, custom band math, very large ROIs, when PU is no concern |
+| `Sentinel-2` / `Sentinel-2-L1C` | `earthsearch` | Faster — no per-asset SAS sign step |
+| `Sentinel-1` | `planetary_computer` | Gives you the analysis-ready RTC product |
+| `Landsat` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
 
-**Bottom line:** **Stay on `earthsearch` unless you need an evalscript or server-side processing.** The output `response.tiff` is functionally identical; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which provider was used.
+The output `response.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
 
 ### Switching to the Sentinel Hub provider
 
@@ -188,7 +197,7 @@ These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py
 
 | Parameter | What it controls | Example |
 |---|---|---|
-| `PROVIDER` | Where to fetch the imagery from | `"earthsearch"` (default, no credentials) or `"sentinelhub"` |
+| `PROVIDER` | Where to fetch the imagery from | `"auto"` (default), `"earthsearch"`, `"planetary_computer"`, or `"sentinelhub"` |
 | `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-2-L1C"`, `"Sentinel-1"`, or `"Landsat"` |
 | `AOI` | Area of interest, in any of four formats (see [Defining the AOI](#defining-the-aoi)). Resolved to `ROI` via `resolve_aoi()`. | `{"bbox": [-83.077, 39.964, -82.983, 40.036]}` (default: OSU, Columbus OH) |
 | `ROI` | The resolved bounding box `[lon_min, lat_min, lon_max, lat_max]` in WGS84 — populated automatically from `AOI` | `[-83.077, 39.964, -82.983, 40.036]` |

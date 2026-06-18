@@ -32,13 +32,24 @@ MISSION_PROFILES = {
         "providers": {
             "earthsearch": {
                 "collection": "sentinel-2-l2a",
-                # logical band name -> STAC asset key on Earth Search v1
+                # logical band name -> STAC asset key
                 "asset_map": {
                     "B01": "coastal", "B02": "blue",   "B03": "green",
                     "B04": "red",     "B05": "rededge1","B06": "rededge2",
                     "B07": "rededge3","B08": "nir",    "B8A": "nir08",
                     "B09": "nir09",   "B11": "swir16","B12": "swir22",
                     "SCL": "scl",     "AOT": "aot",    "WVP": "wvp",
+                    "visual": "visual",
+                },
+            },
+            "planetary_computer": {
+                "collection": "sentinel-2-l2a",
+                # PC uses raw band names (B01..B12, B8A, SCL, AOT, WVP).
+                "asset_map": {
+                    "B01": "B01", "B02": "B02", "B03": "B03", "B04": "B04",
+                    "B05": "B05", "B06": "B06", "B07": "B07", "B08": "B08",
+                    "B8A": "B8A", "B09": "B09", "B11": "B11", "B12": "B12",
+                    "SCL": "SCL", "AOT": "AOT", "WVP": "WVP",
                     "visual": "visual",
                 },
             },
@@ -66,13 +77,20 @@ MISSION_PROFILES = {
                     "visual": "visual",
                 },
             },
-            # Sentinel Hub L1C is available too but the existing pipeline
-            # was built around L2A; leaving sentinelhub for L1C out for now.
+            "planetary_computer": {
+                "collection": "sentinel-2-l1c",
+                "asset_map": {
+                    "B01": "B01", "B02": "B02", "B03": "B03", "B04": "B04",
+                    "B05": "B05", "B06": "B06", "B07": "B07", "B08": "B08",
+                    "B8A": "B8A", "B09": "B09", "B10": "B10", "B11": "B11", "B12": "B12",
+                    "visual": "visual",
+                },
+            },
         },
     },
 
     # ============================================================
-    # Sentinel-1 GRD (SAR backscatter)
+    # Sentinel-1 (SAR backscatter)
     # ============================================================
     "Sentinel-1": {
         "default_bands": ["VV", "VH"],
@@ -82,7 +100,17 @@ MISSION_PROFILES = {
         "cloud_mask":    None,
         "providers": {
             "earthsearch": {
+                # NOTE: Earth Search hosts the raw GRD product. Its `vv`/`vh`
+                # assets are in ground range and lack a usable native CRS, so
+                # the pipeline cannot read them directly. Use planetary_computer
+                # for the analysis-ready RTC product instead.
                 "collection": "sentinel-1-grd",
+                "asset_map": {"VV": "vv", "VH": "vh", "HH": "hh", "HV": "hv"},
+            },
+            "planetary_computer": {
+                # Planetary Computer hosts the Radiometric Terrain Corrected (RTC)
+                # product -- ready-to-use, properly georeferenced.
+                "collection": "sentinel-1-rtc",
                 "asset_map": {"VV": "vv", "VH": "vh", "HH": "hh", "HV": "hv"},
             },
             "sentinelhub": {"collection": "SENTINEL1_IW"},
@@ -100,13 +128,25 @@ MISSION_PROFILES = {
         "cloud_mask":    {"band": "BQA", "kind": "qa_bits", "flag_bits": [1, 3, 4]},
         "providers": {
             "earthsearch": {
+                # NOTE: Earth Search references s3://usgs-landsat/ which is
+                # requester-pays. Anonymous reads return 403. Use
+                # planetary_computer for no-credentials access.
                 "collection": "landsat-c2-l2",
                 "asset_map": {
                     "B01": "coastal", "B02": "blue",   "B03": "green",
                     "B04": "red",     "B05": "nir08",  "B06": "swir16",
                     "B07": "swir22",  "B10": "lwir11",
-                    # Landsat Collection-2 L2 does not expose B11 (TIRS 2) due to
-                    # stray-light issues -- only B10 (lwir11) is provided.
+                    "BQA": "qa_pixel",
+                },
+            },
+            "planetary_computer": {
+                # PC mirrors Landsat C2 L2 with the same STAC asset names but
+                # serves it free from Azure Blob (no requester-pays).
+                "collection": "landsat-c2-l2",
+                "asset_map": {
+                    "B01": "coastal", "B02": "blue",   "B03": "green",
+                    "B04": "red",     "B05": "nir08",  "B06": "swir16",
+                    "B07": "swir22",  "B10": "lwir11",
                     "BQA": "qa_pixel",
                 },
             },

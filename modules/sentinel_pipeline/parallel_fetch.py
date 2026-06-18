@@ -12,8 +12,11 @@ from aoi import resolve_aoi
 import os, time
 
 # === USER CONFIG ===
-# Provider:  "earthsearch" (default, no credentials) or "sentinelhub" (requires .env).
-PROVIDER = "earthsearch"
+# Provider:  "auto"               (default; ES for S2, PC for S1 RTC + Landsat -- all no-creds)
+#            "earthsearch"        (Element 84 STAC; works for Sentinel-2 only)
+#            "planetary_computer" (Microsoft Planetary Computer; works for all 4 missions)
+#            "sentinelhub"        (advanced; requires .env credentials)
+PROVIDER = "auto"
 
 MISSION = "Sentinel-2"   # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
 BANDS = ["B04", "B08"]   # for Landsat use ["B04", "B05"] (Red, NIR)

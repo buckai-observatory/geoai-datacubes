@@ -17,10 +17,14 @@ from aoi import resolve_aoi
 # --------------------------------------------------------------------
 # ---- USER INPUT ----
 # --------------------------------------------------------------------
-# Provider:  "earthsearch" (default, no credentials, runs out of the box)
-#            "sentinelhub" (advanced; requires SH credentials in a .env file
-#                           -- see README "Advanced: Sentinel Hub provider")
-PROVIDER   = "earthsearch"
+# Provider:  "auto"               (default; picks the best free provider per mission --
+#                                  earthsearch for Sentinel-2, planetary_computer for
+#                                  Sentinel-1 RTC and Landsat C2 L2)
+#            "earthsearch"        (Element 84 STAC + AWS Open-Data COGs; no credentials)
+#            "planetary_computer" (Microsoft Planetary Computer STAC + Azure blobs; no credentials)
+#            "sentinelhub"        (advanced; requires SH credentials in a .env file
+#                                  -- see README "Switching to the Sentinel Hub provider")
+PROVIDER   = "auto"
 
 # Mission:   "Sentinel-2"      (L2A surface reflectance; the default optical mission)
 #            "Sentinel-2-L1C"  (L1C top-of-atmosphere; earthsearch only)
