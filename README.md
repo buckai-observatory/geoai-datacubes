@@ -65,7 +65,8 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 | **Landsat 8-9 C2 L2** | `Landsat` | Optical surface reflectance + thermal | planetary_computer ✅ / sentinelhub ✅ | Same flow as Sentinel-2: scene cloud filter, `BQA` bit-decoded cloud/shadow masking, NDVI (B04/B05), tiling, export. |
 | **Copernicus DEM (GLO-30)** | `Copernicus-DEM` | 30 m global elevation (static) | earthsearch ✅ / planetary_computer ✅ | Static layer — TIME_RANGE is ignored. Multiple 1° tiles are mosaicked when an AOI straddles tile boundaries. Output reprojected to local UTM at the requested metre resolution. |
 | **ESA WorldCover** | `ESA-WorldCover` | 10 m global land-cover (static, 2020 + 2021) | planetary_computer ✅ | Static layer. Latest version (2021 v200) is selected per geographic tile. Nearest-neighbour resampling preserves class IDs. |
-| PlanetScope | — | Optical (high-res) | — | 🔭 On the roadmap — **not yet implemented**. |
+| **PlanetScope (legacy 4-band)** | `PlanetScope-4b` | Optical surface reflectance, ~3 m | planet ✅ | PS2/PSB.SD analytic SR (B/G/R/NIR), UDM2 cloud/shadow/haze masking, NDVI, tiling, export. Archive back to ~2016. Commercial — requires `PL_API_KEY` in `.env`. |
+| **PlanetScope (8-band SuperDove)** | `PlanetScope-8b` | Optical surface reflectance, ~3 m | planet ✅ | PSB.SD analytic 8b SR (Coastal Blue, B, Green I, G, Yellow, R, RedEdge, NIR), UDM2 masking, NDVI, tiling, export. Archive from early 2022. Commercial — requires `PL_API_KEY` in `.env`. |
 
 > Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.
 
@@ -149,18 +150,19 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ## 🔀 Data providers — when to use which
 
-The same `main.py` can fetch through **three interchangeable providers**. The default is `"auto"`, which routes each mission to the best free option:
+The same `main.py` can fetch through **four interchangeable providers**. The default is `"auto"`, which routes each mission to the best free option:
 
-| | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "sentinelhub"` (advanced) |
-|---|---|---|---|
-| **Credentials** | None | None | Free Sentinel Hub OAuth in a `.env` |
-| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Sentinel Hub Process API |
-| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | ✅ |
-| **Sentinel-2 L1C** | ✅ | ✅ | (not wired) |
-| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | ✅ |
-| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | ✅ |
-| **Server-side band math** | No | No | Yes (evalscripts) |
-| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC and Landsat (the missions earthsearch can't serve cleanly) | Production runs, custom band math, very large ROIs |
+| | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
+|---|---|---|---|---|
+| **Credentials** | None | None | `PL_API_KEY` in `.env` | Free Sentinel Hub OAuth in a `.env` |
+| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Planet Labs Data + Orders API | Sentinel Hub Process API |
+| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | — | ✅ |
+| **Sentinel-2 L1C** | ✅ | ✅ | — | (not wired) |
+| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | — | ✅ |
+| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | — | ✅ |
+| **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — |
+| **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC and Landsat (the missions earthsearch can't serve cleanly) | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
 
 **`PROVIDER = "auto"` (the default)** wires this up for you automatically:
 
@@ -169,6 +171,9 @@ The same `main.py` can fetch through **three interchangeable providers**. The de
 | `Sentinel-2` / `Sentinel-2-L1C` | `earthsearch` | Faster — no per-asset SAS sign step |
 | `Sentinel-1` | `planetary_computer` | Gives you the analysis-ready RTC product |
 | `Landsat` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
+| `Copernicus-DEM` | `earthsearch` | Both work; ES skips the sign step |
+| `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
+| `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in explicitly with `PROVIDER="planet"` and a key in `.env` |
 
 The output `response.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
 
@@ -189,6 +194,23 @@ If you need the advanced features above, opt in by:
    ```
 4. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "sentinelhub"`.
 
+### Switching to the Planet provider (PlanetScope)
+
+For commercial high-resolution PlanetScope imagery:
+
+1. **Get an API key** at <https://www.planet.com/account/#/user-settings> under **API keys** (requires a Planet account; researchers can apply to the Education & Research Program for archive access, and humid-tropics work can use the free **NICFI** program — both surface the same `PL_API_KEY` here).
+2. Copy the bundled template and paste in your key:
+   ```bash
+   cp .env.example .env       # then open .env in your editor
+   ```
+   ```
+   PL_API_KEY=your-planet-api-key-here
+   ```
+3. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "planet"` and `MISSION = "PlanetScope-4b"` (legacy 4-band B/G/R/NIR, archive back to ~2016) or `MISSION = "PlanetScope-8b"` (SuperDove 8-band CB/B/GI/G/Y/R/RE/NIR, ~2022 onward).
+4. Pick a finer resolution — PlanetScope's native ground sampling is ~3 m, so `RESOLUTION = 3` is a sensible default.
+
+Under the hood, the `planet` provider uses Planet's **Data API** (`/quick-search`) to pick the lowest-cloud-cover scene matching your AOI/dates/instrument, then submits a single-scene **Orders API** request with server-side clip-to-AOI. The order is asynchronous — expect a few minutes for the order to reach `success` — and the pipeline polls automatically (default 60 min timeout, override via `max_wait_seconds`). The order delivers the analytic-SR COG and a UDM2 raster; both are downloaded, reprojected onto the same UTM grid we use for Sentinel/Landsat, and written into a multi-band `response.tiff` with descriptions like `"R"`, `"NIR"`, `"udm2_clear"` — so cloud masking in the tiler flows through unchanged.
+
 > ⚠️ **Never commit `.env`.** The repository's `.gitignore` already excludes it; keep it that way and never hardcode keys in source files.
 
 ---
@@ -199,8 +221,8 @@ These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py
 
 | Parameter | What it controls | Example |
 |---|---|---|
-| `PROVIDER` | Where to fetch the imagery from | `"auto"` (default), `"earthsearch"`, `"planetary_computer"`, or `"sentinelhub"` |
-| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-2-L1C"`, `"Sentinel-1"`, or `"Landsat"` |
+| `PROVIDER` | Where to fetch the imagery from | `"auto"` (default), `"earthsearch"`, `"planetary_computer"`, `"planet"` (commercial), or `"sentinelhub"` |
+| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-2-L1C"`, `"Sentinel-1"`, `"Landsat"`, `"Copernicus-DEM"`, `"ESA-WorldCover"`, `"PlanetScope-4b"`, or `"PlanetScope-8b"` |
 | `AOI` | Area of interest, in any of four formats (see [Defining the AOI](#defining-the-aoi)). Resolved to `ROI` via `resolve_aoi()`. | `{"bbox": [-83.077, 39.964, -82.983, 40.036]}` (default: OSU, Columbus OH) |
 | `ROI` | The resolved bounding box `[lon_min, lat_min, lon_max, lat_max]` in WGS84 — populated automatically from `AOI` | `[-83.077, 39.964, -82.983, 40.036]` |
 | `TIME_RANGE` | Date window to search within `(start, end)` | `("2024-06-15", "2024-06-20")` |

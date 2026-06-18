@@ -4,11 +4,12 @@
 
 This pipeline automates the entire workflow from raw satellite imagery to AI-ready datasets. It supports Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1 GRD, and Landsat 8-9 Collection-2 Level-2 imagery through one unified `main.py`. Each mission is described by a profile in `missions.py`.
 
-It runs against **either** of two interchangeable backends, chosen with `PROVIDER` in `main.py`:
+It runs against any of four interchangeable backends, chosen with `PROVIDER` in `main.py`:
 
 - **`auto`** (default) — picks the best free provider per mission: `earthsearch` for Sentinel-2, `planetary_computer` for Sentinel-1 RTC and Landsat C2 L2. **No credentials needed**.
 - **`earthsearch`** — Element 84's Earth Search STAC + AWS Open-Data COG buckets. Best for Sentinel-2 (no per-asset sign step). No credentials.
 - **`planetary_computer`** — Microsoft Planetary Computer STAC + Azure blob storage (anonymously SAS-signed). Required for Sentinel-1 RTC and Landsat. No credentials.
+- **`planet`** (commercial, opt-in) — Planet Labs Data + Orders API for PlanetScope-4b and PlanetScope-8b (~3 m surface reflectance + UDM2 cloud/shadow mask). Requires a Planet `PL_API_KEY` in a `.env`.
 - **`sentinelhub`** (advanced, opt-in) — Sentinel Hub Process API with server-side band reprojection/resampling and evalscripts. Requires a free Sentinel Hub OAuth client in a `.env` at the repo root.
 
 See the top-level [README](../README.md) for a side-by-side comparison and how to opt in to Sentinel Hub.

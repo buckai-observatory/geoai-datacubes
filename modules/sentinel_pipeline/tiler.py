@@ -53,10 +53,13 @@ _SPLITS = ("train", "val", "test")
 #   BQA bits (Landsat C2 L2 QA_PIXEL):
 #     1 = dilated cloud, 3 = cloud, 4 = cloud shadow
 _KNOWN_CLOUD_BANDS = {
-    "SCL":      {"kind": "scl",     "flag_values": [3, 8, 9, 10]},
-    "BQA":      {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
-    "qa_pixel": {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
-    "QA_PIXEL": {"kind": "qa_bits", "flag_bits":   [1, 3, 4]},
+    "SCL":         {"kind": "scl",         "flag_values": [3, 8, 9, 10]},
+    "BQA":         {"kind": "qa_bits",     "flag_bits":   [1, 3, 4]},
+    "qa_pixel":    {"kind": "qa_bits",     "flag_bits":   [1, 3, 4]},
+    "QA_PIXEL":    {"kind": "qa_bits",     "flag_bits":   [1, 3, 4]},
+    # PlanetScope UDM2 band 1 -- 1 = clear, 0 = not clear (cloud/shadow/haze).
+    # When present we mask wherever clear == 0 (covers all three).
+    "udm2_clear":  {"kind": "udm2_clear",  "flag_values": [0]},
 }
 
 
@@ -92,6 +95,11 @@ def _cloud_mask_from_spec(qa_band, spec):
         for bit in spec["flag_bits"]:
             mask |= ((qa >> bit) & 1).astype(bool)
         return mask
+    if kind == "udm2_clear":
+        # UDM2 band-1 ("clear"): 1 = clear, 0 = NOT clear (cloud OR shadow OR haze).
+        # Mask wherever the pixel is not flagged clear. NaN counts as "not clear".
+        classes = np.where(np.isnan(qa_band), 0, np.rint(qa_band)).astype(np.int64)
+        return classes == 0
     raise ValueError(f"Unknown cloud-mask kind: {kind!r}")
 
 

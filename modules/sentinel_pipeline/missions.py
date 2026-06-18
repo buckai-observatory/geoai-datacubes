@@ -190,6 +190,90 @@ MISSION_PROFILES = {
             },
         },
     },
+
+    # ============================================================
+    # PlanetScope (commercial; requires PL_API_KEY in .env)
+    #
+    # Two profiles because Planet's archive spans two distinct instruments:
+    #   * "PlanetScope-4b"  -- PS2/PSB.SD legacy 4-band Analytic SR; archive
+    #                          back to ~2016. Bands: B, G, R, NIR. Use this
+    #                          for long time series.
+    #   * "PlanetScope-8b"  -- PSB.SD 8-band Analytic SR; available from
+    #                          early 2022. Bands: CB, B, GI, G, Y, R, RE, NIR.
+    #                          Use this for modern multispectral modeling
+    #                          (matches S2's spectral coverage closely).
+    #
+    # Planet delivers each scene as a single multi-band COG + a UDM2 raster
+    # (Usable Data Mask v2: 8 bands -- clear, snow, shadow, light/heavy haze,
+    # cloud, confidence, unusable). The cloud mask uses UDM2 band 1 ("clear",
+    # 0/1): pixels with clear==0 are masked.
+    #
+    # The "planet" provider config differs in shape from the STAC providers:
+    # `asset_map` keys are logical band names; values are the 1-based band
+    # index inside the multi-band analytic asset (not a STAC asset key).
+    # ============================================================
+    "PlanetScope-4b": {
+        "default_bands": ["R", "NIR"],
+        "extra_bands":   ["udm2_clear", "udm2_shadow", "udm2_cloud"],
+        "cloud_filter":  True,
+        "ndvi":          {"red": "R", "nir": "NIR"},
+        "cloud_mask":    {"band": "udm2_clear", "kind": "udm2_clear", "flag_values": [0]},
+        "providers": {
+            "planet": {
+                "item_type":      "PSScene",
+                "instrument":     "PS2",                 # legacy 4-band
+                "product_bundle": "analytic_sr_udm2",
+                "analytic_asset": "ortho_analytic_4b_sr",
+                "udm2_asset":     "ortho_udm2",
+                # logical band name -> 1-based band index in the analytic asset
+                "asset_map": {"B": 1, "G": 2, "R": 3, "NIR": 4},
+                # logical UDM2 band -> 1-based band index in the UDM2 asset
+                "udm2_map": {
+                    "udm2_clear":       1,
+                    "udm2_snow":        2,
+                    "udm2_shadow":      3,
+                    "udm2_haze_light":  4,
+                    "udm2_haze_heavy":  5,
+                    "udm2_cloud":       6,
+                    "udm2_confidence":  7,
+                    "udm2_unusable":    8,
+                },
+            },
+        },
+    },
+
+    "PlanetScope-8b": {
+        "default_bands": ["R", "NIR"],
+        "extra_bands":   ["udm2_clear", "udm2_shadow", "udm2_cloud"],
+        "cloud_filter":  True,
+        "ndvi":          {"red": "R", "nir": "NIR"},
+        "cloud_mask":    {"band": "udm2_clear", "kind": "udm2_clear", "flag_values": [0]},
+        "providers": {
+            "planet": {
+                "item_type":      "PSScene",
+                "instrument":     "PSB.SD",              # 8-band SuperDove
+                "product_bundle": "analytic_8b_sr_udm2",
+                "analytic_asset": "ortho_analytic_8b_sr",
+                "udm2_asset":     "ortho_udm2",
+                # 8-band order: 1=Coastal Blue, 2=Blue, 3=Green I, 4=Green,
+                # 5=Yellow, 6=Red, 7=RedEdge, 8=NIR
+                "asset_map": {
+                    "CB": 1, "B": 2, "GI": 3, "G": 4,
+                    "Y":  5, "R": 6, "RE": 7, "NIR": 8,
+                },
+                "udm2_map": {
+                    "udm2_clear":       1,
+                    "udm2_snow":        2,
+                    "udm2_shadow":      3,
+                    "udm2_haze_light":  4,
+                    "udm2_haze_heavy":  5,
+                    "udm2_cloud":       6,
+                    "udm2_confidence":  7,
+                    "udm2_unusable":    8,
+                },
+            },
+        },
+    },
 }
 
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)

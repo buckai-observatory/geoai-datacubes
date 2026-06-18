@@ -44,6 +44,10 @@ EARTH_SEARCH_URL = "https://earth-search.aws.element84.com/v1/search"
 PC_STAC_URL      = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 PC_SIGN_URL      = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
 
+# Planet APIs (require PL_API_KEY)
+PL_SEARCH_URL    = "https://api.planet.com/data/v1/quick-search"
+PL_ORDERS_URL    = "https://api.planet.com/compute/ops/orders/v2"
+
 # When provider="auto", which free provider handles each mission.
 PROVIDER_AUTO = {
     "Sentinel-2":     "earthsearch",        # both work; ES has no sign step
@@ -118,6 +122,13 @@ def fetch_sentinel_data(
             max_cloud_coverage=max_cloud_coverage,
         )
 
+    if provider == "planet":
+        return fetch_planet(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            max_cloud_coverage=max_cloud_coverage,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from config import get_config_from_env
@@ -130,7 +141,7 @@ def fetch_sentinel_data(
 
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
-        f"'planetary_computer', or 'sentinelhub'."
+        f"'planetary_computer', 'planet', or 'sentinelhub'."
     )
 
 
@@ -471,6 +482,324 @@ def fetch_planetary_computer(
         url_resolver=_resolve_pc_href,
         provider_label="planetary_computer",
     )
+
+
+# ============================================================
+# planet provider (commercial; requires PL_API_KEY in .env)
+#
+# Flow: Data API quick-search picks the lowest-cloud-cover scene matching
+# AOI + time + instrument; Orders API submits a single-scene order with
+# server-side clip to the AOI; we poll until success, download the analytic
+# SR COG + UDM2 raster, reproject both onto the same UTM grid we use for
+# the other providers, and write a multi-band response.tiff that includes
+# the requested spectral bands plus the requested UDM2 bands (so cloud
+# masking in the tiler "just works").
+# ============================================================
+def _planet_auth_header():
+    """Build the Planet auth header from PL_API_KEY (or raise a clear error)."""
+    key = os.environ.get("PL_API_KEY")
+    if not key:
+        # Lazy import: only users on the Planet path need dotenv.
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            key = os.environ.get("PL_API_KEY")
+        except ImportError:
+            pass
+    if not key:
+        raise RuntimeError(
+            "PL_API_KEY not found. Put it in a .env file at the repo root "
+            "(see .env.example) or export it before calling. Get a key from "
+            "https://www.planet.com/account/#/user-settings ."
+        )
+    return {"Authorization": f"api-key {key}"}
+
+
+def _planet_quick_search(*, item_type, instrument, geometry, time_range, max_cloud):
+    """Query the Planet Data API. Returns a list of feature dicts."""
+    filters = [
+        {"type": "GeometryFilter",  "field_name": "geometry",   "config": geometry},
+        {"type": "DateRangeFilter", "field_name": "acquired",
+         "config": {"gte": f"{time_range[0]}T00:00:00Z",
+                    "lte": f"{time_range[1]}T23:59:59Z"}},
+        {"type": "RangeFilter",     "field_name": "cloud_cover",
+         "config": {"lte": float(max_cloud)}},
+        {"type": "StringInFilter",  "field_name": "instrument",
+         "config": [instrument]},
+    ]
+    body = {"item_types": [item_type],
+            "filter":     {"type": "AndFilter", "config": filters}}
+    r = requests.post(PL_SEARCH_URL, json=body, headers=_planet_auth_header(), timeout=60)
+    r.raise_for_status()
+    return r.json().get("features", [])
+
+
+def _planet_submit_order(*, item_id, item_type, product_bundle, geometry, name):
+    """POST an order with server-side clip to AOI. Returns the order_id."""
+    body = {
+        "name":     name,
+        "products": [{"item_ids": [item_id], "item_type": item_type,
+                      "product_bundle": product_bundle}],
+        "tools":    [{"clip": {"aoi": geometry}}],
+    }
+    r = requests.post(PL_ORDERS_URL, json=body,
+                      headers={**_planet_auth_header(), "Content-Type": "application/json"},
+                      timeout=60)
+    r.raise_for_status()
+    return r.json()["id"]
+
+
+def _planet_wait_for_order(order_id, *, poll_seconds=15, max_wait_seconds=3600):
+    """Poll the order until success/failure. Returns the final order dict."""
+    import time
+    url = f"{PL_ORDERS_URL}/{order_id}"
+    start = time.time()
+    last_state = None
+    while True:
+        r = requests.get(url, headers=_planet_auth_header(), timeout=30)
+        r.raise_for_status()
+        info = r.json()
+        state = info.get("state")
+        if state != last_state:
+            print(f"   order {order_id[:8]}... -> {state}")
+            last_state = state
+        if state in {"success", "partial"}:
+            return info
+        if state in {"failed", "cancelled"}:
+            raise RuntimeError(f"Planet order {order_id} ended in state {state!r}: "
+                               f"{info.get('last_message')}")
+        if time.time() - start > max_wait_seconds:
+            raise TimeoutError(
+                f"Planet order {order_id} still {state!r} after "
+                f"{max_wait_seconds}s. Try again later or raise max_wait_seconds.")
+        time.sleep(poll_seconds)
+
+
+def _planet_download_results(order_info, out_dir):
+    """Download every result file from a successful order. Returns local paths
+    grouped by suffix (e.g. {'_SR.tif': <path>, '_udm2.tif': <path>, ...})."""
+    results = order_info.get("_links", {}).get("results") or []
+    if not results:
+        raise RuntimeError("Planet order succeeded but exposed no result links.")
+    os.makedirs(out_dir, exist_ok=True)
+    by_suffix = {}
+    headers = _planet_auth_header()
+    for r_meta in results:
+        name = r_meta["name"].split("/")[-1]
+        loc  = r_meta["location"]
+        local = os.path.join(out_dir, name)
+        if not os.path.exists(local):
+            print(f"   ↓ {name}")
+            with requests.get(loc, headers=headers, stream=True, timeout=300) as resp:
+                resp.raise_for_status()
+                with open(local, "wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=1024 * 256):
+                        if chunk:
+                            fh.write(chunk)
+        by_suffix[name] = local
+    return by_suffix
+
+
+def _read_multiband_asset_to_grid(asset_path, band_indices,
+                                  dst_crs, dst_transform, dst_shape, resampling):
+    """Reproject N requested 1-based band indices from a local multi-band raster
+    onto the common output grid. Same NaN/nodata discipline as
+    ``_read_band_to_grid`` so AOI-edge nodata never smears into valid pixels.
+    Returns a list of ``(out_h, out_w)`` float32 arrays, one per index."""
+    outs = [np.full(dst_shape, np.nan, dtype=np.float32) for _ in band_indices]
+    with rasterio.open(asset_path) as src:
+        for k, bi in enumerate(band_indices):
+            rs = resampling[k] if isinstance(resampling, (list, tuple)) else resampling
+            reproject(
+                source=rasterio.band(src, bi),
+                destination=outs[k],
+                src_transform=src.transform,
+                src_crs=src.crs,
+                src_nodata=src.nodata,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                dst_nodata=float("nan"),
+                resampling=rs,
+            )
+    return outs
+
+
+def fetch_planet(
+    mission, bands, time_range, roi,
+    resolution=3, save_folder="data", max_cloud_coverage=0.10,
+    poll_seconds=15, max_wait_seconds=3600,
+):
+    """PlanetScope via the Planet Data + Orders APIs (requires PL_API_KEY).
+
+    Submits a server-side clip-to-AOI order for the single lowest-cloud-cover
+    scene matching the requested AOI / time / instrument, polls until success,
+    downloads the analytic-SR COG + UDM2 raster, and writes a multi-band
+    response.tiff on a common UTM grid -- with the same band-description
+    convention and userdata.json sidecar the rest of the pipeline expects.
+
+    ``resolution`` defaults to 3 m (PlanetScope's native ground sampling).
+    """
+    profile = get_profile(mission)
+    cfg = get_provider_config(mission, "planet")
+    asset_map = cfg["asset_map"]
+    udm2_map  = cfg["udm2_map"]
+
+    # Resolve which bands to download (user bands + mission helpers like udm2_clear)
+    final_bands = list(bands)
+    for b in profile["extra_bands"]:
+        if b not in final_bands:
+            final_bands.append(b)
+
+    # Split into spectral bands (live in analytic asset) and UDM2 bands
+    spectral = [b for b in final_bands if b in asset_map]
+    udm2     = [b for b in final_bands if b in udm2_map]
+    unknown  = [b for b in final_bands if b not in asset_map and b not in udm2_map]
+    if unknown:
+        raise ValueError(
+            f"Bands {unknown} are not valid for {mission!r}. "
+            f"Spectral: {sorted(asset_map)}. UDM2: {sorted(udm2_map)}.")
+
+    # 1) Search for matching scenes
+    lon_min, lat_min, lon_max, lat_max = roi
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[
+            [lon_min, lat_min], [lon_max, lat_min],
+            [lon_max, lat_max], [lon_min, lat_max],
+            [lon_min, lat_min],
+        ]],
+    }
+    print(f"🔎 Searching planet for PSScene/{cfg['instrument']} over {roi} "
+          f"in {time_range[0]}..{time_range[1]} with cloud<{int(max_cloud_coverage*100)}%...")
+    feats = _planet_quick_search(
+        item_type=cfg["item_type"], instrument=cfg["instrument"],
+        geometry=geometry, time_range=time_range, max_cloud=max_cloud_coverage,
+    )
+    if not feats:
+        raise RuntimeError(
+            "No PlanetScope scenes matched. Try widening the time range, "
+            "raising max_cloud_coverage, or switching instrument "
+            "(PlanetScope-4b for legacy, PlanetScope-8b for SuperDove).")
+    feats.sort(key=lambda f: f["properties"].get("cloud_cover", 1.0))
+    pick = feats[0]
+    item_id = pick["id"]
+    acquired = pick["properties"].get("acquired", "")
+    cc = pick["properties"].get("cloud_cover")
+    cc_note = f" cloud={cc*100:.1f}%" if cc is not None else ""
+    print(f"✅ Selected scene {item_id} ({acquired[:10]}){cc_note}")
+
+    # 2) Submit + poll the order
+    order_name = f"geoai-datacubes {mission} {item_id}"
+    print(f"📦 Submitting Planet order ({cfg['product_bundle']})...")
+    order_id = _planet_submit_order(
+        item_id=item_id, item_type=cfg["item_type"],
+        product_bundle=cfg["product_bundle"], geometry=geometry, name=order_name,
+    )
+    print(f"⏳ Polling order {order_id}...")
+    order_info = _planet_wait_for_order(
+        order_id, poll_seconds=poll_seconds, max_wait_seconds=max_wait_seconds)
+
+    # 3) Output directory + download
+    date_str = acquired[:10] if acquired else "unknown"
+    safe_id  = re.sub(r"[/\\:\s]", "_", item_id)
+    out_id   = f"{mission}_{date_str}_{safe_id}"
+    out_dir  = os.path.join(save_folder, out_id)
+    raw_dir  = os.path.join(out_dir, "_planet_raw")
+    files    = _planet_download_results(order_info, raw_dir)
+
+    # Find the analytic + UDM2 files among the downloaded set
+    analytic_path = None
+    udm2_path     = None
+    for name, path in files.items():
+        if cfg["analytic_asset"] in name and name.endswith(".tif"):
+            analytic_path = path
+        elif cfg["udm2_asset"] in name and name.endswith(".tif"):
+            udm2_path = path
+    if analytic_path is None:
+        raise RuntimeError(
+            f"Downloaded order does not contain a {cfg['analytic_asset']} GeoTIFF. "
+            f"Got: {sorted(files)}")
+    if udm2 and udm2_path is None:
+        raise RuntimeError(
+            f"UDM2 bands {udm2} requested but no {cfg['udm2_asset']} file "
+            f"in the order delivery. Got: {sorted(files)}")
+
+    # 4) Build the common output grid. Reproject from analytic asset's CRS to
+    #    local UTM (mirroring _fetch_via_stac so resolution stays in metres).
+    with rasterio.open(analytic_path) as src:
+        src_crs = src.crs
+    if src_crs is None:
+        raise RuntimeError("PlanetScope analytic asset has no CRS -- unexpected.")
+    if src_crs.is_geographic:
+        cx = (roi[0] + roi[2]) / 2.0
+        cy = (roi[1] + roi[3]) / 2.0
+        zone = int((cx + 180) // 6) + 1
+        epsg = (32600 if cy >= 0 else 32700) + zone
+        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
+    else:
+        dst_crs = src_crs
+    roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
+    out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
+    out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
+    dst_transform = from_bounds(*roi_proj, out_w, out_h)
+    print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+
+    # 5) Read the requested bands. Spectral bands -> bilinear; UDM2 -> nearest
+    #    (so 0/1 class codes survive resampling).
+    spec_arrays = _read_multiband_asset_to_grid(
+        analytic_path, [asset_map[b] for b in spectral],
+        dst_crs, dst_transform, (out_h, out_w),
+        resampling=Resampling.bilinear,
+    ) if spectral else []
+    udm2_arrays = _read_multiband_asset_to_grid(
+        udm2_path, [udm2_map[b] for b in udm2],
+        dst_crs, dst_transform, (out_h, out_w),
+        resampling=Resampling.nearest,
+    ) if udm2 else []
+
+    band_order = spectral + udm2
+    arrays = spec_arrays + udm2_arrays
+    stack = np.stack(arrays, axis=0) if arrays else np.empty(
+        (0, out_h, out_w), dtype=np.float32)
+
+    # 6) Validate nodata + write multi-band response.tiff with nodata=NaN
+    invalid_per_band = [(b, int(np.isnan(a).sum())) for b, a in zip(band_order, arrays)]
+    total = stack.size or 1
+    n_invalid = sum(n for _, n in invalid_per_band)
+    if n_invalid:
+        pct = 100.0 * n_invalid / total
+        per_band = ", ".join(f"{b}={n}" for b, n in invalid_per_band if n > 0)
+        print(f"⚠️  NaN pixels in output: {n_invalid}/{total} ({pct:.3f}%) -- {per_band}")
+    response_tiff = os.path.join(out_dir, "response.tiff")
+    with rasterio.open(
+        response_tiff, "w",
+        driver="GTiff", width=out_w, height=out_h, count=len(band_order),
+        dtype="float32", crs=dst_crs, transform=dst_transform,
+        compress="deflate", tiled=True,
+        nodata=float("nan"),
+    ) as dst:
+        dst.write(stack)
+        for i, b in enumerate(band_order, start=1):
+            dst.set_band_description(i, b)
+
+    # 7) Sidecar metadata
+    userdata = {
+        "satellite":       pick["properties"].get("satellite_id", "PlanetScope"),
+        "acquisitionDate": acquired,
+        "cloudCover":      cc,
+        "tileId":          item_id,
+        "provider":        "planet",
+        "collection":      cfg["item_type"],
+        "instrument":      cfg["instrument"],
+        "product_bundle":  cfg["product_bundle"],
+        "bands":           band_order,
+        "static":          False,
+        "order_id":        order_id,
+    }
+    with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
+        json.dump(userdata, fp, indent=2)
+
+    return [stack], band_order
 
 
 # ============================================================

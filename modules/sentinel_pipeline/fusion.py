@@ -41,7 +41,13 @@ from rasterio.warp import Resampling, reproject, transform_bounds
 
 # QA / classification bands MUST use nearest-neighbour resampling to preserve
 # integer class values.
-_NEAREST_BANDS = {"SCL", "BQA", "qa_pixel", "QA_PIXEL", "LULC"}
+_NEAREST_BANDS = {
+    "SCL", "BQA", "qa_pixel", "QA_PIXEL", "LULC",
+    # PlanetScope UDM2 class bands (0/1 categorical) -- preserve exact codes.
+    "udm2_clear", "udm2_snow", "udm2_shadow",
+    "udm2_haze_light", "udm2_haze_heavy", "udm2_cloud",
+    "udm2_confidence", "udm2_unusable",
+}
 
 
 def _resampling_for(band_name):
