@@ -7,6 +7,9 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 
+# YOLO pretrained weights downloaded by ultralytics into the cwd
+notebooks/yolov8n.pt
+
 # OS
 .DS_Store
 
@@ -26,6 +29,7 @@ data/
 # fresh run; never versioned.
 notebooks/_outputs/
 notebooks/_ml_outputs/
+notebooks/_outputs_obj/
 notebooks/logs/
 
 # SLURM template logs (logs/ folder created by the *.sbatch templates at submit time).
