@@ -7,9 +7,15 @@
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg?style=flat-square)](#supported-platforms)
 [![Earth Observation](https://img.shields.io/badge/focus-Earth%20Observation-2E7D32.svg?style=flat-square)](https://buckai-observatory.org)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-
-> **New here?** Click the **Open in Colab** badge above to launch the interactive tour notebook in your browser — no install, no credentials needed. It clones the repo into the Colab runtime, fetches Columbus satellite data live, and walks you through every feature with figures.
+> **New here?** Two ready-to-run paths get you started directly in Colab — no install, no credentials needed:
+>
+> - **Data acquisition & pre-processing** — the grand-tour notebook fetches live Columbus data and walks through every pipeline feature on the data side: every mission, AOI format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+>
+> - **ML / DL on a data cube** — the water-classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, with threshold tuning and a thresholded-NDWI baseline.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+>
+> Also Colab-ready: a tiny offline mini-cube ML/DL quickstart on bundled sample data ([`02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)) and a YOLO building-detection demo on NAIP ([`03_building_detection.ipynb`](notebooks/03_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all four.
 
 ---
 
@@ -49,15 +55,23 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
   from four interchangeable providers — three of them with no credentials
   needed. The default `PROVIDER = "auto"` routes each mission to its best
   free host (Element 84 Earth Search for Sentinel-2 and Copernicus DEM;
-  Microsoft Planetary Computer for Sentinel-1 RTC, Landsat, and ESA
-  WorldCover). Optional commercial PlanetScope is supported through the
+  Microsoft Planetary Computer for Sentinel-1 RTC, Landsat, ESA
+  WorldCover, NAIP, and the newer MODIS / HLS / JRC-GSW / 3DEP
+  additions). Optional commercial PlanetScope is supported through the
   Planet Orders API. The classical Sentinel Hub Process API path remains
   available for advanced use.
-- **Nine missions** are first-class: Sentinel-2 L2A, Sentinel-2 L1C,
-  Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM (GLO-30),
-  ESA WorldCover, PlanetScope 4-band, PlanetScope 8-band SuperDove,
-  and NAIP (sub-metre US aerial imagery). Per-mission band tables and
-  value ranges are documented in
+- **Fifteen missions** are first-class. The widely-used core: Sentinel-2
+  L2A and L1C, Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM,
+  ESA WorldCover, PlanetScope 4-band and 8-band SuperDove, and NAIP
+  (sub-metre US aerial imagery). The recent additions broaden the
+  package into long-archive time-series, hydrology, and US-specific
+  high-resolution terrain: MODIS Surface Reflectance and Land Surface
+  Temperature (24-year archive at 500 m / 1 km), HLS Harmonized
+  Landsat-Sentinel (30 m pre-harmonised optical), JRC Global Surface
+  Water (30 m static water occurrence), and 3DEP (LIDAR-derived US
+  DEM at 10 m). A documented Sentinel-5P TROPOMI stub covers
+  atmospheric chemistry pending NetCDF reader support. Per-mission
+  band tables, value ranges, and ML normalisation recipes are in
   [`docs/data_layers.md`](docs/data_layers.md).
 - **User-selectable band lists per mission** — each fetch takes a
   `BANDS_<mission>` list, so you ask for exactly the channels your model
@@ -91,13 +105,23 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
   DN-scale-aware Gaussian noise.
 - **STAC catalogs** can be built from any fetched / fused / tiled cube,
   so the data plays cleanly with the wider geospatial ecosystem.
-- **Pedagogical notebooks**, both Colab-ready: a *grand tour*
-  (`notebooks/00_geoai_datacubes_tour.ipynb`) walking through every
-  pipeline feature on a multi-mission Columbus AOI, and an end-to-end
-  *water classification* notebook
-  (`notebooks/01_water_classification.ipynb`) training Logistic
-  Regression, Random Forest, XGBoost, and a lightweight U-Net on a
-  fused cube against the ESA WorldCover water class.
+- **Pedagogical notebooks**, all Colab-ready:
+  - a *grand tour* (`notebooks/00_geoai_datacubes_tour.ipynb`)
+    walking through every pipeline feature on a multi-mission
+    Columbus AOI;
+  - an end-to-end *water classification* notebook
+    (`notebooks/01_water_classification.ipynb`) training Logistic
+    Regression, Random Forest, XGBoost, and a lightweight U-Net on a
+    fused cube against the ESA WorldCover water class;
+  - an offline *mini-cube ML/DL quickstart*
+    (`notebooks/02_minicube_ml_quickstart.ipynb`) for users who want
+    to skip the fetch step and train a tiny U-Net on bundled sample
+    data without any network access;
+  - a *YOLO building-detection demo*
+    (`notebooks/03_building_detection.ipynb`) — the first
+    object-detection notebook in the series, using NAIP 1 m
+    imagery and Microsoft US Building Footprints across three
+    Ohio cities.
 
 ---
 
@@ -246,7 +270,7 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ## Data providers — when to use which
 
-The same `main.py` can fetch through **four interchangeable providers**. The default is `"auto"`, which routes each mission to the best free option:
+The pipeline supports **fifteen missions** end-to-end. The full per-mission reference (bands, native resolutions, value ranges, normalisation recipes, tile-seam caveats) lives in [`docs/data_layers.md`](docs/data_layers.md); this section covers a widely-used subset and the **four interchangeable providers** that serve them. The default is `"auto"`, which routes each mission to the best free option:
 
 | | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
 |---|---|---|---|---|
@@ -257,8 +281,19 @@ The same `main.py` can fetch through **four interchangeable providers**. The def
 | **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | — | ✅ |
 | **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | — | ✅ |
 | **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — |
+| **NAIP (1 m US aerial)** | — | ✅ | — | — |
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
-| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC and Landsat (the missions earthsearch can't serve cleanly) | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, and every newer addition below | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
+
+**Newer additions** broadening the package — all served by Microsoft Planetary Computer, no alternative provider yet:
+
+- `MODIS_SR` and `MODIS_LST` — 500 m / 1 km daily-equivalent, 24-year archive; the workhorse for time-series, phenology, climate baselines.
+- `HLS_S30` and `HLS_L30` — 30 m pre-harmonised Landsat + Sentinel-2, so you don't have to harmonise yourself.
+- `JRC-GSW` — 30 m static global surface water (occurrence, seasonality, extent, transitions).
+- `3DEP` — 10 m (or 30 m) LIDAR-derived US DEM; the US-specific complement to Copernicus DEM.
+- `Sentinel-5P` — atmospheric chemistry (NO2, CO, SO2, CH4, O3, HCHO, …); **stub** only, pending NetCDF reader support.
+
+See [`docs/data_layers.md`](docs/data_layers.md) for the full bands and normalisation recipes for these.
 
 **`PROVIDER = "auto"` (the default)** wires this up for you automatically:
 
@@ -269,7 +304,10 @@ The same `main.py` can fetch through **four interchangeable providers**. The def
 | `Landsat` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
 | `Copernicus-DEM` | `earthsearch` | Both work; ES skips the sign step |
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
+| `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
+| `MODIS_SR` / `MODIS_LST` / `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in explicitly with `PROVIDER="planet"` and a key in `.env` |
+| `Sentinel-5P` | not routed (stubbed) | NetCDF / HDF5 assets — needs an `xarray`-based reader path before the dispatcher can wire it up |
 
 The output `<Mission>_full_size.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
 
@@ -448,7 +486,7 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 
 ## Try the notebooks
 
-The repo ships with **three complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
+The repo ships with **four complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
 
 ### 1. The grand tour (start here if you are new)
 
@@ -476,11 +514,26 @@ jupyter notebook notebooks/01_water_classification.ipynb
 ### 3. Offline ML/DL quickstart on bundled data
 
 [`notebooks/02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_minicube_ml_quickstart.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 Walks through **training a small U-Net (DL) and an optional KMeans (ML) baseline** on a data cube, end to end. Runs on a **bundled sample data cube** under [`notebooks/sample_data/mini_cube/`](notebooks/sample_data/mini_cube/) — no API keys, no download, no network needed — so you can launch it right after `pip install -r requirements.txt`:
 
 ```bash
 jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
+```
+
+### 4. Building detection on NAIP (object detection / YOLO)
+
+[`notebooks/03_building_detection.ipynb`](notebooks/03_building_detection.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+The first **object-detection** notebook in the series — switches the modelling problem from per-pixel labelling (notebook 01) to *one bounding box per individual building*. Uses NAIP 1 m aerial imagery (the only widely-available sub-metre free public source) and the Microsoft US Building Footprints dataset as ground truth across three Ohio cities (Columbus → train, Cincinnati → val, Cleveland → test). Trains a tiny YOLOv8n detector (~3.2 M parameters) on CPU for ~80 epochs and reports mAP@0.5, mAP@0.5–0.95, precision, and recall. Includes:
+
+- a **NAIP-vs-Sentinel-2 resolution sidebar** that motivates the resolution-vs-object-scale trade-off (a typical residential building is ~10 × 10 px at 1 m GSD but ~1 × 1 px at 10 m — useless for detection);
+- a **PlanetScope-at-3-m sidebar** discussed in prose only, because Planet's licence forbids embedding pixels in published outputs.
+
+```bash
+jupyter notebook notebooks/03_building_detection.ipynb
 ```
 
 ---
@@ -500,6 +553,7 @@ geoai-datacubes/
 │ ├── 00_geoai_datacubes_tour.ipynb # pedagogical data-pipeline tour (Colab-ready)
 │ ├── 01_water_classification.ipynb # end-to-end ML/DL training (Colab-ready)
 │ ├── 02_minicube_ml_quickstart.ipynb # offline ML/DL demo on bundled sample data
+│ ├── 03_building_detection.ipynb # NAIP + YOLO building-detection demo (Colab-ready)
 │ ├── benchmark_lulc_class.py # per-class binary benchmark CLI
 │ ├── lulc_leaderboard.md # per-class results table
 │ └── sample_data/mini_cube/ # bundled offline Zarr for the quickstart
