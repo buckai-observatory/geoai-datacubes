@@ -9,7 +9,7 @@ without anything pre-existing on your machine.
 
 ### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 The recommended first read. A guided walkthrough of every feature on
 the **data side** of the pipeline:
@@ -41,7 +41,7 @@ satellite downloads).
 
 ### 2. Water classification end-to-end — `01_water_classification.ipynb`
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 An applied ML/DL notebook that picks up where the tour notebook
 leaves off. Trains and compares **four standard classifiers** on a
@@ -91,6 +91,41 @@ The notebook resolves paths relative to the repo root, so it works
 whether you launch Jupyter from the repo root or from inside
 `notebooks/`.
 
+### 4. Building detection on NAIP — `03_building_detection.ipynb`
+
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+The first **object-detection** notebook in the series, and the
+counterpoint to notebook 01's per-pixel segmentation framing.
+Trains a tiny **YOLOv8n** detector (~3.2 M parameters, DL) on
+NAIP 1 m aerial imagery (fetched through the new `NAIP` mission
+profile on Microsoft Planetary Computer) using the
+permissively-licensed Microsoft US Building Footprints dataset
+as ground truth.
+
+Key moves:
+
+- Streams the 180 MB Ohio footprints file line-by-line so the
+  full 5.5 M polygons never have to fit in memory.
+- Walks through the polygon → axis-aligned bbox → YOLO normalised
+  `(cls, cx, cy, w, h)` conversion, with a verification panel that
+  draws the converted labels back over the tiles.
+- **Resolution-comparison sidebar** showing the same neighbourhood
+  at 1 m (NAIP) vs 10 m (Sentinel-2), with the same building
+  outlined on both panels — the textbook case for why YOLO needs
+  a few-metres-or-finer GSD when the target objects are houses.
+- Trains for 60 epochs at `imgsz=512` / `batch=4` on CPU, reports
+  mAP@0.5, mAP@0.5:0.95, precision, recall on the held-out
+  Cleveland test split, and overlays predictions vs ground truth
+  with per-box IoU annotations.
+- A PlanetScope sidebar in prose only (no pixels in the rendered
+  output) because PlanetScope licensing forbids redistribution.
+
+Cross-city split mirrors notebook 01: Columbus → train,
+Cincinnati → val, Cleveland → test. Runs end-to-end in
+~15–30 minutes on a laptop / Colab CPU, including the NAIP
+fetches and the YOLO training run.
+
 ## Other files in this folder
 
 ### `benchmark_lulc_class.py` — per-class binary benchmark CLI
@@ -139,9 +174,10 @@ Sentinel-2 tiles during early development.
 
 ## Conventions
 
-- The `_outputs/` (tour notebook scratch) and `_ml_outputs/` (water
-  classification scratch) folders are produced at runtime and
-  **gitignored** — nothing in them is versioned.
+- The `_outputs/` (tour notebook scratch), `_ml_outputs/` (water
+  classification scratch), and `_outputs_obj/` (object-detection
+  scratch) folders are produced at runtime and **gitignored** —
+  nothing in them is versioned.
 - Each notebook detects whether it's running on Colab via the
   `google.colab` import and, if so, shallow-clones the repo into
   `/content/geoai-datacubes` before importing the pipeline modules.

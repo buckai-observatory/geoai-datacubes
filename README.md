@@ -7,7 +7,7 @@
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg?style=flat-square)](#supported-platforms)
 [![Earth Observation](https://img.shields.io/badge/focus-Earth%20Observation-2E7D32.svg?style=flat-square)](https://buckai-observatory.org)
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 > **New here?** Click the **Open in Colab** badge above to launch the interactive tour notebook in your browser — no install, no credentials needed. It clones the repo into the Colab runtime, fetches Columbus satellite data live, and walks you through every feature with figures.
 
@@ -453,7 +453,7 @@ The repo ships with **three complementary notebooks** in `notebooks/`. See the [
 ### 1. The grand tour (start here if you are new)
 
 [`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 A pedagogical walkthrough of every feature on the *data* side of the pipeline — the four AOI formats, fetching from each free mission, cloud masking, NaN handling, tiling with/without overlap, the four train/val/test split strategies, multi-mission fusion, reading metadata back from a tile, augmentation, and submitting jobs to SLURM. Click the Colab badge to launch it in your browser — the first cell clones the repo and installs everything you need, no local Python required.
 
@@ -465,7 +465,7 @@ jupyter notebook notebooks/00_geoai_datacubes_tour.ipynb
 ### 2. Water classification end-to-end (ML/DL)
 
 [`notebooks/01_water_classification.ipynb`](notebooks/01_water_classification.ipynb)
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 A complete machine-learning workflow that picks up where the tour leaves off. Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM + ESA WorldCover for **Columbus, Cincinnati, and Cleveland**; converts each city's cube to Zarr; then trains and compares four standard classifiers (Logistic Regression, Random Forest, XGBoost, and a lightweight U-Net) on a binary water-vs-rest target. Includes threshold tuning on validation, a thresholded-NDWI sanity-check baseline, multi-modal fusion comparison (S2 vs S2 + S1 vs S2 + S1 + DEM with DEM preprocessed into city-relative elevation + gradient magnitude), per-city test breakdown, and a collapsible explainer for the binary-classification metrics (TP/FP/FN/TN, precision, recall, F1, IoU, AUC).
 

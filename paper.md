@@ -15,7 +15,7 @@ tags:
   - geospatial
 authors:
   - name: Joachim Moortgat
-    orcid: 0000-0000-0000-0000        # TODO: replace with real ORCID
+    orcid: 0000-0002-0259-3597
     affiliation: '1, 2'
 affiliations:
   - name: 'School of Earth Sciences, The Ohio State University, Columbus, OH, USA'
