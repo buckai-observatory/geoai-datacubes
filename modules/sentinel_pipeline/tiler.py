@@ -435,7 +435,7 @@ def tile_geotiff(
             stride = tile_size
             if width % tile_size != 0 or height % tile_size != 0:
                 stride = math.floor(tile_size - ((width % tile_size) / math.ceil(width / tile_size)))
-            print(f"🧮 Using automatic stride = {stride}")
+            print(f"Using automatic stride = {stride}")
 
         # --- Padding logic ---
         if add_padding:
@@ -443,9 +443,9 @@ def tile_geotiff(
             pad_y = (tile_size - height % tile_size) % tile_size
             width += pad_x
             height += pad_y
-            print(f"🧱 Padding applied: ({pad_x}px, {pad_y}px)")
+            print(f"Padding applied: ({pad_x}px, {pad_y}px)")
         else:
-            print("🚫 Padding disabled — last partial tiles may be dropped.")
+            print("Padding disabled — last partial tiles may be dropped.")
 
         # --- Train/Val/Test folders if applicable ---
         if output_mode in ("geotiff", "tensor"):
@@ -465,13 +465,13 @@ def tile_geotiff(
         if split_block_size_tiles is None:
             split_block_size_tiles = _auto_block_size_tiles(n_x_tiles, n_y_tiles)
             if split_method == "block":
-                print(f"📏 Auto-picked split_block_size_tiles={split_block_size_tiles} "
+                print(f"Auto-picked split_block_size_tiles={split_block_size_tiles}"
                       f"(grid is {n_x_tiles}x{n_y_tiles} tiles)")
         if split_stripe_size_tiles is None:
             split_stripe_size_tiles = _auto_stripe_size_tiles(
                 n_x_tiles, n_y_tiles, split_stripe_axis)
             if split_method == "stripes":
-                print(f"📏 Auto-picked split_stripe_size_tiles={split_stripe_size_tiles} "
+                print(f"Auto-picked split_stripe_size_tiles={split_stripe_size_tiles}"
                       f"(grid is {n_x_tiles}x{n_y_tiles} tiles, "
                       f"{split_stripe_axis} stripes)")
 
@@ -484,7 +484,7 @@ def tile_geotiff(
             cloud_bands = _find_cloud_bands(list(src.descriptions or []))
             if cloud_bands:
                 names = ", ".join(b[2] for b in cloud_bands)
-                print(f"☁️  cloud_mask=True: NaN-ing cloudy pixels using {names}")
+                print(f"cloud_mask=True: NaN-ing cloudy pixels using {names}")
             else:
                 print("⚠️  cloud_mask=True but no SCL / BQA / QA_PIXEL band found in input.")
 
@@ -623,7 +623,7 @@ def tile_geotiff(
                 tile_id += 1
 
     print(f"✅ Done. Metadata saved → {metadata_path}")
-    print(f"🧩 Total tiles created: {tile_id} | split_method={split_method!r} | "
+    print(f"Total tiles created: {tile_id} | split_method={split_method!r} |"
           f"nan_handling={nan_handling!r}")
     parts = [f"train={counts['train']}", f"val={counts['val']}", f"test={counts['test']}"]
     if counts["skipped_region"]: parts.append(f"skipped(regions)={counts['skipped_region']}")
@@ -632,7 +632,7 @@ def tile_geotiff(
     if counts["masked_tiles"]:   parts.append(f"masked={counts['masked_tiles']}")
     if counts["cloud_masked_pixels"]:
         parts.append(f"cloud_masked_px={counts['cloud_masked_pixels']}")
-    print("   " + "  ".join(parts))
+    print("" + "  ".join(parts))
 
     # --- Empty-bucket warning ---
     # If the user asked for a non-zero share of any bucket and that bucket ended
@@ -648,21 +648,21 @@ def tile_geotiff(
         print(f"⚠️  Empty bucket(s): {', '.join(empty)} — got 0 tiles even though you "
               f"asked for >0 share of each.")
         if split_method == "block":
-            print(f"    The {n_x_tiles}x{n_y_tiles}-tile grid is too small to hold "
+            print(f"The {n_x_tiles}x{n_y_tiles}-tile grid is too small to hold"
                   f"{(n_x_tiles*n_y_tiles)//(split_block_size_tiles**2)+1} distinct "
                   f"blocks of size {split_block_size_tiles}. Try one of:")
-            print(f"      - lower split_block_size_tiles "
+            print(f"- lower split_block_size_tiles"
                   f"(currently {split_block_size_tiles}; 1 ≡ pure random)")
-            print(f"      - use split_method='random' or 'regions'")
-            print(f"      - widen the AOI, or shrink tile_size")
+            print(f"- use split_method='random' or 'regions'")
+            print(f"- widen the AOI, or shrink tile_size")
         elif split_method == "stripes":
-            print(f"    Try lowering split_stripe_size_tiles "
+            print(f"Try lowering split_stripe_size_tiles"
                   f"(currently {split_stripe_size_tiles}) or use split_method='random'.")
         elif split_method == "regions":
-            print(f"    Check that split_regions['{empty[0]}'] overlaps the scene "
+            print(f"Check that split_regions['{empty[0]}'] overlaps the scene "
                   f"-- 'regions' silently drops tiles whose centres lie outside every region.")
         elif split_method == "random":
-            print(f"    With only {tile_id} tile(s), random sampling can miss a bucket "
+            print(f"With only {tile_id} tile(s), random sampling can miss a bucket"
                   f"by chance. Either fetch a larger AOI or accept the imbalance.")
 
 

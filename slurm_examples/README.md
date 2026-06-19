@@ -33,24 +33,24 @@ ls logs/
 ## Before you submit — checklist
 
 1. **Edit the SBATCH header placeholders.** Every line that says
-   `YOUR_ALLOCATION`, `YOUR_PARTITION`, or `YOUR_EMAIL` must be updated.
-   Your sysadmin (or the HPC Handbook) will tell you which values to use.
+ `YOUR_ALLOCATION`, `YOUR_PARTITION`, or `YOUR_EMAIL` must be updated.
+ Your sysadmin (or the HPC Handbook) will tell you which values to use.
 2. **Activate your conda env correctly.** Both scripts default to
-   `source activate geoai-datacubes`, which works once `conda` is on
-   `$PATH`. Many clusters require either `module load miniconda3` first
-   or sourcing `conda.sh` from a custom miniconda install. The commented
-   lines in each script show both patterns — uncomment the one you need.
+ `source activate geoai-datacubes`, which works once `conda` is on
+ `$PATH`. Many clusters require either `module load miniconda3` first
+ or sourcing `conda.sh` from a custom miniconda install. The commented
+ lines in each script show both patterns — uncomment the one you need.
 3. **Edit `main.py`'s `USER INPUT` block** (for `single_fetch.sbatch`) or
-   the `TASKS=(...)` array and `# ---- EDIT ME ----` block
-   (for `array_fetch.sbatch`) to describe the data you want.
+ the `TASKS=(...)` array and `# ---- EDIT ME ----` block
+ (for `array_fetch.sbatch`) to describe the data you want.
 4. **Resources.** Both templates request modest resources (1 task,
-   2 CPUs, 8 GB RAM, 30 min walltime). That's enough for a few-km AOI;
-   for an entire MGRS tile you may need 16–32 GB RAM and an hour. Tune
-   as needed.
+ 2 CPUs, 8 GB RAM, 30 min walltime). That's enough for a few-km AOI;
+ for an entire MGRS tile you may need 16–32 GB RAM and an hour. Tune
+ as needed.
 5. **Outputs.** Each job writes its data cubes into `./data/` (relative
-   to the script's submit directory). Make sure that directory is on a
-   filesystem with enough free space — satellite TIFFs are a few hundred
-   MB each.
+ to the script's submit directory). Make sure that directory is on a
+ filesystem with enough free space — satellite TIFFs are a few hundred
+ MB each.
 
 ## A few SLURM commands you'll want
 

@@ -29,7 +29,7 @@ See the top-level [README](../README.md) for a side-by-side comparison and how t
 
 ## How to Run the Pipeline
 
-### 1️⃣ Download this Folder
+### Download this Folder
 
 If you only need the Sentinel module, clone the repository and navigate to it:
 
@@ -40,13 +40,13 @@ cd geoai-datacubes/modules/sentinel_pipeline
 
 ---
 
-### 2️⃣ Set Up the Environment
+### Set Up the Environment
 
-Create and activate a new environment:
+Create and activate a new environment with [mamba](https://github.com/conda-forge/miniforge) (or substitute `conda` if you prefer):
 
 ```bash
-conda create -n sentinel_env python=3.11 -y
-conda activate sentinel_env
+mamba create -n sentinel_env python=3.11 -y
+mamba activate sentinel_env
 ```
 
 Install dependencies:
@@ -57,7 +57,7 @@ pip install sentinelhub rasterio numpy matplotlib tqdm zarr lmdb pystac
 
 ---
 
-### 3️⃣ (Default path) Run the pipeline — no credentials needed
+### (Default path) Run the pipeline — no credentials needed
 
 The default `PROVIDER = "earthsearch"` reads public COGs anonymously. Just run:
 
@@ -65,19 +65,19 @@ The default `PROVIDER = "earthsearch"` reads public COGs anonymously. Just run:
 python main.py
 ```
 
-### 3️⃣′ (Optional) Configure Sentinel Hub credentials
+### ′ (Optional) Configure Sentinel Hub credentials
 
 Only required if you set `PROVIDER = "sentinelhub"`. Copy the template at the
 repo root and paste your OAuth client:
 
 ```bash
-cp ../../.env.example ../../.env   # then open ../../.env and edit it
+cp ../../.env.example ../../.env # then open ../../.env and edit it
 ```
 
 ```bash
 SH_CLIENT_ID=your-client-id
 SH_CLIENT_SECRET=your-client-secret
-SH_INSTANCE_ID=            # optional
+SH_INSTANCE_ID= # optional
 ```
 
 Get free credentials at the Copernicus Data Space Ecosystem
@@ -86,7 +86,7 @@ Get free credentials at the Copernicus Data Space Ecosystem
 
 ---
 
-### 4️⃣ Fetch Imagery
+### Fetch Imagery
 
 Run the main script to download Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1, or Landsat 8-9:
 
@@ -97,17 +97,17 @@ python main.py
 Inside `main.py`, you can set:
 
 ```python
-PROVIDER = "auto"             # picks the best free provider per mission (ES for S2, PC for S1/Landsat)
-MISSION  = "Sentinel-2"       # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
-BANDS    = None                # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
+PROVIDER = "auto" # picks the best free provider per mission (ES for S2, PC for S1/Landsat)
+MISSION = "Sentinel-2" # "Sentinel-2", "Sentinel-2-L1C", "Sentinel-1", or "Landsat"
+BANDS = None # None = mission default (B04/B08 for S2, B04/B05 for Landsat)
 
 # AOI is flexible -- bbox / shapefile / centre+miles / S2-tile-around-point.
 # Default: a ~5-mile square around OSU in Columbus, OH.
 AOI = {"bbox": [-83.077, 39.964, -82.983, 40.036]}
-ROI = resolve_aoi(AOI)        # resolved bbox the rest of the pipeline uses
+ROI = resolve_aoi(AOI) # resolved bbox the rest of the pipeline uses
 
 TIME_RANGE = ("2024-06-15", "2024-06-20")
-MAX_CLOUD  = 0.10
+MAX_CLOUD = 0.10
 ```
 
 See the [top-level README](../README.md#defining-the-aoi) for the other three AOI formats (shapefile, square-around-a-point, native Sentinel-2 tile).
@@ -119,7 +119,7 @@ See the [top-level README](../README.md#defining-the-aoi) for the other three AO
 
 ---
 
-### 5️⃣ Compute NDVI & Apply Cloud Filtering
+### Compute NDVI & Apply Cloud Filtering
 
 To visualize vegetation and verify cloud removal:
 
@@ -129,13 +129,13 @@ python visualize_cloud_mask.py
 
 This generates:
 - `ndvi_cloud_comparison.png`
-  - Left: Original NDVI
-  - Middle: Cloud Mask (from SCL)
-  - Right: NDVI after removing clouds
+ - Left: Original NDVI
+ - Middle: Cloud Mask (from SCL)
+ - Right: NDVI after removing clouds
 
 ---
 
-### 6️⃣ Tiling & Augmentation
+### Tiling & Augmentation
 
 Split large scenes into small patches for ML training:
 
@@ -150,7 +150,7 @@ Features:
 
 ---
 
-### 7️⃣ Export for AI/ML Training
+### Export for AI/ML Training
 
 Export datasets for efficient GPU loading:
 
@@ -170,7 +170,7 @@ Both formats are optimized for PyTorch and TensorFlow pipelines.
 
 ---
 
-### 8️⃣ Load Tiles for Model Training
+### Load Tiles for Model Training
 
 To test your tile loading and augmentation:
 
@@ -182,10 +182,10 @@ Example output:
 
 ```
 Batch 1:
-  Image batch shape: torch.Size([4, 3, 256, 256])
-  x_offsets: tensor([...])
-  y_offsets: tensor([...])
-  augmentations: ['flipH', 'rot90', 'none', ...]
+ Image batch shape: torch.Size([4, 3, 256, 256])
+ x_offsets: tensor([...])
+ y_offsets: tensor([...])
+ augmentations: ['flipH', 'rot90', 'none', ...]
 ✅ DataLoader test complete.
 ```
 
@@ -238,17 +238,17 @@ This will:
 
 ```
 data/
- ├── <Mission>_full_size.tiff             # Original Sentinel image
- ├── ndvi_map.png              # NDVI visualization
- ├── radar_composite.png       # Sentinel-1 composite
- ├── tiles_v2/                 # Training/validation/test tiles
- ├── train_lmdb/               # LMDB dataset
- ├── train.zarr/               # Zarr dataset
- └── tiles_metadata.csv        # Metadata file
+ ├── <Mission>_full_size.tiff # Original Sentinel image
+ ├── ndvi_map.png # NDVI visualization
+ ├── radar_composite.png # Sentinel-1 composite
+ ├── tiles_v2/ # Training/validation/test tiles
+ ├── train_lmdb/ # LMDB dataset
+ ├── train.zarr/ # Zarr dataset
+ └── tiles_metadata.csv # Metadata file
 ```
 
 ---
 
-## 👩‍💻 Author
+## ‍ Author
 
 **Bhavika Jain**

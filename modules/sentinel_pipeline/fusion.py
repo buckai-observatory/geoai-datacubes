@@ -139,7 +139,7 @@ def fuse_response_tiffs(
     out_h = max(1, int(np.ceil((ymax - ymin) / resolution)))
     dst_transform = from_bounds(xmin, ymin, xmax, ymax, out_w, out_h)
 
-    print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs} "
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}"
           f"({bbox_mode} of {len(norm)} inputs)")
 
     # Read each requested band, reproject, and stack
@@ -187,7 +187,7 @@ def fuse_response_tiffs(
                 )
                 fused_bands.append(out)
                 fused_names.append(f"{mission_tag}_{bname}")
-                print(f"  ↓ {f'{mission_tag}_{bname}':<32s}  {rs.name:<8s}")
+                print(f"↓ {f'{mission_tag}_{bname}':<32s}  {rs.name:<8s}")
 
     stack = np.stack(fused_bands, axis=0)   # (C, H, W)
 
@@ -234,7 +234,7 @@ def fuse_response_tiffs(
             "sources":         [p for p, _ in norm],
         }, fp, indent=2)
 
-    print(f"✅ Fused cube: {len(fused_names)} bands, {out_h}x{out_w} px, "
+    print(f"✅ Fused cube: {len(fused_names)} bands, {out_h}x{out_w} px,"
           f"saved to {output_path}")
 
     return {

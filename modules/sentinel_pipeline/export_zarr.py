@@ -64,7 +64,7 @@ def export_to_zarr(tiles_dir, output_path, metadata_csv=None):
         json.dump(meta_records, fp, indent=2)
 
     print(f"✅ Done: {count} tiles saved → {output_path}")
-    print(f"🗂️ Metadata exported → {meta_json_path}")
+    print(f"Metadata exported → {meta_json_path}")
 
 
 if __name__ == "__main__":
@@ -80,5 +80,5 @@ if __name__ == "__main__":
             print(f"⚠️ Skipping {split} — folder not found: {tiles_dir}")
             continue
 
-        print(f"\n📦 Exporting {split} tiles → {output_path}")
+        print(f"\n Exporting {split} tiles → {output_path}")
         export_to_zarr(tiles_dir, output_path, metadata_csv)

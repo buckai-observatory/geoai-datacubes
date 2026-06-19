@@ -69,7 +69,7 @@ if BANDS is None:
 # --------------------------------------------------------------------
 # ---- FETCH DATA ----
 # --------------------------------------------------------------------
-print(f"🛰️ Fetching {MISSION} via {PROVIDER} for {TIME_RANGE} ...")
+print(f"Fetching {MISSION} via {PROVIDER} for {TIME_RANGE} ...")
 data, final_bands = fetch_sentinel_data(
     MISSION, BANDS, TIME_RANGE, ROI,
     resolution=RESOLUTION, max_cloud_coverage=MAX_CLOUD,
@@ -88,7 +88,7 @@ if not tiff_files:
 
 tiff_path = max(tiff_files, key=os.path.getmtime)
 latest_dir = os.path.dirname(tiff_path)
-print(f"📂 Using image from: {tiff_path}")
+print(f"Using image from: {tiff_path}")
 
 with rasterio.open(tiff_path) as src:
     img = np.transpose(src.read(), (1, 2, 0))  # (H, W, bands)
@@ -112,7 +112,7 @@ if profile["ndvi"] is not None:
     if spec is not None and spec["band"] in band_index:
         mask = cloud_mask(img[:, :, band_index[spec["band"]]], spec)
         ndvi[mask] = np.nan
-        print(f"☁️ Masked {int(mask.sum())} cloud/shadow pixels using {spec['band']}.")
+        print(f"Masked {int(mask.sum())} cloud/shadow pixels using {spec['band']}.")
     else:
         print("ℹ️ No cloud-mask band available — NDVI left unmasked.")
 
@@ -143,11 +143,11 @@ meta_file = os.path.join(latest_dir, "userdata.json")
 if os.path.exists(meta_file):
     with open(meta_file) as f:
         meta = json.load(f)
-    print("\n🛰️ Metadata Summary:")
-    print(f"  Satellite: {meta.get('satellite', 'N/A')}")
-    print(f"  Date: {meta.get('acquisitionDate', 'N/A')}")
-    print(f"  Cloud Cover: {meta.get('cloudCover', 'N/A')}%")
-    print(f"  Tile ID: {meta.get('tileId', 'N/A')}")
+    print("\n Metadata Summary:")
+    print(f"Satellite: {meta.get('satellite', 'N/A')}")
+    print(f"Date: {meta.get('acquisitionDate', 'N/A')}")
+    print(f"Cloud Cover: {meta.get('cloudCover', 'N/A')}%")
+    print(f"Tile ID: {meta.get('tileId', 'N/A')}")
 else:
     print("⚠️ No metadata file found for this scene.")
 

@@ -25,7 +25,7 @@ def read_tiff(path):
 
 def export_to_lmdb(tiles_dir, lmdb_path, map_size_gb=10):
     """Convert all .tif tiles in tiles_dir to LMDB."""
-    print(f"📦 Exporting from {tiles_dir} → {lmdb_path}")
+    print(f"Exporting from {tiles_dir} → {lmdb_path}")
     all_files = []
     for root, _, files in os.walk(tiles_dir):
         for f in files:

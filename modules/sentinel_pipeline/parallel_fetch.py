@@ -55,7 +55,7 @@ def download_task(roi, time_range):
     return {"roi": roi, "time_range": time_range, "status": "✅", "time": round(elapsed, 2)}
 
 if __name__ == "__main__":
-    print(f"🚀 Starting parallel {MISSION} downloads...")
+    print(f"Starting parallel {MISSION} downloads...")
     futures = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for roi, time_range in zip(ROIS, TIME_RANGES):

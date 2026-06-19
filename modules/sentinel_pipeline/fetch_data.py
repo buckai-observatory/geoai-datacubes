@@ -398,7 +398,7 @@ def _fetch_via_stac(
                 cc_filter["gte"] = min_cloud_coverage * 100
             body["query"] = {"eo:cloud_cover": cc_filter}
 
-    print(f"🔎 Searching {provider_label} for '{collection}' over {roi}"
+    print(f"Searching {provider_label} for'{collection}' over {roi}"
           + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
           + ((f" with cloud {int(min_cloud_coverage*100)}%-{int(max_cloud_coverage*100)}%" if min_cloud_coverage > 0 else f" with cloud<{int(max_cloud_coverage*100)}%") if profile["cloud_filter"] else "")
           + " ...")
@@ -425,7 +425,7 @@ def _fetch_via_stac(
         ]
         representative = items[0]
         latest_dt = max((it["properties"].get("datetime") or "") for it in items)
-        print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI "
+        print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI"
               f"(latest version {latest_dt[:10] or 'n/a'})")
     else:
         # Rank scenes by AOI coverage (and cloud cover when relevant), then
@@ -453,10 +453,10 @@ def _fetch_via_stac(
         print(f"✅ Selected scene {scene_id_print} ({scene_dt_print[:10]}){cc_note}{ov_note}")
         if len(items) > 1:
             extra_overlap = sum(it["_aoi_overlap"] for it in items[1:])
-            print(f"📦 Mosaicking {len(items)} same-day scenes "
+            print(f"Mosaicking {len(items)} same-day scenes"
                   f"(+{int(min(100, extra_overlap * 100))}% additional bbox coverage)")
         elif ov < 0.8:
-            print(f"⚠️  Best matching scene covers only {ov*100:.0f}% of the AOI "
+            print(f"⚠️  Best matching scene covers only {ov*100:.0f}% of the AOI"
                   f"and no other same-day scenes overlap. Widen the time range "
                   f"or accept the partial coverage.")
 
@@ -507,14 +507,14 @@ def _fetch_via_stac(
         zone = int((cx + 180) // 6) + 1
         epsg = (32600 if cy >= 0 else 32700) + zone
         dst_crs = rasterio.crs.CRS.from_epsg(epsg)
-        print(f"   (source CRS is geographic; output in {dst_crs} so resolution={resolution} m is correct)")
+        print(f"(source CRS is geographic; output in {dst_crs} so resolution={resolution} m is correct)")
     else:
         dst_crs = src_crs
     roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
     out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
     out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
     dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
 
     # 5. Pull each requested band into the output grid. Whenever the
     #    selection step picked more than one item we mosaic them -- static
@@ -525,13 +525,13 @@ def _fetch_via_stac(
         rs = _resampling_for_band(b, profile["cloud_mask"])
         if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_map[b]]["href"]) for it in items]
-            print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  "
+            print(f"↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}"
                   f"mosaic of {len(urls)} scene(s)")
             stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform, (out_h, out_w), rs)
         else:
             url = url_resolver(representative["assets"][asset_map[b]]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            print(f"  ↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
+            print(f"↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
             stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
 
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
@@ -707,7 +707,7 @@ def _planet_wait_for_order(order_id, *, poll_seconds=15, max_wait_seconds=3600):
         info = r.json()
         state = info.get("state")
         if state != last_state:
-            print(f"   order {order_id[:8]}... -> {state}")
+            print(f"order {order_id[:8]}... -> {state}")
             last_state = state
         if state in {"success", "partial"}:
             return info
@@ -735,7 +735,7 @@ def _planet_download_results(order_info, out_dir):
         loc  = r_meta["location"]
         local = os.path.join(out_dir, name)
         if not os.path.exists(local):
-            print(f"   ↓ {name}")
+            print(f"↓ {name}")
             with requests.get(loc, headers=headers, stream=True, timeout=300) as resp:
                 resp.raise_for_status()
                 with open(local, "wb") as fh:
@@ -821,7 +821,7 @@ def fetch_planet(
     }
     inst_label = (",".join(cfg['instrument']) if isinstance(cfg['instrument'], (list, tuple))
                   else cfg['instrument'])
-    print(f"🔎 Searching planet for PSScene/[{inst_label}] over {roi} "
+    print(f"Searching planet for PSScene/[{inst_label}] over {roi}"
           f"in {time_range[0]}..{time_range[1]} with cloud<{int(max_cloud_coverage*100)}%...")
     feats = _planet_quick_search(
         item_type=cfg["item_type"], instrument=cfg["instrument"],
@@ -863,12 +863,12 @@ def fetch_planet(
                 prior = json.load(fp)
             prior_id = prior.get("order_id")
             if prior_id:
-                print(f"♻️  Found prior order marker for this scene -> resuming {prior_id}")
+                print(f"Found prior order marker for this scene -> resuming {prior_id}")
                 order_id, resumed = prior_id, True
         except (OSError, ValueError):
             pass  # corrupt marker -> fall through to fresh submit
     if order_id is None:
-        print(f"📦 Submitting Planet order ({cfg['product_bundle']})...")
+        print(f"Submitting Planet order ({cfg['product_bundle']})...")
         order_id = _planet_submit_order(
             item_id=item_id, item_type=cfg["item_type"],
             product_bundle=cfg["product_bundle"], geometry=geometry, name=order_name,
@@ -941,7 +941,7 @@ def fetch_planet(
     out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
     out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
     dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"🗺️ Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
 
     # 5) Read the requested bands. Spectral bands -> bilinear; UDM2 -> nearest
     #    (so 0/1 class codes survive resampling).
@@ -1058,10 +1058,10 @@ def fetch_sentinelhub(
     if profile["cloud_filter"]:
         best_scene = min(results, key=lambda x: x["properties"].get("eo:cloud_cover", 100))
         cc = best_scene["properties"].get("eo:cloud_cover")
-        print(f"☁️ Selected scene {best_scene['id']} with {cc}% cloud cover")
+        print(f"Selected scene {best_scene['id']} with {cc}% cloud cover")
     else:
         best_scene = results[0]
-        print(f"🛰️ Selected scene {best_scene['id']}")
+        print(f"Selected scene {best_scene['id']}")
 
     scene_time = best_scene["properties"]["datetime"]
     request = SentinelHubRequest(

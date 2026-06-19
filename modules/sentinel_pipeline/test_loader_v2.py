@@ -26,16 +26,16 @@ loader, dataset = create_dataloader(
     img_size=256
 )
 
-print(f"📊 Total tiles found: {len(dataset)}")
-print(f"📂 Tile directory: {train_dir}")
+print(f"Total tiles found: {len(dataset)}")
+print(f"Tile directory: {train_dir}")
 
 # === LOOP OVER BATCHES ===
 for batch_idx, (images, meta) in enumerate(loader):
-    print(f"\n🖼️ Batch {batch_idx+1}:")
-    print(f"  Image batch shape: {images.shape}")  # (B, C, H, W)
-    print(f"  x_offsets: {meta['x_offset'][:4]}")
-    print(f"  y_offsets: {meta['y_offset'][:4]}")
-    print(f"  augmentations: {meta['augmentation'][:4]}")
+    print(f"\n Batch {batch_idx+1}:")
+    print(f"Image batch shape: {images.shape}")  # (B, C, H, W)
+    print(f"x_offsets: {meta['x_offset'][:4]}")
+    print(f"y_offsets: {meta['y_offset'][:4]}")
+    print(f"augmentations: {meta['augmentation'][:4]}")
     
     # Show one example tile
     import matplotlib.pyplot as plt

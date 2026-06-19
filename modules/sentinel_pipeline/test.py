@@ -9,7 +9,7 @@ print(f"Total tiles: {len(dataset)}")
 
 # Example batch
 for batch_idx, (images, meta) in enumerate(loader):
-    print(f"🖼️ Batch {batch_idx+1}: {images.shape}")
+    print(f"Batch {batch_idx+1}: {images.shape}")
     print(f"Metadata keys: {list(meta.keys())}")
     print(f"x_offsets: {meta['x_offset'][:4]}")
     print(f"augmentations: {meta['augmentation'][:4]}")
