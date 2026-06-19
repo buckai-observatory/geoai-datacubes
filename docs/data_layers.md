@@ -1,10 +1,11 @@
 # Data layers reference
 
-The `geoai-datacubes` pipeline supports eight satellite or ancillary
-missions; each exposes a set of named bands that the user can pick freely
-from a `BANDS_<mission>` configuration list. This document is the canonical
-reference for what each band is, at what resolution, in what value range,
-and how it tends to be normalised for machine learning.
+The `geoai-datacubes` pipeline supports **fifteen** satellite or ancillary
+missions (plus a documented Sentinel-5P TROPOMI stub); each exposes a set
+of named bands that the user can pick freely from a `BANDS_<mission>`
+configuration list. This document is the canonical reference for what
+each band is, at what resolution, in what value range, and how it tends
+to be normalised for machine learning.
 
 It is written to be useful both as a teaching reference (what does
 `Sentinel-2_B11` actually measure?) and as a practical look-up (what scale
@@ -31,6 +32,13 @@ the host and the credentialing path.
 | PlanetScope 4-band (PSScene legacy) | `PlanetScope-4b` | ~3 m | up to daily | B, G, R, NIR + 8 UDM2 layers | 0–10000 DN |
 | PlanetScope 8-band (SuperDove) | `PlanetScope-8b` | ~3 m | up to daily | 8 spectral + 8 UDM2 layers | 0–10000 DN |
 | NAIP (US aerial imagery) | `NAIP` | ~1 m (0.6 m for newer) | every 2–3 years per state | R, G, B, NIR | 0–255 (uint8) |
+| MODIS Surface Reflectance | `MODIS_SR` | 500 m | 8-day composite | 7 spectral + QC + STATE + DOY | int16, ρ × 10000 |
+| MODIS Land Surface Temperature | `MODIS_LST` | 1 km | daily (Terra) + daily (Aqua) | LST_Day, LST_Night + QC + Emis | int16, Kelvin × 50 |
+| HLS Harmonized Sentinel-2 | `HLS_S30` | 30 m | 5 days (S2A+B) | 13 spectral + Fmask + angles | 0–10000 DN |
+| HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
+| JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | occurrence, change, seasonality, recurrence, transitions, extent | per-band (see below) |
+| USGS 3D Elevation Program | `3DEP` | 10 m / 1 m | static | DEM | metres above NAVD88 |
+| Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 
 ---
 
@@ -355,6 +363,250 @@ Issue #6 for the planned building-footprint demo.
 
 ---
 
+## MODIS Surface Reflectance (MOD09A1 / MYD09A1)
+
+**Mission name:** `MODIS_SR`
+**Spatial resolution:** 500 m (native sinusoidal grid; the pipeline
+reprojects to the user-set output CRS at fetch time).
+**Temporal revisit:** 8-day composite — each pixel is the
+highest-quality observation from the underlying daily passes within
+an 8-day window. Effectively daily-cadence in input but stable
+8-day output. Archive runs from 2000 (Terra) and 2002 (Aqua) to
+present.
+**Provider:** Microsoft Planetary Computer, collection
+`modis-09A1-061`.
+
+| Band (pipeline) | Wavelength (nm) | Native resolution (m) | Description |
+|---|---|---|---|
+| B01 | 620–670 | 500 | Red |
+| B02 | 841–876 | 500 | NIR (broad) |
+| B03 | 459–479 | 500 | Blue |
+| B04 | 545–565 | 500 | Green |
+| B05 | 1230–1250 | 500 | NIR2 |
+| B06 | 1628–1652 | 500 | SWIR1 |
+| B07 | 2105–2155 | 500 | SWIR2 |
+| QC | — | 500 | QC bits (packed-bit integer; reliability flags) |
+| STATE | — | 500 | State flags (cloud, cirrus, snow, fire) |
+| DOY | — | 500 | Day-of-year of the chosen composite observation |
+
+**Value range:** int16 with scale factor 0.0001, so a DN of 5000
+corresponds to surface reflectance ρ = 0.50. Fill value is −28672.
+
+**Normalisation for ML:** `x * 0.0001` then `clip(0, 1)` — same
+shape as Sentinel-2 just with a smaller scale factor.
+
+**Known limitation — sinusoidal tile seams:** each STAC item is one
+MODIS sinusoidal tile. An AOI that straddles a seam (e.g. the
+Columbus OH 10-mile box crosses h11v04 / h11v05) will see large
+NaN holes in the returned array because the single-scene fetcher
+reads only one tile per date. The fetcher emits a loud runtime
+warning when the NaN fraction exceeds 25%. Cross-tile mosaicking
+(similar to the JRC-GSW / 3DEP path) is tracked in
+[GitHub Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10).
+
+**Why this matters for downstream tasks:** MODIS is the longest
+near-daily continuously-calibrated optical archive available — the
+default choice for phenology, drought, vegetation-trend, and
+climate-baseline work over multi-year windows. Sentinel-2's
+5-day cadence is too coarse and its 2015-start too short for many
+of these applications.
+
+---
+
+## MODIS Land Surface Temperature (MOD11A1 / MYD11A1)
+
+**Mission name:** `MODIS_LST`
+**Spatial resolution:** 1 km.
+**Temporal revisit:** daily — one MOD11A1 from Terra at ~10:30 LT
+and one MYD11A1 from Aqua at ~13:30 LT per day. Archive runs from
+2000 (Terra) / 2002 (Aqua) to present.
+**Provider:** Microsoft Planetary Computer, collection
+`modis-11A1-061`.
+
+| Band (pipeline) | Native resolution (m) | Description |
+|---|---|---|
+| LST_Day | 1000 | Daytime land surface temperature |
+| LST_Night | 1000 | Night-time land surface temperature |
+| QC_Day | 1000 | Per-pixel quality bits, daytime |
+| QC_Night | 1000 | Per-pixel quality bits, night-time |
+| Emis_31 | 1000 | Band 31 emissivity (10.78–11.28 μm) |
+| Emis_32 | 1000 | Band 32 emissivity (11.77–12.27 μm) |
+
+**Value range:** int16 scaled by 0.02 to Kelvin. A DN of 15000
+corresponds to LST = 300 K = 26.85 °C. Fill value is 0.
+
+**Normalisation for ML:** `x * 0.02` to recover Kelvin; subtract
+273.15 if you prefer °C; z-score against the training distribution
+for gradient-based models.
+
+**Same tile-seam caveat as `MODIS_SR`** — see above.
+
+**Why this matters for downstream tasks:** the canonical input for
+urban-heat-island work, evapotranspiration retrievals, drought
+indices (TVDI / VTCI), fire-risk forecasting, and any climatology
+that needs surface temperature rather than air temperature.
+
+---
+
+## HLS — Harmonized Landsat Sentinel-2 (NASA)
+
+**Mission names:** `HLS_S30` (Sentinel-2 leg) and `HLS_L30`
+(Landsat 8/9 leg).
+**Spatial resolution:** 30 m for both legs (S2's 10 m and 20 m
+bands have been resampled by NASA to 30 m so the two legs share a
+grid).
+**Temporal revisit:** 5 days from `HLS_S30` (Sentinel-2 A+B), 16
+days per satellite from `HLS_L30` (8 days for L8 + L9 combined).
+Combined: roughly 2–3 days at most latitudes.
+**Provider:** Microsoft Planetary Computer, collections `hls2-s30`
+and `hls2-l30`.
+**Why HLS exists:** NASA applies atmospheric correction, BRDF
+normalisation, and band-pass adjustment across Landsat and
+Sentinel-2 so that the surface-reflectance values from both
+missions are directly comparable. For users who would otherwise
+spend a week harmonising Landsat C2 L2 and Sentinel-2 L2A
+themselves, HLS is the easier path.
+
+| Band (pipeline) | Wavelength (nm) | Description | S30? | L30? |
+|---|---|---|---|---|
+| B01 | 443 | Coastal aerosol | ✅ | ✅ |
+| B02 | 482 | Blue | ✅ | ✅ |
+| B03 | 561 | Green | ✅ | ✅ |
+| B04 | 655 | Red | ✅ | ✅ |
+| B05 | 705 (S2) / 865 (L8) | Red-edge (S2) or NIR (L8) | ✅ | ✅ |
+| B06 | 740 (S2) / 1609 (L8) | Red-edge (S2) or SWIR1 (L8) | ✅ | ✅ |
+| B07 | 783 (S2) / 2201 (L8) | Red-edge (S2) or SWIR2 (L8) | ✅ | ✅ |
+| B08 | 842 | Broad NIR (S2 only) | ✅ | ❌ |
+| B8A | 865 | Narrow NIR (S2 only) | ✅ | ❌ |
+| B11 | 1610 | SWIR1 (S2 only) | ✅ | ❌ |
+| B12 | 2190 | SWIR2 (S2 only) | ✅ | ❌ |
+| B09 | 945 | Water-vapour band (S2) / cirrus (L8) | ✅ | ✅ |
+| B10 | 1375 (S2) / 10895 (L8) | Cirrus (S2) / Thermal (L8) | ✅ | ✅ |
+| Fmask | — | QA mask (packed bits: cloud, cloud shadow, snow, water) | ✅ | ✅ |
+| SAA / SZA / VAA / VZA | — | Solar / view angles (degrees × 100) | ✅ | ✅ |
+
+**Value range:** spectral bands carry surface reflectance scaled by
+10000 — identical convention to Sentinel-2 L2A.
+
+**Fmask QA bits** (packed into 8-bit integer): bit 0 = cirrus,
+bit 1 = cloud, bit 2 = adjacent cloud, bit 3 = cloud shadow,
+bit 4 = snow/ice, bit 5 = water. The `fetch_sentinel_data` cloud
+mask defaults to masking bits 1, 2, 3, 4, 5.
+
+**Normalisation for ML:** `x / 10000.0` then `clip(0, 1)` — same as
+Sentinel-2 L2A. The whole point of HLS is that this same recipe
+works across both legs.
+
+**Why this matters for downstream tasks:** mixing Landsat and
+Sentinel-2 reflectance values from the raw missions requires
+atmospheric correction differences, viewing-angle adjustments, and
+band-bandwidth interpolation. HLS does all of that. If you want
+the densest possible 30 m cloud-free time series and don't need
+sub-30 m resolution, HLS is the right entry point.
+
+---
+
+## JRC Global Surface Water (Pekel et al., 2016)
+
+**Mission name:** `JRC-GSW`
+**Spatial resolution:** 30 m.
+**Temporal revisit:** **static** — a single synthesised layer
+covering 1984–2021, derived from the full Landsat record.
+**Provider:** Microsoft Planetary Computer, collection `jrc-gsw`.
+
+| Band (pipeline) | Type | Range | Description |
+|---|---|---|---|
+| occurrence | continuous | 0–100 % | Long-term frequency that the pixel was classified as water |
+| change | continuous | −100 to +100 % | Change in occurrence between two epochs (1984–1999 vs 2000–2021) |
+| seasonality | continuous | 0–12 months | Average number of months per year a pixel is water |
+| recurrence | continuous | 0–100 % | Fraction of years that a pixel was at least seasonally water |
+| transitions | **categorical** | 1–10 | Class IDs for permanent / seasonal / ephemeral water transition types |
+| extent | **categorical** | 0 / 1 / 2 | 0 = land, 1 = water, 2 = not observed |
+
+**Value range:** as in the table above. Use the categorical
+classification of `transitions` and `extent` only with
+nearest-neighbour resampling — the pipeline does this
+automatically.
+
+**Normalisation for ML:**
+- `occurrence`, `seasonality`, `recurrence`: divide by 100 (or 12)
+  to put on [0, 1]; treat as continuous.
+- `change`: divide by 100; treat as continuous; centred at 0.
+- `transitions`, `extent`: **do not normalise** — treat as
+  categorical inputs (embedding or one-hot).
+
+**Why this matters for downstream tasks:** the highest-quality
+public surface-water ground-truth. Pairs naturally with ESA
+WorldCover as a label source for water-vs-non-water classification
+work (see notebook 01) and as a static feature layer for any task
+where "is this pixel ever water?" is informative.
+
+---
+
+## USGS 3D Elevation Program (3DEP)
+
+**Mission name:** `3DEP`
+**Spatial resolution:** 10 m (1/3 arc-second seamless DEM) and 1 m
+(LIDAR-derived where coverage exists). The PC `3dep-seamless`
+collection stores both in the same place; item IDs ending in `-13`
+are the 10 m product, `-1` the 1 m. The current fetcher does not
+distinguish between them — it takes whatever the bbox-dedup leaves;
+if you specifically need 1 m, filter the time/ID range
+yourself.
+**Temporal revisit:** **static** (the 10 m mosaic is updated
+periodically as new LIDAR campaigns complete).
+**Coverage:** US only.
+**Provider:** Microsoft Planetary Computer, collection
+`3dep-seamless`.
+
+| Band (pipeline) | Description |
+|---|---|
+| DEM | Elevation in metres above NAVD88 |
+
+**Value range:** typically −80 to +4400 m across the continental
+US; Alaska reaches +6190 m at Denali.
+
+**Normalisation for ML:** per-AOI mean-subtraction works well —
+the same recipe used in notebook 01's `DEM_relative` feature.
+Optionally add a `DEM_gradient_mag` channel (gradient magnitude)
+for slope-sensitive tasks.
+
+**Why this matters for downstream tasks:** 3DEP is the
+US-specific complement to Copernicus DEM. Where Copernicus DEM
+gives you ~30 m global coverage derived from TanDEM-X radar,
+3DEP gives you LIDAR-derived terrain at 10 m and 1 m within the
+US. Use 3DEP for any US-only task where building-scale terrain
+matters (flood modelling, hydrology, urban canyon analysis); use
+Copernicus DEM elsewhere or when you need a globally consistent
+DEM.
+
+---
+
+## Sentinel-5P TROPOMI *(stub only — not yet fetchable)*
+
+**Mission name:** `Sentinel-5P`
+**Status:** profile exists in `missions.py` for documentation, but
+the mission is **not** registered in `PROVIDER_AUTO` and cannot be
+fetched via the current pipeline.
+**Why stubbed:** Microsoft Planetary Computer serves the
+Sentinel-5P L2 products as NetCDF / HDF5 (`application/x-netcdf`),
+not as Cloud-Optimised GeoTIFFs. The existing fetcher reads only
+COGs via `rasterio + /vsicurl/`; supporting Sentinel-5P would
+require an xarray-based code path with `netCDF4` or `h5netcdf`,
+which is a deliberate future addition rather than a bug.
+**Catalogued gases:** `NO2` (urban pollution / traffic), `CO`
+(combustion / wildfire), `SO2` (volcanic / industrial),
+`CH4` (methane plumes), `O3` (stratospheric column), `HCHO`
+(VOC proxy), `AER_AI` (aerosol index), `AER_LH` (aerosol layer
+height), `CLOUD`.
+**Native resolution:** ~5.5 km × 3.5 km (since August 2019).
+
+When NetCDF reader support lands, the natural first user is
+methane-plume detection over the US shale basins or urban-NO2
+work over major metros.
+
+---
+
 ## Practical normalisation recipes (cheat sheet)
 
 | Mission | Recipe |
@@ -367,12 +619,64 @@ Issue #6 for the planned building-footprint demo.
 | ESA WorldCover | do not normalise; use as label or as embedded categorical input |
 | PlanetScope 4-band / 8-band | `x / 10000.0` then `clip(0, 1)` |
 | NAIP | `x / 255.0` (standard 8-bit RGB+NIR) |
+| MODIS_SR | `x * 0.0001` then `clip(0, 1)` (reflectance scale 1/10000) |
+| MODIS_LST | `x * 0.02` to recover Kelvin; subtract 273.15 for °C; z-score for ML |
+| HLS_S30 / HLS_L30 | `x / 10000.0` then `clip(0, 1)` (same as Sentinel-2) |
+| JRC-GSW (continuous bands) | divide by 100 (or 12 for `seasonality`); leave `transitions` / `extent` categorical |
+| 3DEP | per-AOI mean-subtract; optionally add gradient magnitude as a second channel (same recipe as Copernicus DEM) |
 
 For tree-based models (Random Forest, XGBoost) the normalisation
 question is mostly moot — they are invariant to monotonic per-feature
 transforms. For CNNs, RNNs, and any gradient-based model, applying the
 recipes above before the first weighted layer prevents the largest-DN
 bands from dominating the early gradients.
+
+---
+
+## Sources considered but not currently included
+
+A short note on what is **not** in the table above, and why. Tracked
+work for each category is linked.
+
+### Second-tier free public rasters (planned)
+
+VIIRS, GOES-R ABI, CHIRPS, ERA5 / ERA5-Land, ESA CCI Land Cover,
+JAXA ALOS PALSAR, MERIT DEM / MERIT Hydro, PACE OCI, Dynamic World —
+all free, all gridded, all integrable with the existing STAC + COG
+pipeline. They open up time-series climate, atmospheric chemistry,
+forest-biomass, and near-real-time land-cover workflows. Tracked in
+[Issue #7](https://github.com/buckai-observatory/geoai-datacubes/issues/7).
+
+### Raster-shaped LIDAR / altimetry products (planned)
+
+The Level-3 / Level-4 gridded products from GEDI (canopy / biomass),
+ICESat-2 (ice elevation), and NISAR-when-it-launches are already
+raster-shaped and slot cleanly into the static-mosaic pattern used by
+ESA WorldCover and JRC Global Surface Water. Raw waveform / point
+cloud products (raw GEDI shots, ICESat-2 ATL03 photons, NISAR L1) are
+out of scope — they need a different data model and are better served
+by dedicated packages (`gedipy`, `icepyx`). Tracked in
+[Issue #8](https://github.com/buckai-observatory/geoai-datacubes/issues/8).
+
+### High-resolution commercial optical (mostly not free)
+
+NAIP is the only free public sub-metre optical source with continental
+breadth, and it is US-only. Finer commercial sources — SPOT (1.5 m),
+WorldView / GeoEye (0.3–0.5 m), Pléiades / Pléiades Neo (0.3–0.5 m),
+SkySat / Planet (0.5 m), Airbus OneAtlas — have limited free-access
+paths (GEOSUD, NASA CSDA, ESA Third Party Mission) but redistribution
+restrictions make them awkward to bundle into a permissively-licensed
+research package. Free country-level public ortho programmes exist
+(UK Ordnance Survey Open 25 cm, German state ortho 20–40 cm, Norway's
+*Norge i bilder* 4–25 cm, Dutch PDOK 25 cm, swisstopo SWISSIMAGE
+10 cm, IGN BD ORTHO 20 cm, …) but they are heterogeneous in bands,
+licences, and APIs, so a uniform STAC-driven adapter is non-trivial.
+
+A more productive research direction may be **cross-mission
+super-resolution**: training models on paired (country-level
+high-res ↔ Sentinel-2) chips and applying the trained model to the
+free global Sentinel-2 archive. Discussion at
+[Discussion #9](https://github.com/buckai-observatory/geoai-datacubes/discussions/9).
 
 ---
 
