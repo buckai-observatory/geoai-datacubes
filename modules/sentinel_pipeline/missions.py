@@ -482,11 +482,19 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
-    # USGS 3D Elevation Program ("3DEP") -- 10 m (1/3 arc-sec) and 1 m
-    # seamless DEMs over the continental United States. PC collection
-    # "3dep-seamless". Static. Same single-band shape as Copernicus DEM,
-    # but US-only and higher resolution. PC stores both resolutions in the
-    # same collection; the 10 m product uses item IDs ending in "-13".
+    # USGS 3D Elevation Program ("3DEP") seamless DEM mosaic over the
+    # continental United States. PC collection "3dep-seamless". Static.
+    # Single-band shape, mirrors Copernicus DEM but US-only.
+    #
+    # The collection holds two resolutions at the same bbox:
+    #   * 1/3 arc-second (~10 m), item IDs ending in "-13"  -- preferred
+    #   * 1 arc-second  (~30 m), item IDs ending in "-1"    -- fallback
+    # The fetcher's static-mosaic dedup applies a resolution preference
+    # filter so the 1/3 arc-second variant always wins when both are
+    # available for the same tile (see _fetch_via_stac).
+    #
+    # The separate 1 m LIDAR-derived product lives in a different PC
+    # collection ("3dep-lidar-dem") and is not wired in here yet.
     # ============================================================
     "3DEP": {
         "default_bands": ["DEM"],

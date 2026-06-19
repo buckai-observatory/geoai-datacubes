@@ -469,6 +469,16 @@ def _fetch_via_stac(
         groups = defaultdict(list)
         for it in items:
             groups[tuple(round(x, 4) for x in it["bbox"])].append(it)
+        # Resolution preference for collections that ship multiple resolutions
+        # at the same bbox. 3DEP-seamless stores 1/3 arc-second (~10 m, item
+        # IDs ending in "-13") alongside 1 arc-second (~30 m, "-1") for the
+        # same tile; without this filter the most-recent-datetime sort below
+        # picks whichever happens to have been updated last, which is the
+        # wrong dimension. Drop the coarser variant whenever the finer one
+        # is also present.
+        for k, g in list(groups.items()):
+            if any(it.get("id", "").endswith("-13") for it in g):
+                groups[k] = [it for it in g if not it.get("id", "").endswith("-1")]
         items = [
             sorted(g, key=lambda x: x["properties"].get("datetime") or "", reverse=True)[0]
             for g in groups.values()

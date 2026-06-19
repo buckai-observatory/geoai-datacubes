@@ -37,7 +37,7 @@ the host and the credentialing path.
 | HLS Harmonized Sentinel-2 | `HLS_S30` | 30 m | 5 days (S2A+B) | 13 spectral + Fmask + angles | 0–10000 DN |
 | HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
 | JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | occurrence, change, seasonality, recurrence, transitions, extent | per-band (see below) |
-| USGS 3D Elevation Program | `3DEP` | 10 m / 1 m | static | DEM | metres above NAVD88 |
+| USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 
 ---
@@ -546,16 +546,17 @@ where "is this pixel ever water?" is informative.
 ## USGS 3D Elevation Program (3DEP)
 
 **Mission name:** `3DEP`
-**Spatial resolution:** 10 m (1/3 arc-second seamless DEM) and 1 m
-(LIDAR-derived where coverage exists). The PC `3dep-seamless`
-collection stores both in the same place; item IDs ending in `-13`
-are the 10 m product, `-1` the 1 m. The current fetcher does not
-distinguish between them — it takes whatever the bbox-dedup leaves;
-if you specifically need 1 m, filter the time/ID range
-yourself.
-**Temporal revisit:** **static** (the 10 m mosaic is updated
-periodically as new LIDAR campaigns complete).
-**Coverage:** US only.
+**Spatial resolution:** 10 m (1/3 arc-second; item IDs ending in
+`-13`) or 30 m (1 arc-second; ending in `-1`). The PC
+`3dep-seamless` collection stores both at the same bbox; the
+fetcher applies a resolution preference so the 10 m variant always
+wins when both are available for the same tile. The separate 1 m
+LIDAR-derived product lives in `3dep-lidar-dem` (a different PC
+collection) and is not yet wired in here.
+**Temporal revisit:** **static** (the seamless mosaic is updated
+periodically as new LIDAR / IfSAR campaigns complete).
+**Coverage:** continental US, Hawaii, Alaska (Alaska coverage uses
+IfSAR rather than LIDAR for the high north).
 **Provider:** Microsoft Planetary Computer, collection
 `3dep-seamless`.
 
@@ -574,11 +575,13 @@ for slope-sensitive tasks.
 **Why this matters for downstream tasks:** 3DEP is the
 US-specific complement to Copernicus DEM. Where Copernicus DEM
 gives you ~30 m global coverage derived from TanDEM-X radar,
-3DEP gives you LIDAR-derived terrain at 10 m and 1 m within the
-US. Use 3DEP for any US-only task where building-scale terrain
-matters (flood modelling, hydrology, urban canyon analysis); use
-Copernicus DEM elsewhere or when you need a globally consistent
-DEM.
+3DEP gives you 10 m (or 30 m where 10 m is unavailable)
+LIDAR/IfSAR-derived terrain within the US, typically at much
+higher vertical accuracy than the global radar product. Use 3DEP
+for any US-only task where stream-network or built-environment
+terrain matters (flood modelling, hydrology, urban canyon
+analysis); use Copernicus DEM elsewhere or when you need a
+globally consistent DEM.
 
 ---
 
