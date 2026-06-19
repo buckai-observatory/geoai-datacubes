@@ -53,10 +53,11 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
   WorldCover). Optional commercial PlanetScope is supported through the
   Planet Orders API. The classical Sentinel Hub Process API path remains
   available for advanced use.
-- **Eight missions** are first-class: Sentinel-2 L2A, Sentinel-2 L1C,
+- **Nine missions** are first-class: Sentinel-2 L2A, Sentinel-2 L1C,
   Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM (GLO-30),
-  ESA WorldCover, PlanetScope 4-band, and PlanetScope 8-band SuperDove.
-  Per-mission band tables and value ranges are documented in
+  ESA WorldCover, PlanetScope 4-band, PlanetScope 8-band SuperDove,
+  and NAIP (sub-metre US aerial imagery). Per-mission band tables and
+  value ranges are documented in
   [`docs/data_layers.md`](docs/data_layers.md).
 - **User-selectable band lists per mission** — each fetch takes a
   `BANDS_<mission>` list, so you ask for exactly the channels your model
@@ -114,6 +115,7 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 | **ESA WorldCover** | `ESA-WorldCover` | 10 m global land-cover (static, 2020 + 2021) | planetary_computer ✅ | Static layer. Latest version (2021 v200) is selected per geographic tile. Nearest-neighbour resampling preserves class IDs. |
 | **PlanetScope (legacy 4-band)** | `PlanetScope-4b` | Optical surface reflectance, ~3 m | planet ✅ | PS2/PSB.SD analytic SR (B/G/R/NIR), UDM2 cloud/shadow/haze masking, NDVI, tiling, export. Archive back to ~2016. Commercial — requires `PL_API_KEY` in `.env`. |
 | **PlanetScope (8-band SuperDove)** | `PlanetScope-8b` | Optical surface reflectance, ~3 m | planet ✅ | PSB.SD analytic 8b SR (Coastal Blue, B, Green I, G, Yellow, R, RedEdge, NIR), UDM2 masking, NDVI, tiling, export. Archive from early 2022. Commercial — requires `PL_API_KEY` in `.env`. |
+| **NAIP (US aerial imagery)** | `NAIP` | Optical aerial, **~1 m (0.6 m for newer)** | planetary_computer ✅ | USDA National Agriculture Imagery Program. RGB + NIR. Public domain. Conterminous US only. Each state re-flown every 2–3 years. Highest-resolution public-domain mission in this list; the recommended path for object-detection workflows where ~1 m pixels matter (see [`docs/data_layers.md`](docs/data_layers.md) for value ranges and Issue [#6](https://github.com/buckai-observatory/geoai-datacubes/issues/6) for a planned building-footprint demo). |
 
 > Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.
 

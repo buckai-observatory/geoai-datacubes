@@ -281,6 +281,42 @@ MISSION_PROFILES = {
             },
         },
     },
+
+    # ============================================================
+    # NAIP -- National Agriculture Imagery Program (sub-metre aerial
+    # imagery, US-only). Run by the USDA Farm Service Agency. Public
+    # domain. Currently 0.6 m at nadir for newer acquisitions, 1.0 m
+    # for older state collections. Acquired every 2-3 years per state
+    # during the growing season.
+    #
+    # Microsoft Planetary Computer's NAIP collection delivers each
+    # scene as ONE multi-band Cloud-Optimized GeoTIFF carrying Red /
+    # Green / Blue / NIR in bands 1-4 (newer 4-band product). The
+    # legacy 3-band product (pre-2009 acquisitions in some states)
+    # only carries R / G / B.
+    #
+    # asset_map values here are (asset_key, 1-based band_index) tuples
+    # rather than plain asset keys -- _fetch_via_stac understands this
+    # multi-band-per-asset shape.
+    # ============================================================
+    "NAIP": {
+        "default_bands": ["R", "G", "B", "NIR"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          {"red": "R", "nir": "NIR"},
+        "cloud_mask":    None,
+        "providers": {
+            "planetary_computer": {
+                "collection": "naip",
+                "asset_map": {
+                    "R":   ("image", 1),
+                    "G":   ("image", 2),
+                    "B":   ("image", 3),
+                    "NIR": ("image", 4),
+                },
+            },
+        },
+    },
 }
 
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)

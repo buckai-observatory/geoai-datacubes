@@ -56,6 +56,7 @@ PROVIDER_AUTO = {
     "Landsat":        "planetary_computer", # ES bucket is requester-pays
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
+    "NAIP":           "planetary_computer", # PC only; US aerial imagery
 }
 
 
@@ -254,8 +255,14 @@ def _resampling_for_band(band_name, cloud_mask_spec):
     return Resampling.bilinear
 
 
-def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling):
+def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
+                       band_index=1):
     """Open a COG via /vsicurl from a ready-to-use URL and reproject one band.
+
+    ``band_index`` (1-based) selects which band of the COG to read. Defaults
+    to 1 for products that store one band per asset (Sentinel-2, Landsat,
+    DEM, WorldCover); set higher for multi-band-per-asset products such as
+    NAIP, whose 4-band COG carries Red / Green / Blue / NIR in bands 1-4.
 
     Nodata handling (critical -- prevents zero-smearing at source edges):
 
@@ -272,7 +279,7 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling)
         # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
         src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
         reproject(
-            source=rasterio.band(src, 1),
+            source=rasterio.band(src, band_index),
             destination=out,
             src_transform=src.transform,
             src_crs=src_crs,
@@ -285,15 +292,27 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling)
     return out
 
 
-def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling):
+def _resolve_band_mapping(mapping):
+    """asset_map values may be either a string (asset key) or a
+    ``(asset_key, band_index)`` tuple. Returns ``(asset_key, band_index)``."""
+    if isinstance(mapping, (tuple, list)):
+        return mapping[0], int(mapping[1])
+    return mapping, 1
+
+
+def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling,
+                         band_index=1):
     """Mosaic multiple tessellated COG tiles into a single output grid.
 
-    Each source is reprojected into a NaN-initialised temp array; only the
-    pixels that came back as valid (not NaN) are composited into the output.
-    Source nodata is propagated so resampling never smears 0s across tile
-    boundaries. NaN is preserved -- callers are expected to declare
-    ``nodata=NaN`` on the output GeoTIFF so the rest of the pipeline (tiler,
-    fusion) treats those pixels correctly.
+    ``band_index`` (1-based) selects which band of each tile to read; used
+    for multi-band-per-asset products like NAIP where every COG carries
+    R/G/B/NIR in bands 1-4. Each source is reprojected into a NaN-
+    initialised temp array; only the pixels that came back as valid (not
+    NaN) are composited into the output. Source nodata is propagated so
+    resampling never smears 0s across tile boundaries. NaN is preserved
+    -- callers are expected to declare ``nodata=NaN`` on the output
+    GeoTIFF so the rest of the pipeline (tiler, fusion) treats those
+    pixels correctly.
     """
     out = np.full(dst_shape, np.nan, dtype=np.float32)
     for url in asset_urls:
@@ -301,7 +320,7 @@ def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampli
         with rasterio.open(f"/vsicurl/{url}") as src:
             src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
             reproject(
-                source=rasterio.band(src, 1),
+                source=rasterio.band(src, band_index),
                 destination=tmp,
                 src_transform=src.transform,
                 src_crs=src_crs,
@@ -462,7 +481,8 @@ def _fetch_via_stac(
 
     # Validate requested bands are in the representative item's assets
     scene_assets = set(representative["assets"].keys())
-    not_in_scene = [b for b in final_bands if asset_map[b] not in scene_assets]
+    not_in_scene = [b for b in final_bands
+                    if _resolve_band_mapping(asset_map[b])[0] not in scene_assets]
     if not_in_scene:
         raise RuntimeError(
             f"Requested bands {not_in_scene} not present in the scene's assets. "
@@ -493,7 +513,8 @@ def _fetch_via_stac(
     #    ``resolution`` is in metres but the source CRS uses degrees, so
     #    we project to the local UTM zone covering the ROI centre so the
     #    meter-based resolution makes sense.
-    first_url = url_resolver(representative["assets"][asset_map[final_bands[0]]]["href"])
+    _first_key, _ = _resolve_band_mapping(asset_map[final_bands[0]])
+    first_url = url_resolver(representative["assets"][_first_key]["href"])
     with rasterio.open(f"/vsicurl/{first_url}") as src:
         src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
     if src_crs is None:
@@ -523,16 +544,22 @@ def _fetch_via_stac(
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
     for i, b in enumerate(final_bands):
         rs = _resampling_for_band(b, profile["cloud_mask"])
+        asset_key, band_index = _resolve_band_mapping(asset_map[b])
+        label = f"{asset_key}[band{band_index}]" if band_index != 1 else asset_key
         if len(items) > 1:
-            urls = [url_resolver(it["assets"][asset_map[b]]["href"]) for it in items]
-            print(f"↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}"
+            urls = [url_resolver(it["assets"][asset_key]["href"]) for it in items]
+            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}"
                   f"mosaic of {len(urls)} scene(s)")
-            stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform, (out_h, out_w), rs)
+            stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
+                                              (out_h, out_w), rs,
+                                              band_index=band_index)
         else:
-            url = url_resolver(representative["assets"][asset_map[b]]["href"])
+            url = url_resolver(representative["assets"][asset_key]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            print(f"↓ {b:>5}  ({asset_map[b]:>10})  {rs.name:<8}  {leaf}")
-            stack[i] = _read_band_to_grid(url, dst_crs, dst_transform, (out_h, out_w), rs)
+            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
+            stack[i] = _read_band_to_grid(url, dst_crs, dst_transform,
+                                            (out_h, out_w), rs,
+                                            band_index=band_index)
 
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which

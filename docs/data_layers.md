@@ -30,6 +30,7 @@ the host and the credentialing path.
 | ESA WorldCover | `ESA-WorldCover` | 10 m | static, two epochs (2020 v100, 2021 v200) | LULC | integer class IDs in {10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100} |
 | PlanetScope 4-band (PSScene legacy) | `PlanetScope-4b` | ~3 m | up to daily | B, G, R, NIR + 8 UDM2 layers | 0–10000 DN |
 | PlanetScope 8-band (SuperDove) | `PlanetScope-8b` | ~3 m | up to daily | 8 spectral + 8 UDM2 layers | 0–10000 DN |
+| NAIP (US aerial imagery) | `NAIP` | ~1 m (0.6 m for newer) | every 2–3 years per state | R, G, B, NIR | 0–255 (uint8) |
 
 ---
 
@@ -308,6 +309,52 @@ Sentinel-2). UDM2 layers are 0 / 1.
 
 ---
 
+## NAIP (National Agriculture Imagery Program)
+
+**Mission name:** `NAIP`
+**Source:** USDA Farm Service Agency, distributed at no cost as
+public-domain US federal imagery and mirrored on Microsoft Planetary
+Computer.
+**Spatial resolution:** ~1 m for older state collections (2009–2016
+era); **0.6 m** at nadir for newer acquisitions (2018 onward). Far
+higher than any of the satellite missions in this table.
+**Temporal coverage:** each state is flown every 2–3 years, during the
+agricultural growing season (typically April–October depending on
+latitude). Coverage is conterminous US only (no Alaska / Hawaii / US
+territories).
+**Sensor:** airborne digital frame camera (Leica ADS-100 / UltraCam
+Eagle, depending on contractor). RGB+NIR for the modern 4-band
+product. Some early state collections (pre-2009) are 3-band RGB only.
+
+| Band | Description |
+|---|---|
+| R | Red |
+| G | Green |
+| B | Blue |
+| NIR | Near-infrared |
+
+**Value range:** unsigned 8-bit integer (0–255) per channel, stored
+inside a **single multi-band COG** per scene (rather than one COG per
+band as for Sentinel-2 or Landsat). The pipeline's `asset_map` for
+NAIP uses `(asset_key, band_index)` tuples to reach into this
+multi-band asset; users do not need to interact with that detail.
+
+**Normalisation for ML:** divide by 255.0; clip to [0, 1]. Treat just
+like a regular 8-bit RGB+NIR image.
+
+**Why this matters for downstream tasks:** NAIP's sub-metre to 1 m
+ground sampling distance is the only public-domain source in this
+table that is **high-resolution enough for individual-object
+detection** — a typical residential building is ~10×10 pixels at 1 m
+GSD, comfortably above the ~16×16 pixel floor that detectors like
+YOLO require for reliable performance. Sentinel-2 at 10 m puts the
+same building at ~1×1 pixel and is therefore not useful for
+building-scale object detection. NAIP is the recommended primary
+imagery for any US-only object-detection demonstration; see GitHub
+Issue #6 for the planned building-footprint demo.
+
+---
+
 ## Practical normalisation recipes (cheat sheet)
 
 | Mission | Recipe |
@@ -319,6 +366,7 @@ Sentinel-2). UDM2 layers are 0 / 1.
 | Copernicus DEM | per-AOI mean-subtract; optionally add gradient magnitude as a second channel |
 | ESA WorldCover | do not normalise; use as label or as embedded categorical input |
 | PlanetScope 4-band / 8-band | `x / 10000.0` then `clip(0, 1)` |
+| NAIP | `x / 255.0` (standard 8-bit RGB+NIR) |
 
 For tree-based models (Random Forest, XGBoost) the normalisation
 question is mostly moot — they are invariant to monotonic per-feature
