@@ -1,28 +1,149 @@
-# Notebooks
+# `notebooks/`
 
-Example notebooks for working with the AI-ready satellite **data cubes** produced by
-this repo's pipeline (`modules/sentinel_pipeline`).
+This folder holds the **pedagogical Jupyter notebooks** that ship with
+`geoai-datacubes`. Each notebook is self-contained — Colab installs its
+own dependencies, fetches the imagery it needs, and runs end-to-end
+without anything pre-existing on your machine.
 
-## [`example_datacube_ml.ipynb`](example_datacube_ml.ipynb)
+## The three notebooks
 
-A beginner-friendly, **runnable** walkthrough of machine learning on a data cube. It:
+### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
-1. Opens a sample Zarr data cube that **ships with this repo** (no download or
-   credentials needed) and lists its tiles, shape, channels, and metadata.
-2. Visualizes the imagery and computes **NDVI** (a vegetation index) with matplotlib.
-3. Trains a tiny **PyTorch mini-U-Net** end-to-end **on CPU in under a couple of
-   minutes** to predict a vegetation mask (using NDVI-thresholded *pseudo-labels*,
-   so no manual labelling is required).
-4. Shows how to point the notebook at **your own** cube and where to go next
-   (classification, segmentation, foundation-model fine-tuning). An optional KMeans
-   land-cover clustering cell is included too.
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
 
-### Run it
+The recommended first read. A guided walkthrough of every feature on
+the **data side** of the pipeline:
+
+- All four AOI formats (`bbox`, `shapefile`, `center+side_miles`,
+  `tile_around`) with side-by-side maps on an OpenStreetMap basemap.
+- Fetching one mission at a time over the same Columbus AOI:
+  Sentinel-2 L2A, Sentinel-2 L1C, Sentinel-1 RTC, Landsat C2 L2,
+  Copernicus DEM (with a hillshade + iso-elevation visualisation),
+  and ESA WorldCover.
+- The commercial PlanetScope path, guarded behind a `PL_API_KEY`
+  check so the notebook still runs without it.
+- Cloud masking close-up (S2 SCL, Landsat BQA, PlanetScope UDM2).
+- The three NaN-handling modes (`drop`, `interpolate`, `mask`) with
+  before/after panels on the same tile.
+- Tiling with and without overlap, with an alternating-colour grid
+  overlay so the overlap pattern is visually obvious.
+- All four train / val / test split strategies on a single
+  basemap, including the cross-city `regions` demo with separate AOIs
+  in Columbus, Cincinnati, and Cleveland.
+- Multi-mission **fusion** into a single 12-band cube.
+- Reading the embedded GeoTIFF tag metadata back out of a written tile.
+- Augmentation (flips, rotations, DN-scale-aware Gaussian noise).
+- The two on-disk export formats (Zarr and LMDB) and the SLURM
+  templates that wrap `main.py` for HPC.
+
+Runs end-to-end on a laptop CPU in ~3–5 minutes (most of that is the
+satellite downloads).
+
+### 2. Water classification end-to-end — `01_water_classification.ipynb`
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb)
+
+An applied ML/DL notebook that picks up where the tour notebook
+leaves off. Trains and compares **four standard classifiers** on a
+binary water-vs-rest target derived from ESA WorldCover class 80
+(permanent water bodies):
+
+- Logistic regression (baseline, with threshold tuning on val).
+- Random Forest (scikit-learn).
+- XGBoost.
+- A lightweight U-Net (~1M parameters, 128 × 128 tiles, 30 epochs
+  with cosine-annealed Adam and best-val checkpointing).
+
+Trained on a mixed-city dataset (Columbus + Cincinnati + Cleveland)
+using the `LazyTileDataset` on-the-fly tile sampler so no tile files
+are ever written to disk. Demonstrates threshold tuning, NDWI as a
+sanity-check baseline, per-city test breakdown, multi-modal feature
+fusion (S2 vs S2 + S1 vs S2 + S1 + DEM, with DEM preprocessed into
+city-relative elevation + gradient magnitude), and a collapsible
+explainer for TP / FP / FN / TN / precision / recall / F1 / IoU /
+AUC.
+
+Runs end-to-end in ~20–25 minutes on a laptop CPU.
+
+### 3. Minimal ML quickstart on bundled data — `02_minicube_ml_quickstart.ipynb`
+
+A small, **fully offline** ML demo. Trains a tiny PyTorch U-Net on a
+mini Zarr cube that **ships with the repo** (under
+[`sample_data/mini_cube/`](sample_data/mini_cube/)) — no fetching,
+no credentials, no cloud, no waiting. Useful when:
+
+- You just want to see what a trained model on this kind of data
+  *looks* like, without any of the fetching plumbing.
+- You're on a flight / behind a firewall / on a Colab-free machine.
+- You're checking whether your local environment has the basics
+  installed.
+
+The notebook visualises a handful of tiles, computes NDVI with
+matplotlib, builds NDVI-thresholded pseudo-labels, trains a tiny
+U-Net to predict a vegetation mask, and optionally runs a KMeans
+land-cover clustering at the end. ~2 minutes on CPU.
 
 ```bash
-pip install -r requirements.txt      # from the repo root
-jupyter notebook notebooks/example_datacube_ml.ipynb
+jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
 ```
 
-The notebook resolves paths relative to the repo root, so it works whether you launch
-Jupyter from the repo root or from inside `notebooks/`.
+The notebook resolves paths relative to the repo root, so it works
+whether you launch Jupyter from the repo root or from inside
+`notebooks/`.
+
+## Other files in this folder
+
+### `benchmark_lulc_class.py` — per-class binary benchmark CLI
+
+A small standalone script that mirrors the headline pixel-level setup
+of notebook 01 but takes a `--class-id` argument so any ESA
+WorldCover class can be benchmarked with one command:
+
+```bash
+# Pre-requisite: notebook 01 must have been run at least once,
+# so the per-city Zarr cubes exist under notebooks/_ml_outputs/zarr/.
+
+python notebooks/benchmark_lulc_class.py \
+    --class-id 50 --class-name built_up \
+    --output-json /tmp/lulc_50.json
+```
+
+For each class it harvests pixels from the three city Zarr cubes,
+balances training 1:5 (positive:negative), trains LR + RF + XGB,
+tunes the decision threshold on val, evaluates on test, and emits a
+single JSON record with the full metric table per model. The output
+JSON is easy to aggregate across classes; the human-readable
+leaderboard from one such aggregation is in
+[`lulc_leaderboard.md`](lulc_leaderboard.md).
+
+This script was the workhorse behind the per-class study in
+`lulc_leaderboard.md` (water, built-up, tree cover, grassland, and
+cropland); it is a good template for any "how does the pipeline do
+on class X?" question.
+
+### `lulc_leaderboard.md` — per-class results table
+
+The current leaderboard. Shows the best model and best F1 for each
+LULC class tested so far, with positive-fraction context so the
+small-class results can be read alongside class abundance.
+
+### `sample_data/mini_cube/` — bundled offline demo cube
+
+A small Zarr group containing 16 pre-tiled satellite patches and a
+`metadata.json` sidecar. This is what
+`02_minicube_ml_quickstart.ipynb` reads. It's intentionally tiny
+(a few megabytes) so the repository stays light; running the
+quickstart against it does not need network access. The cube was
+built with `modules/sentinel_pipeline/export_zarr.py` from real
+Sentinel-2 tiles during early development.
+
+## Conventions
+
+- The `_outputs/` (tour notebook scratch) and `_ml_outputs/` (water
+  classification scratch) folders are produced at runtime and
+  **gitignored** — nothing in them is versioned.
+- Each notebook detects whether it's running on Colab via the
+  `google.colab` import and, if so, shallow-clones the repo into
+  `/content/geoai-datacubes` before importing the pipeline modules.
+  This is also why the Colab badges above point at GitHub's hosted
+  view of the notebook — Colab opens it from there.

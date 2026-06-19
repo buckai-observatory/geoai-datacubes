@@ -446,28 +446,39 @@ All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the cor
 
 ## Try the notebooks
 
-The repo ships with **two complementary notebooks**:
+The repo ships with **three complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
 
 ### 1. The grand tour (start here if you are new)
 
- [`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
+[`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
 
-A pedagogical walkthrough of every feature in the pipeline — the four AOI formats, fetching from each free mission, cloud masking, NaN handling, tiling with/without overlap, the four train/val/test split strategies, multi-mission fusion, reading metadata back from a tile, augmentation, and submitting jobs to SLURM. Click the Colab badge to launch it in your browser — the first cell clones the repo and installs everything you need, no local Python required.
+A pedagogical walkthrough of every feature on the *data* side of the pipeline — the four AOI formats, fetching from each free mission, cloud masking, NaN handling, tiling with/without overlap, the four train/val/test split strategies, multi-mission fusion, reading metadata back from a tile, augmentation, and submitting jobs to SLURM. Click the Colab badge to launch it in your browser — the first cell clones the repo and installs everything you need, no local Python required.
 
 ```bash
 # local: launch with Jupyter from anywhere in the repo
 jupyter notebook notebooks/00_geoai_datacubes_tour.ipynb
 ```
 
-### 2. End-to-end ML demo on bundled data
+### 2. Water classification end-to-end (ML/DL)
 
- [`notebooks/example_datacube_ml.ipynb`](notebooks/example_datacube_ml.ipynb)
+[`notebooks/01_water_classification.ipynb`](notebooks/01_water_classification.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb)
 
-Walks through **training a small ML/DL model** on a data cube, end to end. Runs on a **bundled sample data cube — no API keys and no download required** — so you can launch it right after `pip install -r requirements.txt`:
+A complete machine-learning workflow that picks up where the tour leaves off. Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM + ESA WorldCover for **Columbus, Cincinnati, and Cleveland**; converts each city's cube to Zarr; then trains and compares four standard classifiers (Logistic Regression, Random Forest, XGBoost, and a lightweight U-Net) on a binary water-vs-rest target. Includes threshold tuning on validation, a thresholded-NDWI sanity-check baseline, multi-modal fusion comparison (S2 vs S2 + S1 vs S2 + S1 + DEM with DEM preprocessed into city-relative elevation + gradient magnitude), per-city test breakdown, and a collapsible explainer for the binary-classification metrics (TP/FP/FN/TN, precision, recall, F1, IoU, AUC).
 
 ```bash
-jupyter notebook notebooks/example_datacube_ml.ipynb
+jupyter notebook notebooks/01_water_classification.ipynb
+```
+
+### 3. Offline ML quickstart on bundled data
+
+[`notebooks/02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)
+
+Walks through **training a small ML/DL model** on a data cube, end to end. Runs on a **bundled sample data cube** under [`notebooks/sample_data/mini_cube/`](notebooks/sample_data/mini_cube/) — no API keys, no download, no network needed — so you can launch it right after `pip install -r requirements.txt`:
+
+```bash
+jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
 ```
 
 ---
@@ -480,9 +491,20 @@ geoai-datacubes/
 ├── LICENSE
 ├── requirements.txt
 ├── .env.example # copy to .env and add your keys
+├── docs/
+│ └── data_layers.md # mission/band/resolution/range reference
 ├── notebooks/
-│ ├── 00_geoai_datacubes_tour.ipynb # pedagogical tour (Colab-ready)
-│ └── example_datacube_ml.ipynb # runnable ML demo on bundled sample data
+│ ├── README.md # per-notebook walkthrough
+│ ├── 00_geoai_datacubes_tour.ipynb # pedagogical data-pipeline tour (Colab-ready)
+│ ├── 01_water_classification.ipynb # end-to-end ML/DL training (Colab-ready)
+│ ├── 02_minicube_ml_quickstart.ipynb # offline ML demo on bundled sample data
+│ ├── benchmark_lulc_class.py # per-class binary benchmark CLI
+│ ├── lulc_leaderboard.md # per-class results table
+│ └── sample_data/mini_cube/ # bundled offline Zarr for the quickstart
+├── slurm_examples/ # generic SBATCH templates for HPC clusters
+├── paper.md # JOSS-format paper draft
+├── HISTORY.md # project timeline
+├── CONTRIBUTORS.md # contributor list
 └── modules/
  ├── README.md # detailed pipeline docs
  └── sentinel_pipeline/
@@ -540,9 +562,9 @@ Built and maintained by the [**BuckAI Observatory**](https://buckai-observatory.
 ### Development history and contributors
 
 This project was developed over approximately one year by
-**Bhavika Jain**, **Aswathnarayan Radhakrishnan**, **Satyaki Roy**,
-**Amy Hsu**, and **Joachim Moortgat** (principal investigator) at The
-Ohio State University. Initial prototyping began in August 2025 in a
+**Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**;
+**Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou (Amy)**; and
+**Moortgat, Joachim** (principal investigator) at The Ohio State University. Initial prototyping began in August 2025 in a
 separate repository (see [`HISTORY.md`](HISTORY.md) for the full
 timeline) and the codebase moved to its current home at
 `github.com/buckai-observatory/geoai-datacubes` in December 2025.

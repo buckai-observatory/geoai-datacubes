@@ -132,7 +132,8 @@ prototyped by Bhavika Jain and Aswathnarayan Radhakrishnan (Department of
 Computer Science and Engineering, The Ohio State University) in August –
 October 2025; subsequent extensions and the present documentation are by
 the author. Code review and testing during 2026 were contributed by
-Satyaki Roy and Amy Hsu (OSU). Open data are provided by ESA Copernicus
+Satyaki Roy Chowdhury (CSE, OSU) and Hsiao Jou (Amy) Hsu (Earth Sciences,
+OSU). Open data are provided by ESA Copernicus
 (Sentinel-1, Sentinel-2), USGS (Landsat C2), ESA WorldCover, and the
 Copernicus DEM programme. Cloud-hosted imagery is served by Element 84
 (Earth Search) and Microsoft Planetary Computer. Commercial PlanetScope

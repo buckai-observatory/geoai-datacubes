@@ -5,7 +5,9 @@ the *shape* of a typical batch job; you still need to fill in placeholders
 (`YOUR_ALLOCATION`, `YOUR_PARTITION`, `YOUR_EMAIL`) and adapt the environment
 activation lines to whatever your cluster expects. The
 [**BuckAI HPC Handbook**](https://github.com/buckai-observatory/buckai-hpc-handbook)
-(also distributed as a Quarto site) covers the cluster-specific bits: which
+(rendered as a Quarto site at
+<https://buckai-observatory.org/buckai-hpc-handbook/>) covers the
+cluster-specific bits: which
 partition names exist, how to activate `conda` correctly, where shared scratch
 lives, how to request GPU nodes, and so on.
 
@@ -74,4 +76,5 @@ the pipeline.
 
 For cluster-specific details — module names, GPU partitions, JupyterHub
 URLs, `tmpfs` paths, fairshare priorities — see the
-[**BuckAI HPC Handbook**](https://github.com/buckai-observatory/buckai-hpc-handbook).
+[**BuckAI HPC Handbook**](https://github.com/buckai-observatory/buckai-hpc-handbook)
+(<https://buckai-observatory.org/buckai-hpc-handbook/>).
