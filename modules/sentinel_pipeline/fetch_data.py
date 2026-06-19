@@ -57,6 +57,16 @@ PROVIDER_AUTO = {
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
     "NAIP":           "planetary_computer", # PC only; US aerial imagery
+    "MODIS_SR":       "planetary_computer", # PC only; surface reflectance 8-day
+    "MODIS_LST":      "planetary_computer", # PC only; daily land surface temperature
+    "HLS_S30":        "planetary_computer", # PC only; harmonized S2 leg
+    "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
+    "JRC-GSW":        "planetary_computer", # PC only; static global surface water
+    "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
+    # "Sentinel-5P": deliberately NOT registered. The PC collection
+    # serves NetCDF assets; the current STAC fetcher only reads COGs via
+    # rasterio. See the missions.py stub and TODO for the planned xarray
+    # code path.
 }
 
 
@@ -249,8 +259,12 @@ def _resampling_for_band(band_name, cloud_mask_spec):
     """SCL / BQA / quality-class bands MUST use nearest-neighbour resampling."""
     if cloud_mask_spec and band_name == cloud_mask_spec.get("band"):
         return Resampling.nearest
-    if band_name in {"SCL", "BQA", "LULC"}:
-        # Categorical / classification bands -- MUST be nearest neighbour.
+    if band_name in {"SCL", "BQA", "LULC", "Fmask",
+                     "extent", "transitions",
+                     "QC", "QC_Day", "QC_Night", "STATE", "DOY"}:
+        # Categorical / classification / QA bands -- MUST be nearest neighbour.
+        # Includes HLS Fmask, JRC-GSW `extent` and `transitions`, and the
+        # MODIS QC / STATE / day-of-year sidecars (all packed-bit integers).
         return Resampling.nearest
     return Resampling.bilinear
 
@@ -298,6 +312,23 @@ def _resolve_band_mapping(mapping):
     if isinstance(mapping, (tuple, list)):
         return mapping[0], int(mapping[1])
     return mapping, 1
+
+
+def _item_datetime(item):
+    """Return a usable ISO datetime string for a STAC item.
+
+    Some collections (notably MODIS on Planetary Computer) populate
+    ``start_datetime``/``end_datetime`` instead of ``datetime`` for items
+    that cover a composite period. Fall back through those, then to
+    ``created``, and finally return an empty string so callers can slice
+    safely (``"" [:10] == ""``) and not crash.
+    """
+    p = item.get("properties") or {}
+    for key in ("datetime", "start_datetime", "end_datetime", "created"):
+        v = p.get(key)
+        if v:
+            return v
+    return ""
 
 
 def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling,
@@ -464,7 +495,9 @@ def _fetch_via_stac(
         items = _select_scenes_for_mosaic(items, roi, profile)
         representative = items[0]
         scene_id_print = representative["id"]
-        scene_dt_print = representative["properties"]["datetime"]
+        # Some collections (MODIS) leave `datetime` null and only set
+        # start_datetime/end_datetime; _item_datetime falls back through.
+        scene_dt_print = _item_datetime(representative) or "unknown"
         cc = representative["properties"].get("eo:cloud_cover")
         cc_note = f" cloud={cc:.1f}%" if cc is not None else ""
         ov = representative["_aoi_overlap"]
@@ -493,15 +526,17 @@ def _fetch_via_stac(
     # 3. Output directory name
     if is_static:
         # e.g. Copernicus-DEM_cop-dem-glo-30_mosaic_2021-04-22
-        date_str = (representative["properties"].get("datetime") or "")[:10] or "static"
+        date_str = (_item_datetime(representative) or "")[:10] or "static"
         safe_col = re.sub(r"[/\\:\s]", "_", collection)
         out_id = f"{mission}_{safe_col}_mosaic_{date_str}"
         rep_scene_id = f"{collection}_mosaic_{len(items)}tiles"
-        scene_dt_for_userdata = representative["properties"].get("datetime")
+        scene_dt_for_userdata = _item_datetime(representative) or None
     else:
         rep_scene_id = representative["id"]
-        scene_dt_for_userdata = representative["properties"]["datetime"]
-        date_str = scene_dt_for_userdata[:10]
+        # Use _item_datetime so MODIS-style items (which leave `datetime` null
+        # but populate start_datetime) don't crash here.
+        scene_dt_for_userdata = _item_datetime(representative) or ""
+        date_str = scene_dt_for_userdata[:10] or "unknown"
         safe_id = re.sub(r"[/\\:\s]", "_", rep_scene_id)
         out_id = f"{mission}_{date_str}_{safe_id}"
     out_dir = os.path.join(save_folder, out_id)
@@ -604,6 +639,20 @@ def _fetch_via_stac(
     }
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)
+
+    # Post-fetch sanity check. Loud warning if a large fraction of the AOI
+    # came back as NaN -- usually a sign that the AOI straddles a native-grid
+    # tile boundary that the single-scene fetch path cannot cross (most
+    # commonly MODIS' sinusoidal tiles; see the MODIS_SR / MODIS_LST entries
+    # in missions.py). Avoids the painful failure mode where downstream code
+    # silently trains on half-NaN inputs.
+    nan_frac = float(np.mean(np.isnan(stack))) if stack.size else 0.0
+    if nan_frac > 0.25:
+        print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
+              f"For MODIS this typically means the AOI crosses a "
+              f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
+              f"the AOI to land within a single tile, or wait for cross-tile "
+              f"mosaicking support.")
 
     return [stack], final_bands
 

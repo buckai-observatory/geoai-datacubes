@@ -317,6 +317,240 @@ MISSION_PROFILES = {
             },
         },
     },
+
+    # ============================================================
+    # MODIS Surface Reflectance (MOD09A1/MYD09A1 -- 8-day composite, 500 m).
+    # NASA/USGS, served via Microsoft Planetary Computer's MODIS Collection 6.1
+    # ("modis-09A1-061") in Sinusoidal projection. Each STAC item is one MODIS
+    # tile (h11v05 covers central US incl. OH). Each band is a single-band
+    # COG. 7 reflectance bands (red, NIR, blue, green, SWIR1-3) plus angle
+    # and QC sidecars.
+    #
+    # NOTE: PC's MODIS items use start_datetime/end_datetime (their composite
+    # period) and leave `properties.datetime` = None; the fetcher's date
+    # helper falls back to start_datetime so this works transparently.
+    #
+    # KNOWN LIMITATION (tile seams): each STAC item is a single sinusoidal
+    # tile (e.g. h11v04 covers the Great Lakes region; h11v05 covers most of
+    # the central US). An AOI that straddles a seam will see large NaN holes
+    # in the returned array because the single-scene fetcher reads only one
+    # tile per date. Cross-tile mosaicking (similar to JRC-GSW / 3DEP) is
+    # tracked as a follow-up Issue. As a guard, the fetcher emits a loud
+    # warning at runtime when the NaN fraction of the final array exceeds
+    # 25% so the failure mode is never silent.
+    # ============================================================
+    "MODIS_SR": {
+        "default_bands": ["B01", "B02"],            # Red, NIR (MODIS convention)
+        "extra_bands":   ["B03", "B04", "B06", "B07", "QC"],
+        "cloud_filter":  False,                      # 8-day composite, MODIS QC handles cloudiness
+        "ndvi":          {"red": "B01", "nir": "B02"},
+        "cloud_mask":    {"band": "QC", "kind": "qa_bits", "flag_bits": [0, 1]},
+        "providers": {
+            "planetary_computer": {
+                "collection": "modis-09A1-061",
+                # MODIS 09A1 band order on PC (band 1 = red 620-670 nm,
+                # band 2 = NIR 841-876 nm, etc.).
+                "asset_map": {
+                    "B01": "sur_refl_b01",   # Red       620-670 nm
+                    "B02": "sur_refl_b02",   # NIR       841-876 nm
+                    "B03": "sur_refl_b03",   # Blue      459-479 nm
+                    "B04": "sur_refl_b04",   # Green     545-565 nm
+                    "B05": "sur_refl_b05",   # NIR2     1230-1250 nm
+                    "B06": "sur_refl_b06",   # SWIR1    1628-1652 nm
+                    "B07": "sur_refl_b07",   # SWIR2    2105-2155 nm
+                    "QC":  "sur_refl_qc_500m",
+                    "STATE": "sur_refl_state_500m",
+                    "DOY":   "sur_refl_day_of_year",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # MODIS Land Surface Temperature (MOD11A1/MYD11A1 -- daily, 1 km).
+    # PC collection: "modis-11A1-061". Single-band COGs for LST_Day_1km,
+    # LST_Night_1km, plus QC and view-angle sidecars.
+    #
+    # Same sinusoidal tile-seam caveat as MODIS_SR -- see the note above
+    # for details and the runtime NaN warning the fetcher emits.
+    # ============================================================
+    "MODIS_LST": {
+        "default_bands": ["LST_Day", "LST_Night"],
+        "extra_bands":   ["QC_Day", "QC_Night"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "providers": {
+            "planetary_computer": {
+                "collection": "modis-11A1-061",
+                "asset_map": {
+                    "LST_Day":     "LST_Day_1km",
+                    "LST_Night":   "LST_Night_1km",
+                    "QC_Day":      "QC_Day",
+                    "QC_Night":    "QC_Night",
+                    "Emis_31":     "Emis_31",
+                    "Emis_32":     "Emis_32",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # HLS -- Harmonized Landsat-Sentinel-2 (NASA), 30 m, pre-harmonized so
+    # Landsat C2 L2 + Sentinel-2 L2A data can be mixed without manual
+    # mosaicking. Served by Microsoft Planetary Computer.
+    #
+    # Two products:
+    #   * "HLS_S30" -- Sentinel-2 leg ("hls2-s30"). Bands B01-B12 + B8A,
+    #                  Fmask QA, angle bands. Implemented here.
+    #   * "HLS_L30" -- Landsat 8/9 leg ("hls2-l30"). Same naming but no
+    #                  B08, B12, B8A. TODO sibling.
+    # ============================================================
+    "HLS_S30": {
+        "default_bands": ["B04", "B08"],            # Red, NIR (Sentinel-2 naming)
+        "extra_bands":   ["Fmask"],
+        "cloud_filter":  False,                      # HLS lacks eo:cloud_cover; rely on Fmask
+        "ndvi":          {"red": "B04", "nir": "B08"},
+        "cloud_mask":    {"band": "Fmask", "kind": "qa_bits", "flag_bits": [1, 2, 3, 4, 5]},
+        "providers": {
+            "planetary_computer": {
+                "collection": "hls2-s30",
+                "asset_map": {
+                    "B01": "B01", "B02": "B02", "B03": "B03", "B04": "B04",
+                    "B05": "B05", "B06": "B06", "B07": "B07", "B08": "B08",
+                    "B8A": "B8A", "B09": "B09", "B10": "B10", "B11": "B11",
+                    "B12": "B12",
+                    "Fmask": "Fmask",
+                    "SAA":   "SAA", "SZA": "SZA",
+                    "VAA":   "VAA", "VZA": "VZA",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # HLS Landsat leg ("hls2-l30"). Sibling of HLS_S30 above; only the
+    # Landsat-side band names are populated (no B08, B12, B8A).
+    # ============================================================
+    "HLS_L30": {
+        "default_bands": ["B04", "B05"],            # Red, NIR (Landsat naming)
+        "extra_bands":   ["Fmask"],
+        "cloud_filter":  False,
+        "ndvi":          {"red": "B04", "nir": "B05"},
+        "cloud_mask":    {"band": "Fmask", "kind": "qa_bits", "flag_bits": [1, 2, 3, 4, 5]},
+        "providers": {
+            "planetary_computer": {
+                "collection": "hls2-l30",
+                "asset_map": {
+                    "B01": "B01", "B02": "B02", "B03": "B03", "B04": "B04",
+                    "B05": "B05", "B06": "B06", "B07": "B07",
+                    "B09": "B09", "B10": "B10", "B11": "B11",
+                    "Fmask": "Fmask",
+                    "SAA":   "SAA", "SZA": "SZA",
+                    "VAA":   "VAA", "VZA": "VZA",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # JRC Global Surface Water (Pekel et al. 2016, European Commission JRC).
+    # 30 m, global, derived from Landsat 1984-2021. Static (no datetime
+    # filter). PC collection "jrc-gsw". Each band is a single-band COG
+    # (occurrence, change, seasonality, recurrence, transitions, extent).
+    # ============================================================
+    "JRC-GSW": {
+        "default_bands": ["occurrence", "extent"],
+        "extra_bands":   ["change", "seasonality", "recurrence", "transitions"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "providers": {
+            "planetary_computer": {
+                "collection": "jrc-gsw",
+                "asset_map": {
+                    "occurrence":  "occurrence",
+                    "change":      "change",
+                    "seasonality": "seasonality",
+                    "recurrence":  "recurrence",
+                    "transitions": "transitions",
+                    "extent":      "extent",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # USGS 3D Elevation Program ("3DEP") -- 10 m (1/3 arc-sec) and 1 m
+    # seamless DEMs over the continental United States. PC collection
+    # "3dep-seamless". Static. Same single-band shape as Copernicus DEM,
+    # but US-only and higher resolution. PC stores both resolutions in the
+    # same collection; the 10 m product uses item IDs ending in "-13".
+    # ============================================================
+    "3DEP": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "providers": {
+            "planetary_computer": {
+                "collection": "3dep-seamless",
+                "asset_map":  {"DEM": "data"},
+            },
+        },
+    },
+
+    # ============================================================
+    # Sentinel-5P TROPOMI atmospheric chemistry -- STUB ONLY.
+    #
+    # PC collection: "sentinel-5p-l2-netcdf". Gas products (NO2, CO, SO2,
+    # CH4, O3, HCHO, AER_AI, AER_LH, CLOUD, ...) delivered as NetCDF/HDF5
+    # rather than COG. The current pipeline reads only single-band COGs via
+    # rasterio + /vsicurl/; NetCDF needs xarray + (netCDF4 | h5netcdf).
+    #
+    # TODO: implement an xarray-based reader path before wiring this mission
+    # into PROVIDER_AUTO. Alternative: ingest Google Earth Engine's gridded
+    # TROPOMI products (COG-friendly).
+    #
+    # Most-requested gas products for our group:
+    #   NO2 -- urban pollution / traffic
+    #   CO  -- combustion (wildfires, urban)
+    #   SO2 -- volcanic / industrial
+    #   CH4 -- methane plume detection
+    #   O3  -- stratospheric column
+    #   HCHO -- VOC proxy
+    # ============================================================
+    "Sentinel-5P": {
+        "default_bands": ["NO2"],
+        "extra_bands":   ["CO", "SO2", "CH4", "O3", "HCHO"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        # The PC assets are NetCDF -- the existing fetcher cannot read them.
+        # We populate the asset map so users can see which gases are
+        # available, but the dispatcher will not route Sentinel-5P to any
+        # provider (see PROVIDER_AUTO in fetch_data.py).
+        "_netcdf_only":  True,
+        "providers": {
+            "planetary_computer": {
+                "collection": "sentinel-5p-l2-netcdf",
+                "asset_map": {
+                    "NO2":  "no2",
+                    "CO":   "co",
+                    "SO2":  "so2",
+                    "CH4":  "ch4",
+                    "O3":   "o3",
+                    "HCHO": "hcho",
+                    "AER_AI": "aer_ai",
+                    "AER_LH": "aer_lh",
+                    "CLOUD":  "cloud",
+                },
+            },
+        },
+    },
 }
 
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)
