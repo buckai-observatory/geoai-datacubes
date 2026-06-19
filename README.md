@@ -24,7 +24,7 @@
 - [Configuration & parameters](#configuration--parameters)
 - [Data layers reference](docs/data_layers.md)
 - [Pipeline scripts](#pipeline-scripts)
-- [Try the example notebook](#try-the-example-notebook)
+- [Try the notebooks](#try-the-notebooks)
 - [Project structure](#project-structure)
 - [Credentials & security](#credentials--security)
 - [License & ownership](#license--ownership)
@@ -240,7 +240,7 @@ python main.py
 
 The pipeline will find the least-cloudy scene, download it, mask clouds, compute NDVI, cut the scene into tiles, split them into train/val/test, and export GPU-ready datasets. Outputs land in the `data/` folder.
 
-> **Want to see results without downloading anything first?** Skip straight to [the example notebook](#try-the-example-notebook), which runs on bundled sample data.
+> **Want to see results without downloading anything first?** Skip straight to [the example notebook](#try-the-notebooks), which runs on bundled sample data.
 
 ---
 
