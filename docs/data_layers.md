@@ -385,6 +385,6 @@ bands from dominating the early gradients.
 - The tour notebook `notebooks/00_geoai_datacubes_tour.ipynb` shows
   worked examples of fetching, normalising, and fusing each of these
   missions over a single AOI.
-- The ML notebook `notebooks/01_water_classification.ipynb` is the
-  end-to-end demonstration of training tree and U-Net models on a
-  fused multi-mission cube.
+- The ML/DL notebook `notebooks/01_water_classification.ipynb` is the
+  end-to-end demonstration of training tree (ML) and U-Net (DL) models
+  on a fused multi-mission cube.

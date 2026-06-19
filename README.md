@@ -473,11 +473,11 @@ A complete machine-learning workflow that picks up where the tour leaves off. Fe
 jupyter notebook notebooks/01_water_classification.ipynb
 ```
 
-### 3. Offline ML quickstart on bundled data
+### 3. Offline ML/DL quickstart on bundled data
 
 [`notebooks/02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)
 
-Walks through **training a small ML/DL model** on a data cube, end to end. Runs on a **bundled sample data cube** under [`notebooks/sample_data/mini_cube/`](notebooks/sample_data/mini_cube/) — no API keys, no download, no network needed — so you can launch it right after `pip install -r requirements.txt`:
+Walks through **training a small U-Net (DL) and an optional KMeans (ML) baseline** on a data cube, end to end. Runs on a **bundled sample data cube** under [`notebooks/sample_data/mini_cube/`](notebooks/sample_data/mini_cube/) — no API keys, no download, no network needed — so you can launch it right after `pip install -r requirements.txt`:
 
 ```bash
 jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
@@ -499,7 +499,7 @@ geoai-datacubes/
 │ ├── README.md # per-notebook walkthrough
 │ ├── 00_geoai_datacubes_tour.ipynb # pedagogical data-pipeline tour (Colab-ready)
 │ ├── 01_water_classification.ipynb # end-to-end ML/DL training (Colab-ready)
-│ ├── 02_minicube_ml_quickstart.ipynb # offline ML demo on bundled sample data
+│ ├── 02_minicube_ml_quickstart.ipynb # offline ML/DL demo on bundled sample data
 │ ├── benchmark_lulc_class.py # per-class binary benchmark CLI
 │ ├── lulc_leaderboard.md # per-class results table
 │ └── sample_data/mini_cube/ # bundled offline Zarr for the quickstart

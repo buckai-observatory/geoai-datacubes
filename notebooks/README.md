@@ -65,10 +65,10 @@ AUC.
 
 Runs end-to-end in ~20–25 minutes on a laptop CPU.
 
-### 3. Minimal ML quickstart on bundled data — `02_minicube_ml_quickstart.ipynb`
+### 3. Minimal ML/DL quickstart on bundled data — `02_minicube_ml_quickstart.ipynb`
 
-A small, **fully offline** ML demo. Trains a tiny PyTorch U-Net on a
-mini Zarr cube that **ships with the repo** (under
+A small, **fully offline** ML/DL demo. Trains a tiny PyTorch U-Net (DL)
+on a mini Zarr cube that **ships with the repo** (under
 [`sample_data/mini_cube/`](sample_data/mini_cube/)) — no fetching,
 no credentials, no cloud, no waiting. Useful when:
 
@@ -80,8 +80,8 @@ no credentials, no cloud, no waiting. Useful when:
 
 The notebook visualises a handful of tiles, computes NDVI with
 matplotlib, builds NDVI-thresholded pseudo-labels, trains a tiny
-U-Net to predict a vegetation mask, and optionally runs a KMeans
-land-cover clustering at the end. ~2 minutes on CPU.
+U-Net (DL) to predict a vegetation mask, and optionally runs a KMeans
+(ML) land-cover clustering at the end. ~2 minutes on CPU.
 
 ```bash
 jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb

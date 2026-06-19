@@ -137,7 +137,7 @@ This generates:
 
 ### Tiling & Augmentation
 
-Split large scenes into small patches for ML training:
+Split large scenes into small patches for ML/DL training:
 
 ```bash
 python run_tiler.py
@@ -150,7 +150,7 @@ Features:
 
 ---
 
-### Export for AI/ML Training
+### Export for ML/DL Training
 
 Export datasets for efficient GPU loading:
 
