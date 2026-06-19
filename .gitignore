@@ -30,3 +30,7 @@ notebooks/logs/
 
 # SLURM template logs (logs/ folder created by the *.sbatch templates at submit time).
 slurm_examples/logs/
+
+# Local-only HPC runbook. Each user's runbook stays personal and is never
+# pushed; the docs/ folder itself is otherwise public (e.g. data_layers.md).
+docs/HPC_RUNBOOK.md

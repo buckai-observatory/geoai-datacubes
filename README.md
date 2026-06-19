@@ -20,7 +20,9 @@
 - [Supported platforms](#supported-platforms)
 - [Quickstart for beginners — no credentials needed](#quickstart-for-beginners--no-credentials-needed)
 - [Data providers — when to use which](#data-providers--when-to-use-which)
+- [Multi-mission fusion](#multi-mission-fusion)
 - [Configuration & parameters](#configuration--parameters)
+- [Data layers reference](docs/data_layers.md)
 - [Pipeline scripts](#pipeline-scripts)
 - [Try the example notebook](#try-the-example-notebook)
 - [Project structure](#project-structure)
@@ -43,16 +45,58 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 
 ## What it does
 
-- **Downloads satellite imagery** for any region of interest (ROI) and date range — Sentinel-2 (optical), Sentinel-1 (SAR radar), or Landsat 8-9 (optical) — through the Sentinel Hub API.
-- **Filters clouds** automatically using the Sentinel-2 Scene Classification Layer (SCL), keeping only low-cloud scenes (e.g. < 10% cloud cover) and masking cloud/shadow pixels.
-- **Computes NDVI** (vegetation index) and saves quick-look visualizations.
-- **Grabs all 13 Sentinel-2 bands** plus the **SCL, AOT, and WVP** atmospheric layers.
-- **Tiles** large scenes into small, equal-sized patches (e.g. 256×256) for ML training, with configurable tile size and stride.
-- **Augments** tiles: flips, rotations, and Gaussian noise.
-- **Splits** automatically into **train / validation / test** sets.
-- **Exports** to GPU-friendly formats: **GeoTIFF**, **Zarr**, and **LMDB** (optimized for PyTorch / TensorFlow loaders).
-- **Builds STAC catalogs** so your data plays nicely with the wider geospatial ecosystem.
-- **Parallel fetching** of multiple scenes/ROIs for faster throughput.
+- **Fetches satellite imagery** for any region of interest and date range
+  from four interchangeable providers — three of them with no credentials
+  needed. The default `PROVIDER = "auto"` routes each mission to its best
+  free host (Element 84 Earth Search for Sentinel-2 and Copernicus DEM;
+  Microsoft Planetary Computer for Sentinel-1 RTC, Landsat, and ESA
+  WorldCover). Optional commercial PlanetScope is supported through the
+  Planet Orders API. The classical Sentinel Hub Process API path remains
+  available for advanced use.
+- **Eight missions** are first-class: Sentinel-2 L2A, Sentinel-2 L1C,
+  Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM (GLO-30),
+  ESA WorldCover, PlanetScope 4-band, and PlanetScope 8-band SuperDove.
+  Per-mission band tables and value ranges are documented in
+  [`docs/data_layers.md`](docs/data_layers.md).
+- **User-selectable band lists per mission** — each fetch takes a
+  `BANDS_<mission>` list, so you ask for exactly the channels your model
+  needs (e.g. visible RGB + NIR for true-colour previews, or just B04 + B08
+  for fast NDVI workflows). The default fetches the mission's standard
+  product plus any helper bands needed for cloud masking.
+- **Multi-mission fusion** onto a common UTM grid via
+  `fuse_response_tiffs(...)`. Fused cubes carry mission-prefixed band
+  descriptions (`Sentinel-2_B04`, `Sentinel-1_VV`, `Copernicus-DEM_DEM`,
+  `ESA-WorldCover_LULC`, …) so downstream code can pick exactly the bands
+  it wants by name. See the [Multi-mission fusion](#multi-mission-fusion)
+  section below.
+- **Robust pre-processing**: smear-protected reprojection that prevents
+  nodata edges from bleeding into valid pixels; polygon-aware
+  Sentinel-1 mosaicking that composes adjacent same-day scenes when one
+  scene does not cover the full AOI; cloud / shadow / haze masking through
+  mission-aware QA bands (Sentinel-2 SCL, Landsat BQA, PlanetScope UDM2).
+- **Configurable train / val / test splitting** with four spatially-aware
+  strategies — `random`, `block`, `stripes`, and `regions` (explicit
+  per-split AOIs) — plus three NaN-handling modes (`drop`, `interpolate`,
+  `mask`).
+- **On-the-fly tile sampling for PyTorch** via the `LazyTileDataset` class.
+  Tile size, stride, augmentation, NaN-handling, and split assignment are
+  runtime parameters; no tile files are ever materialised to disk. This
+  decouples data preparation from experimentation — sweep hyperparameters
+  without re-running the tiler.
+- **Tiles to disk** when you do want them — `tile_geotiff(...)` writes
+  AI-ready GeoTIFF or PyTorch-tensor patches with reproducible metadata
+  (every tile carries source-scene provenance plus per-tile parameters
+  embedded as GeoTIFF tags). Augmentation supports flips, rotations, and
+  DN-scale-aware Gaussian noise.
+- **STAC catalogs** can be built from any fetched / fused / tiled cube,
+  so the data plays cleanly with the wider geospatial ecosystem.
+- **Pedagogical notebooks**, both Colab-ready: a *grand tour*
+  (`notebooks/00_geoai_datacubes_tour.ipynb`) walking through every
+  pipeline feature on a multi-mission Columbus AOI, and an end-to-end
+  *water classification* notebook
+  (`notebooks/01_water_classification.ipynb`) training Logistic
+  Regression, Random Forest, XGBoost, and a lightweight U-Net on a
+  fused cube against the ESA WorldCover water class.
 
 ---
 
@@ -128,6 +172,51 @@ SPLIT = (0.8, 0.1, 0.1) # train / val / test fractions
 ```
 
 Leaving `BANDS = None` picks sensible defaults per mission (Red+NIR for optical, VV+VH for radar) and auto-adds the cloud/quality bands. To run Landsat instead, just set `MISSION = "Landsat"` — everything else stays the same.
+
+#### More band-selection examples
+
+The `BANDS` argument takes a Python list of band names (case-sensitive,
+matching the table in [`docs/data_layers.md`](docs/data_layers.md)).
+Four common patterns:
+
+```python
+# 1. Default behaviour (None) -- mission defaults plus helper bands.
+#    For Sentinel-2 L2A this yields B04 + B08 (Red, NIR) plus SCL / AOT / WVP
+#    so per-pixel cloud masking and atmospheric correction inputs are present.
+BANDS = None
+
+# 2. Just NDVI inputs -- minimal, fastest fetch (~2 bands).
+BANDS = ["B04", "B08"]
+
+# 3. True-colour RGB + NIR + SCL for cloud masking. This is what
+#    notebook 01 uses as its headline Sentinel-2 set.
+BANDS = ["B02", "B03", "B04", "B08", "SCL"]
+
+# 4. All 12 spectral bands plus the three atmospheric helpers --
+#    the maximum-information Sentinel-2 L2A fetch.
+BANDS = ["B01", "B02", "B03", "B04", "B05", "B06", "B07",
+         "B08", "B8A", "B09", "B11", "B12",
+         "SCL", "AOT", "WVP"]
+```
+
+#### Fetching more than one mission
+
+`main.py` runs one mission per execution. To pull several missions
+over the same AOI, run the script multiple times (each writes its own
+`<Mission>_full_size.tiff` into a per-scene folder under `data/`):
+
+```python
+# In one terminal session or shell loop:
+for MISSION in ["Sentinel-2", "Sentinel-1", "Landsat",
+                "Copernicus-DEM", "ESA-WorldCover"]:
+    # set MISSION, BANDS, etc. in main.py (or pass via environment)
+    # then run:  python main.py
+    ...
+```
+
+Once each mission has its own `<Mission>_full_size.tiff` on disk,
+the [Multi-mission fusion](#multi-mission-fusion) step below stacks
+them onto a common UTM grid for ML.
 
 #### Defining the AOI
 
@@ -217,6 +306,95 @@ For commercial high-resolution PlanetScope imagery:
 Under the hood, the `planet` provider uses Planet's **Data API** (`/quick-search`) to pick the lowest-cloud-cover scene matching your AOI/dates/instrument, then submits a single-scene **Orders API** request with server-side clip-to-AOI. The order is asynchronous — expect a few minutes for the order to reach `success` — and the pipeline polls automatically (default 60 min timeout, override via `max_wait_seconds`). The order delivers the analytic-SR COG and a UDM2 raster; both are downloaded, reprojected onto the same UTM grid we use for Sentinel/Landsat, and written into a multi-band `<Mission>_full_size.tiff` with descriptions like `"R"`, `"NIR"`, `"udm2_clear"` — so cloud masking in the tiler flows through unchanged.
 
 > ⚠️ **Never commit `.env`.** The repository's `.gitignore` already excludes it; keep it that way and never hardcode keys in source files.
+
+---
+
+## Multi-mission fusion
+
+Each fetch produces one `<Mission>_full_size.tiff` per scene. To train
+a model on **several missions at once** — typical when combining
+optical (Sentinel-2) with SAR (Sentinel-1) with elevation (DEM) or
+land-cover labels (WorldCover) — you fuse those per-mission cubes onto
+a **common UTM grid** at a chosen resolution.
+
+The fusion helper lives in `modules/sentinel_pipeline/fusion.py`:
+
+```python
+from fusion import fuse_response_tiffs
+
+fuse_response_tiffs(
+    inputs=[
+        "data/Sentinel-2_2024-06-12_.../Sentinel-2_full_size.tiff",
+        "data/Sentinel-1_2024-06-29_.../Sentinel-1_full_size.tiff",
+        "data/Copernicus-DEM_.../Copernicus-DEM_full_size.tiff",
+        "data/ESA-WorldCover_.../ESA-WorldCover_full_size.tiff",
+    ],
+    output_path="fused/columbus_cube.tiff",
+    resolution=10,          # output pixel size in metres
+    dst_crs=None,           # default: take the CRS of the first input
+    bbox_mode="intersection",   # or "union" (see below)
+)
+```
+
+The output is a multi-band GeoTIFF whose band descriptions are
+**mission-prefixed** so provenance survives:
+`Sentinel-2_B04`, `Sentinel-2_SCL`, `Sentinel-1_VV`, `Sentinel-1_VH`,
+`Copernicus-DEM_DEM`, `ESA-WorldCover_LULC`. Downstream code can
+pick exactly the bands it wants by name.
+
+#### Choosing the output grid
+
+- **`resolution`** sets the output pixel size in metres. Pick the
+  highest-resolution mission you care about (10 m for Sentinel-2,
+  3 m for PlanetScope, etc.); coarser bands are upsampled, finer bands
+  are downsampled. Categorical / QA bands (SCL, BQA, LULC, UDM2
+  layers) are resampled with **nearest neighbour** to preserve their
+  integer class codes; continuous reflectance and elevation bands use
+  bilinear.
+
+- **`dst_crs`** defaults to the CRS of the first input — usually the
+  UTM zone of the AOI. Pass an explicit `rasterio.crs.CRS` or EPSG code
+  to force a different target projection.
+
+- **`bbox_mode`** controls how the fused footprint is computed:
+  - `"intersection"` (default) — only the area covered by **every** input
+    mission. The safe choice for per-pixel multi-modal models; every
+    pixel of the fused cube has data from every mission.
+  - `"union"` — the bounding box of **any** input. Missions that do
+    not cover the full union are NaN-filled where missing. Useful when
+    one mission is a sparse layer (e.g. PlanetScope tasked over a
+    subset of a Sentinel-2 footprint).
+
+#### Picking which bands fuse
+
+By default `fuse_response_tiffs` takes all bands from each input.
+Pass tuples instead of paths to subset:
+
+```python
+fuse_response_tiffs(
+    inputs=[
+        # All bands of the S2 cube
+        "data/.../Sentinel-2_full_size.tiff",
+        # Only VV from the S1 cube
+        ("data/.../Sentinel-1_full_size.tiff", ["VV"]),
+        # Only the LULC band from WorldCover (drop nothing else; it only has one)
+        "data/.../ESA-WorldCover_full_size.tiff",
+    ],
+    output_path="fused/cube.tiff",
+    resolution=10,
+)
+```
+
+#### Worked example
+
+The end-to-end multi-mission fusion is demonstrated in
+[`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
+(section 9), and the resulting fused cube is the input for every
+classifier in
+[`notebooks/01_water_classification.ipynb`](notebooks/01_water_classification.ipynb)
+which uses the binary water target from
+`ESA-WorldCover_LULC` together with `Sentinel-2_B0{2,3,4,8}` +
+`Sentinel-1_V{V,H}` + DEM-derived features.
 
 ---
 
@@ -358,5 +536,23 @@ Built and maintained by the [**BuckAI Observatory**](https://buckai-observatory.
 
 - Website: <https://buckai-observatory.org>
 - More tools & tutorials: see the BuckAI Observatory [resources page](https://buckai-observatory.org/resources.html).
+
+### Development history and contributors
+
+This project was developed over approximately one year by
+**Bhavika Jain**, **Aswathnarayan Radhakrishnan**, **Satyaki Roy**,
+**Amy Hsu**, and **Joachim Moortgat** (principal investigator) at The
+Ohio State University. Initial prototyping began in August 2025 in a
+separate repository (see [`HISTORY.md`](HISTORY.md) for the full
+timeline) and the codebase moved to its current home at
+`github.com/buckai-observatory/geoai-datacubes` in December 2025.
+
+Code development since May 2026 was substantially accelerated by
+[Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+assistant, used as a development tool under continuous human
+direction and review. All design decisions, scientific judgements, and
+validation against domain knowledge were made by the human authors.
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of
+who contributed what.
 
 We welcome collaboration. If this tool helps your research, we'd love to hear about it.

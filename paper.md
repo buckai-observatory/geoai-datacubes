@@ -126,11 +126,21 @@ production-grade ML on satellite imagery requires.
 
 This work was supported by The Ohio State University's BuckAI Observatory and
 the School of Earth Sciences. The author thanks colleagues at OSU and within
-the BuckAI Scientific Advisory Board for design discussions. Open data are
-provided by ESA Copernicus (Sentinel-1, Sentinel-2), USGS (Landsat C2),
-ESA WorldCover, and the Copernicus DEM programme. Cloud-hosted imagery is
-served by Element 84 (Earth Search) and Microsoft Planetary Computer.
-Commercial PlanetScope access used in development was provided through the
-Planet Education and Research Program.
+the BuckAI Scientific Advisory Board for design discussions. The pipeline's
+foundational Sentinel-1 / Sentinel-2 acquisition and tiling layer was
+prototyped by Bhavika Jain and Aswathnarayan Radhakrishnan (Department of
+Computer Science and Engineering, The Ohio State University) in August –
+October 2025; subsequent extensions and the present documentation are by
+the author. Code review and testing during 2026 were contributed by
+Satyaki Roy and Amy Hsu (OSU). Open data are provided by ESA Copernicus
+(Sentinel-1, Sentinel-2), USGS (Landsat C2), ESA WorldCover, and the
+Copernicus DEM programme. Cloud-hosted imagery is served by Element 84
+(Earth Search) and Microsoft Planetary Computer. Commercial PlanetScope
+access used in development was provided through the Planet Education and
+Research Program.
+
+Code development since May 2026 was substantially accelerated by Claude
+Code, Anthropic's AI coding assistant, used as a development tool under
+continuous human direction and review.
 
 # References

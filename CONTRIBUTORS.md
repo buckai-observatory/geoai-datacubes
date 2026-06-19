@@ -24,14 +24,24 @@
   early file layout, processing primitives, and Sentinel-pipeline
   organisation (August 2025 – October 2025).
 
-## Reviewers and collaborators
-
 - **Satyaki Roy** ([@satyakiroy10](https://github.com/satyakiroy10)) —
-  CSE, OSU.
+  CSE, OSU. Code review and testing.
 
-- **Amy Hsu** ([@Amy-Hsu](https://github.com/Amy-Hsu)) — collaborator on
-  the related bathymetry work (Hsu & Moortgat 2026, *Remote Sensing*
-  18:1768).
+- **Amy Hsu** ([@Amy-Hsu](https://github.com/Amy-Hsu)) — Earth Sciences,
+  OSU. Code review and testing. Bathymetry domain collaborator
+  (Hsu & Moortgat 2026, *Remote Sensing* 18:1768) whose work motivated
+  some of the multi-mission fusion design choices in the pipeline.
+
+## AI-assisted development
+
+Code development since May 2026 was substantially accelerated by
+[Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+assistant. Claude Code was used as a development tool under continuous
+human direction and review — drafting boilerplate, refactoring, and
+test scaffolding under explicit instruction from the principal
+investigator, then having every change reviewed before commit. All
+design decisions, scientific judgements, and validation against domain
+knowledge were made by the human authors listed above.
 
 ## Becoming a contributor
 
