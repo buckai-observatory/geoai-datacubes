@@ -16,6 +16,8 @@
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
 > Also Colab-ready: a tiny offline mini-cube ML/DL quickstart on bundled sample data ([`02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)) and a YOLO building-detection demo on NAIP ([`03_building_detection.ipynb`](notebooks/03_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all four.
+>
+> *Tip: GitHub's HTML sanitizer strips `target="_blank"` from links, so the badges above will navigate in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab and keep this page where it is.*
 
 ---
 

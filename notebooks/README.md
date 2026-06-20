@@ -5,7 +5,9 @@ This folder holds the **pedagogical Jupyter notebooks** that ship with
 own dependencies, fetches the imagery it needs, and runs end-to-end
 without anything pre-existing on your machine.
 
-## The three notebooks
+*Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
+
+## The four notebooks
 
 ### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
