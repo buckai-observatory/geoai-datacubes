@@ -1,16 +1,22 @@
 """Downstream ML / DL helpers built on top of the data cubes.
 
-Currently: object-detection plumbing used by
-``notebooks/03_building_detection.ipynb``. Future additions
-(classification, segmentation, super-resolution) will land here as
-sibling modules without disturbing the existing API.
+Two modules so far:
 
-The object-detection module exposes function-level helpers
-(:func:`polygons_to_yolo_tiles`, :func:`train_yolo_detector`, ...) for
-transparency in the notebook, and an optional :class:`YOLOBuildingDetector`
-orchestrator for users who want a single-call workflow.
+* ``segmentation`` -- ``TinyUNet`` and ``WaterUNet`` for per-pixel
+  semantic segmentation. The deeper ``WaterUNet`` is the architecture
+  used by `notebooks/01_water_classification.ipynb`; the smaller
+  ``TinyUNet`` is a no-frills starting point for sanity-check workflows.
+* ``object_detection`` -- helpers for the YOLO + USBuildingFootprints
+  workflow in `notebooks/02_building_detection.ipynb` (formerly nb 03):
+  ``polygons_to_yolo_tiles``, ``train_yolo_detector``,
+  ``validate_yolo_model``, ``box_iou``, plus a
+  :class:`YOLOBuildingDetector` orchestrator.
+
+Future additions (classification, super-resolution, ...) will land here
+as sibling modules without disturbing the existing API.
 """
 
+from .segmentation import TinyUNet, WaterUNet
 from .object_detection import (
     YOLOBuildingDetector,
     box_iou,
@@ -24,6 +30,10 @@ from .object_detection import (
 )
 
 __all__ = [
+    # segmentation
+    "TinyUNet",
+    "WaterUNet",
+    # object detection
     "YOLOBuildingDetector",
     "box_iou",
     "draw_yolo_boxes",
