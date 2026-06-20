@@ -7,8 +7,8 @@ using ThreadPoolExecutor for faster throughput.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fetch_data import fetch_sentinel_data
-from aoi import resolve_aoi
+from .fetch_data import fetch_sentinel_data
+from .aoi import resolve_aoi
 import os, time
 
 # === USER CONFIG ===

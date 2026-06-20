@@ -36,7 +36,7 @@ import requests
 from rasterio.transform import from_bounds
 from rasterio.warp import Resampling, reproject, transform_bounds
 
-from missions import get_profile, get_provider_config
+from .missions import get_profile, get_provider_config
 
 
 # STAC endpoints (both anonymous)
@@ -150,7 +150,7 @@ def fetch_sentinel_data(
 
     if provider == "sentinelhub":
         if config is None:
-            from config import get_config_from_env
+            from .config import get_config_from_env
             config = get_config_from_env()
         return fetch_sentinelhub(
             config, mission, bands, time_range, roi,

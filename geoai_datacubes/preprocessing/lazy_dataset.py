@@ -71,7 +71,7 @@ from torch.utils.data import Dataset as _TorchDataset
 # Reuse the tiler's reference helpers so we don't end up with two
 # divergent implementations of cloud masking, NaN handling, or the
 # spatial-split logic.
-from tiler import (
+from .tiler import (
     _KNOWN_CLOUD_BANDS,
     _find_cloud_bands,
     _cloud_mask_from_spec,
@@ -274,7 +274,7 @@ class LazyTileDataset(_TorchDataset):
         # Build the (x, y, split) index. For "random" we draw once at
         # construction so the per-tile assignment is fixed for the life
         # of the dataset (avoids the same tile flipping between epochs).
-        from tiler import _draw_split as _draw_split_impl
+        from .tiler import _draw_split as _draw_split_impl
         src_transform = self._meta.get("transform")
         src_crs       = self._meta.get("crs")
         H = self._meta["height"]; W = self._meta["width"]

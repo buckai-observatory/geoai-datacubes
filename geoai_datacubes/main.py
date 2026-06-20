@@ -1,4 +1,11 @@
-# main.py
+"""End-to-end CLI: fetch + (NDVI/cloud-mask) + tile + export for one mission.
+
+Invoke from the repository root with::
+
+    python -m geoai_datacubes.main
+
+Tweak the USER INPUT block below to change mission, AOI, time window, etc.
+"""
 import os
 import glob
 import json
@@ -7,12 +14,10 @@ import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
 
-from missions import get_profile
-from fetch_data import fetch_sentinel_data
-from preprocess import normalize_band, compute_ndvi, cloud_mask
-from visualize import show_image
-from tiler import tile_geotiff
-from aoi import resolve_aoi
+from geoai_datacubes.fetch import resolve_aoi, fetch_sentinel_data, get_profile
+from geoai_datacubes.preprocessing import (
+    normalize_band, compute_ndvi, cloud_mask, tile_geotiff,
+)
 
 # --------------------------------------------------------------------
 # ---- USER INPUT ----
@@ -119,7 +124,11 @@ if profile["ndvi"] is not None:
     ndvi_path = os.path.join(latest_dir, "ndvi_map.png")
     plt.imsave(ndvi_path, ndvi, cmap="RdYlGn")
     print(f"✅ NDVI map saved → {ndvi_path}")
-    show_image(ndvi, title=f"{MISSION} NDVI (cloud-masked)", cmap="RdYlGn")
+    plt.figure(figsize=(8, 6))
+    plt.imshow(ndvi, cmap="RdYlGn")
+    plt.title(f"{MISSION} NDVI (cloud-masked)")
+    plt.axis("off")
+    plt.show()
 
 else:
     # Radar mission (Sentinel-1): save VV/VH backscatter + composite.
