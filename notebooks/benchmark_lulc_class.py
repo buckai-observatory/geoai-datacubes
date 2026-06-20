@@ -1,19 +1,26 @@
 """Pixel-level binary benchmark for one ESA WorldCover LULC class.
 
-Mirrors the headline pixel-level setup of `01_water_classification.ipynb`:
+Mirrors the headline pixel-level setup of `notebooks/01_classification.ipynb`:
 - Same three city Zarr cubes (Columbus, Cincinnati, Cleveland).
 - Same feature set: Sentinel-2 (B02, B03, B04, B08) + Sentinel-1 (VV, VH).
-- Same random-split LazyTileDataset wiring (water classification settled on
-  random split because the rare-class block split produces unstable F1).
+- Same random-split LazyTileDataset wiring (the rare-class block split
+  produces unstable F1 numbers so the notebook landed on random).
 - Same train -> threshold-tune on val -> evaluate on test pipeline.
 
-Output is a JSON line on stdout (and optionally a file) with the headline
-metrics, so a wrapper agent can parse it without scraping prose:
+The script and the notebook share the SAME `geoai_datacubes.preprocessing.
+LazyTileDataset` class so the harvest semantics cannot drift between
+the two. The script's role is to scan a class space the notebook can
+only explore one at a time -- the per-class results in
+`lulc_leaderboard.md` were produced by running this for every class
+that has a non-trivial positive fraction in the Ohio AOIs.
+
+Output is JSON on stdout (and optionally to a file) so a wrapper script
+can aggregate many classes without scraping prose:
 
     {"class_id": 10, "class_name": "tree_cover", "f1": 0.91, ...}
 
 Usage:
-    python benchmark_lulc_class.py --class-id 50 --class-name built_up
+    python notebooks/benchmark_lulc_class.py --class-id 50 --class-name built_up
 """
 import argparse
 import json
@@ -24,16 +31,16 @@ from pathlib import Path
 
 import numpy as np
 
-# Make the pipeline modules importable
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "modules" / "sentinel_pipeline"))
-
 # Honor the same OMP / torch single-thread guards as the notebook
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-# Heavy imports come after env vars
-from lazy_dataset import LazyTileDataset
+# Put the repo root on the import path so the package import works whether
+# you run from the repo root or from inside notebooks/.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from geoai_datacubes.preprocessing import LazyTileDataset
 
 
 SEED = 42

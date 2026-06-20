@@ -6,6 +6,15 @@ Cleveland. Random-split mixed-city train/val/test, threshold tuned on val.
 Each row is the best of {LogisticRegression, RandomForest, XGBoost}; XGB
 won on every class we have benchmarked.
 
+> **Where these numbers come from:** all rows below were produced by the
+> [`benchmark_lulc_class.py`](benchmark_lulc_class.py) CLI in this folder,
+> which uses the exact same `geoai_datacubes.preprocessing.LazyTileDataset`
+> and the same per-city Zarr cubes that
+> [`01_classification.ipynb`](01_classification.ipynb) builds. The notebook
+> trains for one class at a time and shows you the full diagnostic suite;
+> this table is what you get from running the same pipeline over every
+> class that has a non-trivial positive fraction in these Ohio AOIs.
+
 | LULC class | best model | F1 | AUC | Precision | Recall | pos_frac_train | pos_frac_test |
 |---|---|---|---|---|---|---|---|
 | **80 — water** | XGB | **0.939** | 0.977 | 0.987 | 0.895 | balanced | 9.3% |
@@ -36,10 +45,29 @@ won on every class we have benchmarked.
 ## Reproduce
 
 ```bash
-python notebooks/benchmark_lulc_class.py --class-id 50 --class-name built_up \
-       --output-json /tmp/lulc_50.json
+# from the repo root
+python notebooks/benchmark_lulc_class.py \
+    --class-id 50 --class-name built_up \
+    --output-json /tmp/lulc_50.json
 ```
 
 The script reads the Zarr cubes the notebook produced at
 `notebooks/_ml_outputs/zarr/{columbus,cincinnati,cleveland}_cube.zarr`, so
-run notebook 01 first if those cubes are not on disk yet.
+**run [`01_classification.ipynb`](01_classification.ipynb) first if those
+cubes are not on disk yet** -- otherwise the script will exit with a clear
+"cube missing" message.
+
+To regenerate the whole table:
+
+```bash
+for id_name in "10 tree_cover" "30 grassland" "40 cropland" "50 built_up" "80 water"; do
+    cid=$(echo "$id_name" | cut -d' ' -f1)
+    cname=$(echo "$id_name" | cut -d' ' -f2)
+    python notebooks/benchmark_lulc_class.py \
+        --class-id "$cid" --class-name "$cname" \
+        --output-json "/tmp/lulc_${cid}.json"
+done
+```
+
+Each per-class run takes a few minutes once the cubes are on disk; the
+full sweep is a one-coffee-cup job.
