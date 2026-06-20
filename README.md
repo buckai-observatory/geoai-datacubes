@@ -141,8 +141,6 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 | **PlanetScope (8-band SuperDove)** | `PlanetScope-8b` | Optical surface reflectance, ~3 m | planet ✅ | PSB.SD analytic 8b SR (Coastal Blue, B, Green I, G, Yellow, R, RedEdge, NIR), UDM2 masking, NDVI, tiling, export. Archive from early 2022. Commercial — requires `PL_API_KEY` in `.env`. |
 | **NAIP (US aerial imagery)** | `NAIP` | Optical aerial, **~1 m (0.6 m for newer)** | planetary_computer ✅ | USDA National Agriculture Imagery Program. RGB + NIR. Public domain. Conterminous US only. Each state re-flown every 2–3 years. Highest-resolution public-domain mission in this list; the recommended path for object-detection workflows where ~1 m pixels matter (see [`docs/data_layers.md`](docs/data_layers.md) for value ranges and Issue [#6](https://github.com/buckai-observatory/geoai-datacubes/issues/6) for a planned building-footprint demo). |
 
-> Optional: the [`landsat/landsat_pipeline`](modules/sentinel_pipeline/landsat) folder also contains helpers for **multi-sensor harmonization** (reproject/resample Landsat and Sentinel onto a common grid) for advanced fusion experiments.
-
 ---
 
 ## Quickstart for beginners — no credentials needed
@@ -177,7 +175,7 @@ pip install -r requirements.txt
 
 ### 4. Choose what to download
 
-Open `modules/sentinel_pipeline/main.py` and edit the **`USER INPUT`** block at the top to describe the data you want:
+Open `geoai_datacubes/main.py` and edit the **`USER INPUT`** block at the top to describe the data you want:
 
 ```python
 # ---- USER INPUT ----
@@ -258,8 +256,8 @@ them onto a common UTM grid for ML.
 ### 5. Run the pipeline
 
 ```bash
-cd modules/sentinel_pipeline
-python main.py
+# From the repo root:
+python -m geoai_datacubes.main
 ```
 
 The pipeline will find the least-cloudy scene, download it, mask clouds, compute NDVI, cut the scene into tiles, split them into train/val/test, and export GPU-ready datasets. Outputs land in the `data/` folder.
@@ -326,7 +324,7 @@ If you need the advanced features above, opt in by:
  SH_CLIENT_SECRET=your-client-secret-here
  SH_INSTANCE_ID= # optional
  ```
-4. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "sentinelhub"`.
+4. In `geoai_datacubes/main.py`, set `PROVIDER = "sentinelhub"`.
 
 ### Switching to the Planet provider (PlanetScope)
 
@@ -340,7 +338,7 @@ For commercial high-resolution PlanetScope imagery:
  ```
  PL_API_KEY=your-planet-api-key-here
  ```
-3. In `modules/sentinel_pipeline/main.py`, set `PROVIDER = "planet"` and `MISSION = "PlanetScope-4b"` (legacy 4-band B/G/R/NIR, archive back to ~2016) or `MISSION = "PlanetScope-8b"` (SuperDove 8-band CB/B/GI/G/Y/R/RE/NIR, ~2022 onward).
+3. In `geoai_datacubes/main.py`, set `PROVIDER = "planet"` and `MISSION = "PlanetScope-4b"` (legacy 4-band B/G/R/NIR, archive back to ~2016) or `MISSION = "PlanetScope-8b"` (SuperDove 8-band CB/B/GI/G/Y/R/RE/NIR, ~2022 onward).
 4. Pick a finer resolution — PlanetScope's native ground sampling is ~3 m, so `RESOLUTION = 3` is a sensible default.
 
 Under the hood, the `planet` provider uses Planet's **Data API** (`/quick-search`) to pick the lowest-cloud-cover scene matching your AOI/dates/instrument, then submits a single-scene **Orders API** request with server-side clip-to-AOI. The order is asynchronous — expect a few minutes for the order to reach `success` — and the pipeline polls automatically (default 60 min timeout, override via `max_wait_seconds`). The order delivers the analytic-SR COG and a UDM2 raster; both are downloaded, reprojected onto the same UTM grid we use for Sentinel/Landsat, and written into a multi-band `<Mission>_full_size.tiff` with descriptions like `"R"`, `"NIR"`, `"udm2_clear"` — so cloud masking in the tiler flows through unchanged.
@@ -357,7 +355,7 @@ optical (Sentinel-2) with SAR (Sentinel-1) with elevation (DEM) or
 land-cover labels (WorldCover) — you fuse those per-mission cubes onto
 a **common UTM grid** at a chosen resolution.
 
-The fusion helper lives in `modules/sentinel_pipeline/fusion.py`:
+The fusion helper lives in `geoai_datacubes/preprocessing/fusion.py` (also re-exported from `geoai_datacubes.preprocessing`):
 
 ```python
 from fusion import fuse_response_tiffs
@@ -440,7 +438,7 @@ which uses the binary water target from
 
 ## Configuration & parameters
 
-These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py`).
+These are the main knobs you can turn (set in `geoai_datacubes/main.py`).
 
 | Parameter | What it controls | Example |
 |---|---|---|
@@ -460,7 +458,7 @@ These are the main knobs you can turn (set in `modules/sentinel_pipeline/main.py
 
 ## Pipeline scripts
 
-All scripts live in `modules/sentinel_pipeline/`. Running `main.py` ties the core steps together, but you can also run them individually.
+All pipeline modules live under the `geoai_datacubes/` Python package — organised into three subpackages (`fetch/`, `preprocessing/`, `ml_dl/`). Running `python -m geoai_datacubes.main` ties the core steps together, but you can also import and use the individual subpackages directly (e.g., `from geoai_datacubes.fetch import fetch_sentinel_data`).
 
 | Script | What it does |
 |---|---|
@@ -561,23 +559,27 @@ geoai-datacubes/
 ├── paper.md # JOSS-format paper draft
 ├── HISTORY.md # project timeline
 ├── CONTRIBUTORS.md # contributor list
-└── modules/
- ├── README.md # detailed pipeline docs
- └── sentinel_pipeline/
- ├── main.py # ← edit USER INPUT, then run this
- ├── missions.py # per-mission config (Sentinel-2, Sentinel-1, Landsat)
- ├── aoi.py # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
- ├── fusion.py # multi-mission fusion onto a common CRS+resolution grid
- ├── config.py
- ├── fetch_data.py
- ├── parallel_fetch.py
- ├── preprocess.py
- ├── tiler.py / run_tiler.py
- ├── visualize.py / visualize_cloud_mask.py
- ├── export_zarr.py / export_lmdb.py
- ├── dataset_loader.py
- ├── create_stac_catalog.py
- └── landsat/ # experimental Landsat prototype
+└── geoai_datacubes/                 # Python package
+ ├── README.md                       # package overview + how to extend
+ ├── main.py                         # CLI entry: edit USER INPUT, then `python -m geoai_datacubes.main`
+ ├── fetch/                          # data acquisition
+ │ ├── aoi.py                        # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
+ │ ├── missions.py                   # the 15-mission registry (MISSION_PROFILES)
+ │ ├── fetch_data.py                 # generic STAC dispatcher + SH + Planet drivers
+ │ ├── config.py                     # SH OAuth env helper
+ │ ├── parallel_fetch.py             # ThreadPoolExecutor wrapper
+ │ └── create_stac_catalog.py        # STAC catalog builder
+ ├── preprocessing/                  # raw imagery -> AI-ready cube
+ │ ├── fusion.py                     # multi-mission UTM-grid fusion
+ │ ├── tiler.py                      # tile a fused cube into fixed-size chips
+ │ ├── lazy_dataset.py               # on-the-fly PyTorch tile sampler
+ │ ├── band_ops.py                   # normalise / NDVI / cloud-mask
+ │ ├── export_zarr.py                # GeoTIFF -> Zarr (faster cluster training)
+ │ ├── export_lmdb.py                # GeoTIFF -> LMDB
+ │ └── visualize_cloud_mask.py       # debug helper: cloud-mask vs imagery
+ └── ml_dl/                          # downstream ML/DL helpers
+   ├── object_detection.py           # YOLO + polygon-ground-truth plumbing
+   └── (future: classification, segmentation, super-resolution)
 ```
 
 ---

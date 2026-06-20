@@ -685,10 +685,12 @@ free global Sentinel-2 archive. Discussion at
 
 ## See also
 
-- `modules/sentinel_pipeline/missions.py` — the authoritative source for
-  the per-mission band tables that the fetcher uses.
-- `modules/sentinel_pipeline/fusion.py` — the multi-mission fusion
-  helper that resamples bands across missions onto a common UTM grid.
+- `geoai_datacubes/fetch/missions.py` — the authoritative source for
+  the per-mission band tables that the fetcher uses (re-exported from
+  `geoai_datacubes.fetch.MISSION_PROFILES`).
+- `geoai_datacubes/preprocessing/fusion.py` — the multi-mission fusion
+  helper that resamples bands across missions onto a common UTM grid
+  (re-exported from `geoai_datacubes.preprocessing.fuse_response_tiffs`).
 - The tour notebook `notebooks/00_geoai_datacubes_tour.ipynb` shows
   worked examples of fetching, normalising, and fusing each of these
   missions over a single AOI.

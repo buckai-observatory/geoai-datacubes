@@ -17,7 +17,8 @@ Joachim Moortgat.
 - **October 2025**: First feature-complete pipeline; Landsat support added.
 - **December 2025**: Code migrated to its current home at
   `github.com/buckai-observatory/geoai-datacubes` and re-organised under
-  `modules/sentinel_pipeline/`. Bhavika's commits from that migration are
+  `modules/sentinel_pipeline/` (since 2026-06-20 reorganised again into a
+  proper Python package at `geoai_datacubes/`). Bhavika's commits from that migration are
   preserved in the git history.
 - **December 2025 – May 2026**: Project paused due to graduate-student
   turnover.

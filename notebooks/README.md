@@ -169,7 +169,7 @@ A small Zarr group containing 16 pre-tiled satellite patches and a
 `02_minicube_ml_quickstart.ipynb` reads. It's intentionally tiny
 (a few megabytes) so the repository stays light; running the
 quickstart against it does not need network access. The cube was
-built with `modules/sentinel_pipeline/export_zarr.py` from real
+built with `geoai_datacubes/preprocessing/export_zarr.py` from real
 Sentinel-2 tiles during early development.
 
 ## Conventions
