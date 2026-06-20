@@ -28,6 +28,7 @@ from .fetch_data import (
     fetch_sentinelhub,
     fetch_planet,
 )
+from .parallel_fetch import fetch_many_in_parallel
 
 __all__ = [
     "resolve_aoi",
@@ -39,4 +40,5 @@ __all__ = [
     "fetch_planetary_computer",
     "fetch_sentinelhub",
     "fetch_planet",
+    "fetch_many_in_parallel",
 ]
