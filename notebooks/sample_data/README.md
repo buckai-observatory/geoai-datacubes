@@ -2,26 +2,14 @@
 
 Small data files committed alongside the demo notebooks so they can
 run end-to-end without any network access. All inputs here are
-either generated from this repo's pipeline (`mini_cube/`) or are
-filtered subsets of publicly-redistributable third-party datasets
-(`building_footprints_…`). The originating scripts that produced
-each file are linked in the per-file sections below.
-
-## `mini_cube/`
-
-A small Zarr group consumed by
-[`notebooks/02_minicube_ml_quickstart.ipynb`](../02_minicube_ml_quickstart.ipynb).
-Each tile is a tiny `(C, H, W)` array of Sentinel-2 reflectance bands
-plus an ESA WorldCover label channel. Built with the repo's own
-`geoai_datacubes.preprocessing.export_zarr` from a fused
-multi-mission cube; documented in the notebook itself.
-
-Size: a few MB; ~20 tiles.
+filtered subsets of publicly-redistributable third-party datasets;
+the originating script for each file is linked in the per-file
+sections below.
 
 ## `building_footprints_oh_3cities_5mi.gpkg`
 
 A geometry-only **GeoPackage** of building footprints consumed by
-[`notebooks/03_building_detection.ipynb`](../03_building_detection.ipynb).
+[`notebooks/02_building_detection.ipynb`](../02_building_detection.ipynb).
 
 **Contents:** 83,459 building polygons in WGS84 (EPSG:4326), covering
 three 5-mi square AOIs centred on Columbus, Cincinnati, and Cleveland

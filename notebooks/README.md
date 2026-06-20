@@ -7,7 +7,7 @@ without anything pre-existing on your machine.
 
 *Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
 
-## The four notebooks
+## The three notebooks
 
 ### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
@@ -67,35 +67,9 @@ AUC.
 
 Runs end-to-end in ~20–25 minutes on a laptop CPU.
 
-### 3. Minimal ML/DL quickstart on bundled data — `02_minicube_ml_quickstart.ipynb`
+### 3. Building detection on NAIP — `02_building_detection.ipynb`
 
-A small, **fully offline** ML/DL demo. Trains a tiny PyTorch U-Net (DL)
-on a mini Zarr cube that **ships with the repo** (under
-[`sample_data/mini_cube/`](sample_data/mini_cube/)) — no fetching,
-no credentials, no cloud, no waiting. Useful when:
-
-- You just want to see what a trained model on this kind of data
-  *looks* like, without any of the fetching plumbing.
-- You're on a flight / behind a firewall / on a Colab-free machine.
-- You're checking whether your local environment has the basics
-  installed.
-
-The notebook visualises a handful of tiles, computes NDVI with
-matplotlib, builds NDVI-thresholded pseudo-labels, trains a tiny
-U-Net (DL) to predict a vegetation mask, and optionally runs a KMeans
-(ML) land-cover clustering at the end. ~2 minutes on CPU.
-
-```bash
-jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
-```
-
-The notebook resolves paths relative to the repo root, so it works
-whether you launch Jupyter from the repo root or from inside
-`notebooks/`.
-
-### 4. Building detection on NAIP — `03_building_detection.ipynb`
-
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 The first **object-detection** notebook in the series, and the
 counterpoint to notebook 01's per-pixel segmentation framing.
@@ -164,15 +138,12 @@ The current leaderboard. Shows the best model and best F1 for each
 LULC class tested so far, with positive-fraction context so the
 small-class results can be read alongside class abundance.
 
-### `sample_data/mini_cube/` — bundled offline demo cube
+### `sample_data/` — bundled inputs for the demo notebooks
 
-A small Zarr group containing 16 pre-tiled satellite patches and a
-`metadata.json` sidecar. This is what
-`02_minicube_ml_quickstart.ipynb` reads. It's intentionally tiny
-(a few megabytes) so the repository stays light; running the
-quickstart against it does not need network access. The cube was
-built with `geoai_datacubes/preprocessing/export_zarr.py` from real
-Sentinel-2 tiles during early development.
+Currently holds the building-footprint GeoPackage that
+`02_building_detection.ipynb` uses (a filtered subset of Microsoft's
+USBuildingFootprints, ODbL v1.0). See
+[`sample_data/README.md`](sample_data/README.md) for details.
 
 ## Conventions
 

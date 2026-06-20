@@ -28,7 +28,7 @@ from geoai_datacubes.ml_dl import (
 
 ## Two ways to use it
 
-The function-level API is what `notebooks/03_building_detection.ipynb`
+The function-level API is what `notebooks/02_building_detection.ipynb`
 uses, so a tutorial reader walks through each step explicitly:
 
 ```python

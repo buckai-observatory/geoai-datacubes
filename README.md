@@ -15,7 +15,7 @@
 > - **ML / DL on a data cube** — the water-classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, with threshold tuning and a thresholded-NDWI baseline.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> Also Colab-ready: a tiny offline mini-cube ML/DL quickstart on bundled sample data ([`02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)) and a YOLO building-detection demo on NAIP ([`03_building_detection.ipynb`](notebooks/03_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all four.
+> Also Colab-ready: a YOLO building-detection demo on NAIP ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three.
 >
 > *Tip: GitHub's HTML sanitizer strips `target="_blank"` from links, so the badges above will navigate in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab and keep this page where it is.*
 
@@ -114,13 +114,10 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
   - an end-to-end *water classification* notebook
     (`notebooks/01_water_classification.ipynb`) training Logistic
     Regression, Random Forest, XGBoost, and a lightweight U-Net on a
-    fused cube against the ESA WorldCover water class;
-  - an offline *mini-cube ML/DL quickstart*
-    (`notebooks/02_minicube_ml_quickstart.ipynb`) for users who want
-    to skip the fetch step and train a tiny U-Net on bundled sample
-    data without any network access;
+    fused cube against the ESA WorldCover water class, with NDVI /
+    NDWI / NDMI sidebars and an unsupervised KMeans bonus;
   - a *YOLO building-detection demo*
-    (`notebooks/03_building_detection.ipynb`) — the first
+    (`notebooks/02_building_detection.ipynb`) — the first
     object-detection notebook in the series, using NAIP 1 m
     imagery and Microsoft US Building Footprints across three
     Ohio cities.
@@ -486,7 +483,7 @@ All pipeline modules live under the `geoai_datacubes/` Python package — organi
 
 ## Try the notebooks
 
-The repo ships with **four complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
+The repo ships with **three complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
 
 ### 1. The grand tour (start here if you are new)
 
@@ -511,29 +508,18 @@ A complete machine-learning workflow that picks up where the tour leaves off. Fe
 jupyter notebook notebooks/01_water_classification.ipynb
 ```
 
-### 3. Offline ML/DL quickstart on bundled data
+### 3. Building detection on NAIP (object detection / YOLO)
 
-[`notebooks/02_minicube_ml_quickstart.ipynb`](notebooks/02_minicube_ml_quickstart.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_minicube_ml_quickstart.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+[`notebooks/02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
-Walks through **training a small U-Net (DL) and an optional KMeans (ML) baseline** on a data cube, end to end. Runs on a **bundled sample data cube** under [`notebooks/sample_data/mini_cube/`](notebooks/sample_data/mini_cube/) — no API keys, no download, no network needed — so you can launch it right after `pip install -r requirements.txt`:
-
-```bash
-jupyter notebook notebooks/02_minicube_ml_quickstart.ipynb
-```
-
-### 4. Building detection on NAIP (object detection / YOLO)
-
-[`notebooks/03_building_detection.ipynb`](notebooks/03_building_detection.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-
-The first **object-detection** notebook in the series — switches the modelling problem from per-pixel labelling (notebook 01) to *one bounding box per individual building*. Uses NAIP 1 m aerial imagery (the only widely-available sub-metre free public source) and the Microsoft US Building Footprints dataset as ground truth across three Ohio cities (Columbus → train, Cincinnati → val, Cleveland → test). Trains a tiny YOLOv8n detector (~3.2 M parameters) on CPU for ~80 epochs and reports mAP@0.5, mAP@0.5–0.95, precision, and recall. Includes:
+The first **object-detection** notebook in the series — switches the modelling problem from per-pixel labelling (notebook 01) to *one bounding box per individual building*. Uses NAIP 1 m aerial imagery (the only widely-available sub-metre free public source) and the Microsoft US Building Footprints dataset as ground truth across three Ohio cities (Columbus → train, Cincinnati → val, Cleveland → test). Trains a tiny YOLOv8n detector (~3.2 M parameters) on CPU and reports mAP@0.5, mAP@0.5–0.95, precision, and recall. Includes:
 
 - a **NAIP-vs-Sentinel-2 resolution sidebar** that motivates the resolution-vs-object-scale trade-off (a typical residential building is ~10 × 10 px at 1 m GSD but ~1 × 1 px at 10 m — useless for detection);
 - a **PlanetScope-at-3-m sidebar** discussed in prose only, because Planet's licence forbids embedding pixels in published outputs.
 
 ```bash
-jupyter notebook notebooks/03_building_detection.ipynb
+jupyter notebook notebooks/02_building_detection.ipynb
 ```
 
 ---
@@ -552,11 +538,12 @@ geoai-datacubes/
 │ ├── README.md # per-notebook walkthrough
 │ ├── 00_geoai_datacubes_tour.ipynb # pedagogical data-pipeline tour (Colab-ready)
 │ ├── 01_water_classification.ipynb # end-to-end ML/DL training (Colab-ready)
-│ ├── 02_minicube_ml_quickstart.ipynb # offline ML/DL demo on bundled sample data
-│ ├── 03_building_detection.ipynb # NAIP + YOLO building-detection demo (Colab-ready)
+│ ├── 02_building_detection.ipynb # NAIP + YOLO building-detection demo (Colab-ready)
 │ ├── benchmark_lulc_class.py # per-class binary benchmark CLI
 │ ├── lulc_leaderboard.md # per-class results table
-│ └── sample_data/mini_cube/ # bundled offline Zarr for the quickstart
+│ └── sample_data/                       # bundled inputs for the demo notebooks
+│   ├── README.md
+│   └── building_footprints_oh_3cities_5mi.gpkg  # for the building-detection notebook
 ├── slurm_examples/ # generic SBATCH templates for HPC clusters
 ├── paper.md # JOSS-format paper draft
 ├── HISTORY.md # project timeline

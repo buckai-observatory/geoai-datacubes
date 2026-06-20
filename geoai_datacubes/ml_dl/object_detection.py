@@ -1,7 +1,7 @@
 """Object-detection helpers built on top of the sentinel_pipeline data cubes.
 
 This module promotes the recurring boilerplate from the building-detection
-demo notebook (`notebooks/03_building_detection.ipynb`) into reusable
+demo notebook (`notebooks/02_building_detection.ipynb`) into reusable
 helpers so the notebook itself can stay focused on the *story* rather
 than the wiring. Four buckets:
 
