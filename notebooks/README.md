@@ -41,14 +41,16 @@ the **data side** of the pipeline:
 Runs end-to-end on a laptop CPU in ~3–5 minutes (most of that is the
 satellite downloads).
 
-### 2. Water classification end-to-end — `01_water_classification.ipynb`
+### 2. Land-cover classification end-to-end — `01_classification.ipynb`
 
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 An applied ML/DL notebook that picks up where the tour notebook
 leaves off. Trains and compares **four standard classifiers** on a
-binary water-vs-rest target derived from ESA WorldCover class 80
-(permanent water bodies):
+**binary classification target derived from any ESA WorldCover
+class** you pick at the top of the notebook (water 80, tree cover
+10, cropland 40, built-up 50, …; full guidance is in the
+class-choice table):
 
 - Logistic regression (baseline, with threshold tuning on val).
 - Random Forest (scikit-learn).
@@ -58,12 +60,16 @@ binary water-vs-rest target derived from ESA WorldCover class 80
 
 Trained on a mixed-city dataset (Columbus + Cincinnati + Cleveland)
 using the `LazyTileDataset` on-the-fly tile sampler so no tile files
-are ever written to disk. Demonstrates threshold tuning, NDWI as a
-sanity-check baseline, per-city test breakdown, multi-modal feature
-fusion (S2 vs S2 + S1 vs S2 + S1 + DEM, with DEM preprocessed into
-city-relative elevation + gradient magnitude), and a collapsible
-explainer for TP / FP / FN / TN / precision / recall / F1 / IoU /
-AUC.
+are ever written to disk. Demonstrates threshold tuning, a
+**conditional spectral-index baseline** (NDWI when the target is
+water, NDVI when the target is tree cover / grassland / cropland,
+skipped otherwise), a side-by-side NDVI / NDWI / NDMI sidebar, an
+**unsupervised KMeans bonus** that compares a five-cluster
+MiniBatchKMeans split against WorldCover ground truth, multi-modal
+feature fusion (S2 vs S2 + S1 vs S2 + S1 + DEM, with DEM
+preprocessed into city-relative elevation + gradient magnitude),
+per-city test breakdown, and a collapsible explainer for TP / FP /
+FN / TN / precision / recall / F1 / IoU / AUC.
 
 Runs end-to-end in ~20–25 minutes on a laptop CPU.
 

@@ -12,8 +12,8 @@
 > - **Data acquisition & pre-processing** — the grand-tour notebook fetches live Columbus data and walks through every pipeline feature on the data side: every mission, AOI format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> - **ML / DL on a data cube** — the water-classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, with threshold tuning and a thresholded-NDWI baseline.
->   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+> - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top (water, tree cover, cropland, built-up, …). Threshold tuning on val, a conditional spectral-index baseline (NDWI for water, NDVI for vegetation), and an unsupervised KMeans bonus.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
 > Also Colab-ready: a YOLO building-detection demo on NAIP ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three.
 >
@@ -111,11 +111,12 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
   - a *grand tour* (`notebooks/00_geoai_datacubes_tour.ipynb`)
     walking through every pipeline feature on a multi-mission
     Columbus AOI;
-  - an end-to-end *water classification* notebook
-    (`notebooks/01_water_classification.ipynb`) training Logistic
+  - an end-to-end *land-cover classification* notebook
+    (`notebooks/01_classification.ipynb`) training Logistic
     Regression, Random Forest, XGBoost, and a lightweight U-Net on a
-    fused cube against the ESA WorldCover water class, with NDVI /
-    NDWI / NDMI sidebars and an unsupervised KMeans bonus;
+    fused cube against any ESA WorldCover class you pick at the top
+    (water, tree cover, cropland, built-up, …), with NDVI / NDWI /
+    NDMI sidebars and an unsupervised KMeans bonus;
   - a *YOLO building-detection demo*
     (`notebooks/02_building_detection.ipynb`) — the first
     object-detection notebook in the series, using NAIP 1 m
@@ -428,7 +429,7 @@ The end-to-end multi-mission fusion is demonstrated in
 [`notebooks/00_geoai_datacubes_tour.ipynb`](notebooks/00_geoai_datacubes_tour.ipynb)
 (section 9), and the resulting fused cube is the input for every
 classifier in
-[`notebooks/01_water_classification.ipynb`](notebooks/01_water_classification.ipynb)
+[`notebooks/01_classification.ipynb`](notebooks/01_classification.ipynb)
 which uses the binary water target from
 `ESA-WorldCover_LULC` together with `Sentinel-2_B0{2,3,4,8}` +
 `Sentinel-1_V{V,H}` + DEM-derived features.
@@ -497,15 +498,15 @@ A pedagogical walkthrough of every feature on the *data* side of the pipeline �
 jupyter notebook notebooks/00_geoai_datacubes_tour.ipynb
 ```
 
-### 2. Water classification end-to-end (ML/DL)
+### 2. Land-cover classification end-to-end (ML/DL)
 
-[`notebooks/01_water_classification.ipynb`](notebooks/01_water_classification.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_water_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+[`notebooks/01_classification.ipynb`](notebooks/01_classification.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
-A complete machine-learning workflow that picks up where the tour leaves off. Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM + ESA WorldCover for **Columbus, Cincinnati, and Cleveland**; converts each city's cube to Zarr; then trains and compares four standard classifiers (Logistic Regression, Random Forest, XGBoost, and a lightweight U-Net) on a binary water-vs-rest target. Includes threshold tuning on validation, a thresholded-NDWI sanity-check baseline, multi-modal fusion comparison (S2 vs S2 + S1 vs S2 + S1 + DEM with DEM preprocessed into city-relative elevation + gradient magnitude), per-city test breakdown, and a collapsible explainer for the binary-classification metrics (TP/FP/FN/TN, precision, recall, F1, IoU, AUC).
+A complete machine-learning workflow that picks up where the tour leaves off. Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM + ESA WorldCover for **Columbus, Cincinnati, and Cleveland**; converts each city's cube to Zarr; then trains and compares four standard classifiers (Logistic Regression, Random Forest, XGBoost, and a lightweight U-Net) on a binary classification target — the chosen ESA WorldCover class vs everything else. **The class is a user input at the top of the notebook**, with a per-class quality table showing which choices work well in this AOI (water 80, tree cover 10, cropland 40 are easy; built-up 50 is medium-and-interesting; rarer classes are honestly flagged as poor choices). Includes a **conditional spectral-index baseline** (NDWI for water; NDVI for vegetation classes; skipped otherwise), an NDVI / NDWI / NDMI side-by-side sidebar, an **unsupervised KMeans bonus** that compares a five-cluster MiniBatchKMeans split against WorldCover ground truth, multi-modal fusion comparison (S2 vs S2 + S1 vs S2 + S1 + DEM with DEM preprocessed into city-relative elevation + gradient magnitude), threshold tuning on validation, per-city test breakdown, and a collapsible explainer for the binary-classification metrics (TP/FP/FN/TN, precision, recall, F1, IoU, AUC).
 
 ```bash
-jupyter notebook notebooks/01_water_classification.ipynb
+jupyter notebook notebooks/01_classification.ipynb
 ```
 
 ### 3. Building detection on NAIP (object detection / YOLO)
@@ -537,7 +538,7 @@ geoai-datacubes/
 ├── notebooks/
 │ ├── README.md # per-notebook walkthrough
 │ ├── 00_geoai_datacubes_tour.ipynb # pedagogical data-pipeline tour (Colab-ready)
-│ ├── 01_water_classification.ipynb # end-to-end ML/DL training (Colab-ready)
+│ ├── 01_classification.ipynb # end-to-end ML/DL training (Colab-ready)
 │ ├── 02_building_detection.ipynb # NAIP + YOLO building-detection demo (Colab-ready)
 │ ├── benchmark_lulc_class.py # per-class binary benchmark CLI
 │ ├── lulc_leaderboard.md # per-class results table

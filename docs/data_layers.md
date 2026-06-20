@@ -243,7 +243,7 @@ LULC; the class IDs are categorical labels, not a continuous scale.
 - As a **label**: pass `label_remap={class_id: 1}` to `LazyTileDataset`
   for binary classification of a single class against everything else
   (e.g. `{80: 1}` is the water-vs-rest target used in
-  `notebooks/01_water_classification.ipynb`).
+  `notebooks/01_classification.ipynb`).
 - As an **input** to a model: use an embedding layer or a one-hot
   encoding rather than feeding the raw integer class IDs.
 
@@ -694,6 +694,6 @@ free global Sentinel-2 archive. Discussion at
 - The tour notebook `notebooks/00_geoai_datacubes_tour.ipynb` shows
   worked examples of fetching, normalising, and fusing each of these
   missions over a single AOI.
-- The ML/DL notebook `notebooks/01_water_classification.ipynb` is the
+- The ML/DL notebook `notebooks/01_classification.ipynb` is the
   end-to-end demonstration of training tree (ML) and U-Net (DL) models
   on a fused multi-mission cube.
