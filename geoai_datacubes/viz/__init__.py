@@ -47,6 +47,7 @@ from .tiles import (
     open_tile,
     best_demo_tile,
     tile_grid_overlay,
+    visualize_nan_handling_modes,
 )
 from .splits import (
     SPLIT_COLOURS,
@@ -75,6 +76,7 @@ __all__ = [
     "open_tile",
     "best_demo_tile",
     "tile_grid_overlay",
+    "visualize_nan_handling_modes",
     # splits
     "SPLIT_COLOURS",
     "read_tiles_csv",

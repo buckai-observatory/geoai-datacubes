@@ -60,27 +60,38 @@ def open_tile(path) -> Tuple[np.ndarray, list, dict]:
         return src.read(), list(src.descriptions or []), src.tags()
 
 
-def best_demo_tile(mode_dir, mode: str) -> Tuple[Optional[Path], int]:
+def best_demo_tile(mode_dir,
+                   mode: str,
+                   *,
+                   min_nan_pct: float = 1.0) -> Tuple[Optional[Path], int]:
     """Pick the tile that best illustrates a given NaN-handling mode.
 
     The tiler writes a ``tiles_metadata.csv`` next to its outputs with
     per-tile bookkeeping (``n_nan_before``, ``n_filled``,
-    ``has_mask_band``, ``n_cloud_masked``, …). We rank rows by the field
-    that *names* the mode so the picked tile actually demonstrates it
-    in action:
+    ``has_mask_band``, ``n_cloud_masked``, …). We **require ``n_nan_before``
+    to be at least ``min_nan_pct`` percent** of the tile's pixel count so
+    the picked tile is actually informative -- a survivor with 0 % NaN
+    has nothing to show. Within that filter we rank by the field that
+    *names* the mode:
 
-    * ``"drop"``        -> the kept tile with the highest ``n_nan_before``
-      (i.e. the cloudiest one that still survived the threshold)
+    * ``"drop"``        -> the survivor with the highest
+                          ``n_nan_before`` (the cloudiest tile that
+                          still squeaked past the threshold)
     * ``"interpolate"`` -> the tile with the highest ``n_filled``
-    * ``"mask"``        -> any tile that ended up with a ``valid_mask``
-      band, picking the one with the most cloud-masked pixels
+                          (also requires ``n_filled > 0``)
+    * ``"mask"``        -> a tile that ended up with a ``valid_mask``
+                          band, picking the one with the most
+                          cloud-masked pixels
 
-    Without this kind of guided pick a randomly sampled tile is almost
-    always cloud-free and the figure is uninformative. Augmented rows
-    (those whose ``augmentation`` column is not ``"none"``) are skipped
-    so we always show an original tile.
+    Augmented rows (``augmentation != "none"``) are skipped so the
+    picked tile is always a primary, not a flip / rotation.
 
-    Returns ``(path_or_None, n_nan_before)``.
+    Returns
+    -------
+    (path_or_None, n_nan_before)
+        ``path`` is ``None`` when no tile satisfies the ``min_nan_pct``
+        filter -- callers should handle that case (typically by skipping
+        the row in the figure with a "no demo tile available" caption).
     """
     csv_path = Path(mode_dir) / "tiles_metadata.csv"
     if not csv_path.exists():
@@ -94,21 +105,253 @@ def best_demo_tile(mode_dir, mode: str) -> Tuple[Optional[Path], int]:
     if not rows:
         return None, 0
 
+    def _pct_nan(r):
+        w = int(r.get("width") or 0)
+        h = int(r.get("height") or 0)
+        n = int(r.get("n_nan_before") or 0)
+        return (100.0 * n / max(1, w * h))
+
+    # Require at least min_nan_pct % NaN in the source for the row to
+    # be visually informative.
+    rows = [r for r in rows if _pct_nan(r) >= min_nan_pct]
+
     if mode == "drop":
         rows.sort(key=lambda r: int(r.get("n_nan_before") or 0), reverse=True)
     elif mode == "interpolate":
+        rows = [r for r in rows if int(r.get("n_filled") or 0) > 0]
         rows.sort(key=lambda r: int(r.get("n_filled") or 0), reverse=True)
     elif mode == "mask":
-        with_mask = [r for r in rows
-                     if str(r.get("has_mask_band")).lower() == "true"]
-        rows = with_mask or rows
+        rows = [r for r in rows
+                if str(r.get("has_mask_band")).lower() == "true"]
         rows.sort(key=lambda r: int(r.get("n_cloud_masked") or 0), reverse=True)
+
+    if not rows:
+        return None, 0
 
     pick = rows[0]
     split = pick.get("split") or "train"
     path = Path(mode_dir) / split / pick["filename"]
     return (path if path.exists() else None,
             int(pick.get("n_nan_before") or 0))
+
+
+def visualize_nan_handling_modes(
+    modes_root_dir,
+    source_tiff,
+    *,
+    band: str = "B04",
+    qa_band: Optional[str] = "SCL",
+    decode_qa = None,
+    min_nan_pct: float = 1.0,
+    figsize=(12, 9.5),
+) -> None:
+    """Render the canonical 3-row 'how do the NaN modes differ?' figure.
+
+    The earlier inline notebook version had three real bugs that this
+    function fixes:
+
+    1. It picked tiles without checking whether they actually had any
+       NaN. A 0 % NaN tile cannot demonstrate any of the modes.
+    2. It plotted ``np.isnan(b04)`` on the kept tile -- but by the time
+       the tiler writes the tile, the NaN has already been resolved
+       (dropped, filled, or zeroed-and-masked). So the "NaN map" panel
+       was always empty (white) regardless of mode.
+    3. The colour-map / title pairing was backwards: ``cmap="Greys"``
+       maps True to black but the title said "white = NaN".
+
+    The fix is to **reconstruct the before-state** by reading the
+    source TIFF window for each picked tile (so we have the original
+    pixel values) and re-applying the same QA-band cloud decode the
+    tiler used. Then for each mode we show what's distinctive:
+
+      drop        | source band w/ NaN in red | -- | (drop has no positive output to show)
+      interpolate | source band w/ NaN in red | post-handling band  | filled pixels in green
+      mask        | source band w/ NaN in red | post-handling band  | valid_mask band
+
+    Parameters
+    ----------
+    modes_root_dir : path-like
+        Folder containing ``drop/``, ``interpolate/``, ``mask/``
+        subdirectories (one per NaN-handling mode). Each subdirectory
+        is the ``output_dir`` of a ``tile_geotiff`` call.
+    source_tiff : path-like
+        Path to the TIFF that was passed to ``tile_geotiff`` as
+        ``input_tiff``. Read in windows to recover the source values
+        + QA band for each picked tile.
+    band : str
+        Band name (in ``source_tiff``'s descriptions) to display. The
+        same band is read from the post-handling tile for the "after"
+        column.
+    qa_band : str, optional
+        QA-band name in ``source_tiff``'s descriptions. ``"SCL"`` for
+        Sentinel-2 L2A, ``"BQA"`` for Landsat. When this is ``None``
+        or absent from the source, the before-state shows only the
+        pixels with literal ``NaN`` in the source -- typically very
+        few, so the figure will look mostly empty.
+    decode_qa : callable, optional
+        Decoder for the QA band (e.g. :func:`decode_scl` for SCL or
+        :func:`decode_bqa` for BQA). Required when ``qa_band`` is set.
+    min_nan_pct : float
+        Minimum NaN fraction (in percent) required for a tile to be
+        picked for any row. Defaults to 1 % so the figure is always
+        informative; rows with no qualifying tile in their pool show
+        a "no demo tile available" caption instead of being silently
+        blank.
+    """
+    import matplotlib.pyplot as plt
+    from rasterio.windows import Window
+
+    from .scenes import stretch01  # local import keeps the module light
+
+    modes_root_dir = Path(modes_root_dir)
+    fig, axes = plt.subplots(3, 3, figsize=figsize, constrained_layout=True)
+    fig.suptitle(
+        "NaN handling -- source tile with NaN in red, mode result, "
+        "mode-specific aux",
+        fontsize=12,
+    )
+
+    # Open the source once and reuse for every per-tile window read.
+    with rasterio.open(source_tiff) as src:
+        src_descs = list(src.descriptions or [])
+
+        try:
+            src_band_idx = src_descs.index(band) + 1
+        except ValueError:
+            src_band_idx = 1   # fallback
+
+        qa_band_idx = None
+        if qa_band is not None and qa_band in src_descs:
+            qa_band_idx = src_descs.index(qa_band) + 1
+
+        for row, mode in enumerate(("drop", "interpolate", "mask")):
+            mode_dir = modes_root_dir / mode
+            tp, n_nan_before = best_demo_tile(mode_dir, mode,
+                                              min_nan_pct=min_nan_pct)
+            if tp is None:
+                for c in range(3):
+                    axes[row][c].axis("off")
+                axes[row][0].set_title(
+                    f"{mode!r}: no tile with >= {min_nan_pct:.0f}% NaN to demo",
+                    fontsize=9,
+                )
+                continue
+
+            # ---- Locate the source window for this tile ----
+            csv_path = mode_dir / "tiles_metadata.csv"
+            x_off = y_off = w = h = None
+            with open(csv_path) as f:
+                for r in _csv.DictReader(f):
+                    if r.get("filename") == tp.name and \
+                       r.get("augmentation", "none") == "none":
+                        x_off = int(r["x_offset"])
+                        y_off = int(r["y_offset"])
+                        w     = int(r["width"])
+                        h     = int(r["height"])
+                        break
+            if x_off is None:
+                for c in range(3):
+                    axes[row][c].axis("off")
+                axes[row][0].set_title(
+                    f"{mode!r}: metadata row missing for {tp.name}",
+                    fontsize=9,
+                )
+                continue
+
+            win = Window(x_off, y_off, w, h)
+            src_band_arr = src.read(src_band_idx, window=win).astype(np.float32)
+
+            # Build the "before" NaN mask. This is what the tiler saw
+            # right after cloud masking and before nan_handling kicked in:
+            # nan_before = isnan(source_band) | decode_qa(qa_band)
+            nan_before = np.isnan(src_band_arr)
+            if qa_band_idx is not None and decode_qa is not None:
+                qa_arr = src.read(qa_band_idx, window=win)
+                nan_before = nan_before | decode_qa(qa_arr)
+
+            pct_before = 100.0 * nan_before.mean()
+
+            # ---- Read the post-handling tile ----
+            post_arr, post_descs, _ = open_tile(tp)
+            try:
+                post_band_idx = post_descs.index(band)
+            except ValueError:
+                post_band_idx = 0
+            post_band_arr = post_arr[post_band_idx]
+            post_nan = np.isnan(post_band_arr)
+            pct_after = 100.0 * post_nan.mean()
+
+            # ---- Column 0: source band with NaN highlighted in red ----
+            ax0 = axes[row][0]
+            base = stretch01(src_band_arr)
+            rgb = np.stack([base, base, base], axis=-1)
+            # Wherever the source is NaN, base is NaN; fill that channel
+            # with the red overlay AFTER the broadcast.
+            rgb = np.where(np.isnan(rgb), 0.0, rgb)
+            rgb[nan_before] = (1.0, 0.0, 0.0)   # red where NaN was
+            ax0.imshow(rgb)
+            ax0.set_title(
+                f"{mode!r} -- source {band}\n"
+                f"{pct_before:.1f}% NaN before (red)   ({tp.name})",
+                fontsize=9,
+            )
+            ax0.set_xticks([]); ax0.set_yticks([])
+
+            # ---- Column 1: mode result ----
+            ax1 = axes[row][1]
+            if mode == "drop":
+                ax1.axis("off")
+                ax1.set_title(
+                    "drop: any tile whose NaN fraction is too high\n"
+                    "is REMOVED. The tile at left was kept.",
+                    fontsize=9,
+                )
+            else:
+                ax1.imshow(stretch01(post_band_arr), cmap="gray")
+                ax1.set_title(
+                    f"post-handling {band}  (NaN now {pct_after:.1f}%)",
+                    fontsize=9,
+                )
+                ax1.set_xticks([]); ax1.set_yticks([])
+
+            # ---- Column 2: mode-specific aux ----
+            ax2 = axes[row][2]
+            if mode == "drop":
+                ax2.axis("off")
+
+            elif mode == "interpolate":
+                # Filled positions: NaN in source, valid in post-tile.
+                filled = nan_before & ~post_nan
+                n_filled = int(filled.sum())
+                pct_filled = 100.0 * filled.mean()
+                ax2.imshow(filled, cmap="Greens", vmin=0, vmax=1)
+                ax2.set_title(
+                    f"interpolated pixels (green)\n"
+                    f"{n_filled} px filled  ({pct_filled:.1f}% of tile)",
+                    fontsize=9,
+                )
+                ax2.set_xticks([]); ax2.set_yticks([])
+
+            elif mode == "mask":
+                if "valid_mask" in post_descs:
+                    vm_idx = post_descs.index("valid_mask")
+                    vm = post_arr[vm_idx]
+                    # vm: 1 = valid, 0 = invalid. Greys_r: 1 -> white.
+                    ax2.imshow(vm, cmap="Greys_r", vmin=0, vmax=1)
+                    n_invalid = int((vm < 0.5).sum())
+                    pct_invalid = 100.0 * n_invalid / vm.size
+                    ax2.set_title(
+                        f"appended valid_mask band\n"
+                        f"{pct_invalid:.1f}% invalid (black)",
+                        fontsize=9,
+                    )
+                    ax2.set_xticks([]); ax2.set_yticks([])
+                else:
+                    ax2.axis("off")
+                    ax2.set_title("(no valid_mask band -- unexpected)",
+                                  fontsize=9)
+
+    plt.show()
 
 
 # ============================================================
