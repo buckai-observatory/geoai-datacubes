@@ -26,6 +26,7 @@ the import path users have already typed.
 from .scenes import (
     # Scene I/O
     find_response,
+    find_band,
     open_response,
     read_userdata,
     print_response_summary,
@@ -41,9 +42,23 @@ from .scenes import (
     decode_bqa,
     plot_cloud_pair,
 )
+from .tiles import (
+    count_tiles,
+    open_tile,
+    best_demo_tile,
+    tile_grid_overlay,
+)
+from .splits import (
+    SPLIT_COLOURS,
+    read_tiles_csv,
+    plot_split_layout,
+    city_panel,
+)
 
 __all__ = [
+    # scenes
     "find_response",
+    "find_band",
     "open_response",
     "read_userdata",
     "print_response_summary",
@@ -55,4 +70,14 @@ __all__ = [
     "decode_scl",
     "decode_bqa",
     "plot_cloud_pair",
+    # tiles
+    "count_tiles",
+    "open_tile",
+    "best_demo_tile",
+    "tile_grid_overlay",
+    # splits
+    "SPLIT_COLOURS",
+    "read_tiles_csv",
+    "plot_split_layout",
+    "city_panel",
 ]

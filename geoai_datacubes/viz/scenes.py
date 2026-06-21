@@ -151,6 +151,30 @@ def print_response_summary(arr, descs, prof, bbox, xform, crs, tiff,
             print(f"{d:>14s}  (all NaN)")
 
 
+def find_band(descs: Sequence[str], *suffixes: str) -> Optional[int]:
+    """Index of the first band whose name matches any of ``*suffixes``.
+
+    Matches either ``d == suffix`` (exact) or
+    ``d.endswith("_" + suffix)`` (mission-prefixed convention used by the
+    fused cubes, e.g. ``"Sentinel-2_B04"``). Returns ``None`` when no
+    match is found so the caller can skip the band cleanly.
+
+    Example
+    -------
+    >>> descs = ["Sentinel-2_B04", "Sentinel-1_VV", "Copernicus-DEM_DEM"]
+    >>> find_band(descs, "B04")
+    0
+    >>> find_band(descs, "DEM")
+    2
+    >>> find_band(descs, "missing")  # returns None
+    """
+    for s in suffixes:
+        for i, d in enumerate(descs):
+            if d and (d == s or d.endswith("_" + s)):
+                return i
+    return None
+
+
 # ============================================================
 # Stretching / normalisation
 # ============================================================
