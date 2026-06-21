@@ -19,6 +19,64 @@ the host and the credentialing path.
 
 ---
 
+## Band metadata in one place: `band_meta`
+
+Every mission profile in `geoai_datacubes/fetch/missions.py` declares a
+per-band `band_meta` dict that drives two automation paths in the
+pipeline:
+
+1. `tile_geotiff(nan_handling="auto")` — the default NaN-handling policy.
+   For each band the dispatcher reads its **kind** and applies the matching
+   fill strategy (see [`adding_a_mission.md`](adding_a_mission.md) for the
+   strategy table).
+2. ML-ready normalisation (`apply_band_norm`, `get_band_norm`) — each band
+   declares a normalisation **recipe** so a multi-mission cube can be
+   converted to model-ready floats with a single sweep, without the caller
+   needing to know each band's native value range.
+
+The taxonomy of kinds:
+
+| Kind | Examples | Default NaN strategy (`auto`) | Default normalisation recipe |
+|---|---|---|---|
+| `spectral`   | S2 B02–B12, Landsat B01–B07, NAIP R/G/B/NIR, MODIS_SR B01–B07, HLS B01–B12 | per-band mean fill (neutral for CNN gradients) | `("linear", 0, 10000)` or `("linear", 0, 255)` for NAIP |
+| `sar`        | Sentinel-1 VV / VH / HH / HV | per-band mean fill | `("log_db", 1e-6)` — dB conversion + `[-25, 0]` -> `[0, 1]` |
+| `elevation`  | Copernicus-DEM, 3DEP | biharmonic in-painting | `("mean_subtract", 1000.0)` — per-tile mean removed, divided by 1 km |
+| `temperature`| MODIS_LST LST_Day / LST_Night | per-band mean fill | `("kelvin_to_celsius_norm", -40, 60)` — scale, Kelvin -> °C, [-40, 60] °C -> [0, 1] |
+| `index`      | JRC-GSW occurrence / change / seasonality / recurrence | per-band mean fill | `("divide", 100.0)` (or 12 for seasonality) |
+| `categorical`| ESA-WorldCover LULC, JRC-GSW extent / transitions, NAIP UDM2 | nearest-neighbour fill (rounded to int) | `("passthrough",)` — tree models use raw IDs; CNNs use `("one_hot", classes)` at training time |
+| `qa`         | S2 SCL, Landsat BQA, HLS Fmask, MODIS QC / STATE / DOY, S2 AOT / WVP, S2 angles | drop the tile (a NaN in a QA band is unexpected and probably a bug) | `("passthrough",)` |
+
+These are defaults. When a mission's value range differs the per-mission
+`band_meta` overrides them: NAIP's `band_meta["R"]["norm"]` is
+`("linear", 0, 255)`, ESA-WorldCover's
+`band_meta["LULC"]["norm"]` is `("one_hot", (10, 20, 30, 40, 50, 60, 70,
+80, 90, 95, 100))`, MODIS-LST's `LST_Day` carries
+`("kelvin_to_celsius_norm", -40, 60)` with the scale factor 0.02
+applied during the recipe. See `MISSION_PROFILES` itself for the
+authoritative per-band entries.
+
+**Override at call time.** The tiler also accepts per-kind and per-band
+overrides on top of the profile-driven defaults — useful when a single
+project wants a non-standard policy without editing the shared profile.
+
+```python
+tile_geotiff(
+    ..., nan_handling="auto",
+    nan_max_fraction=0.20,                        # be less strict about cloud cover
+    nan_strategy_per_kind={"elevation": "fill_mean"},  # cheaper than biharmonic on huge AOIs
+    nan_strategy_per_band={"SCL": "fill_nearest_int"}, # tolerate SCL NaN as a known artefact
+)
+```
+
+The three-tier lookup is **explicit override > mission profile >
+regex-based inference**. The inference fallback is rich enough to cover
+ad-hoc bands the profile doesn't enumerate (see
+`BAND_KIND_PATTERNS` in `band_ops.py`), so adding a new mission that
+re-uses standard band names (`B04`, `VV`, `DEM`, `LST_Day`, ...) usually
+needs zero `band_meta` entries.
+
+---
+
 ## Quick reference matrix
 
 | Mission | Mission name (in pipeline) | Spatial resolution | Native temporal revisit | Bands | Typical value range |

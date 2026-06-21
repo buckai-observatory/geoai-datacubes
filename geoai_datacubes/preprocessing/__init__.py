@@ -22,12 +22,23 @@ Lower-level helpers (NDVI math, cloud-mask decoders) live in ``band_ops.py``:
 * :func:`normalize_band` -- per-band min/max normalisation to [0, 1]
 * :func:`compute_ndvi` -- standard ``(NIR - RED) / (NIR + RED)`` with eps
 * :func:`cloud_mask` -- decode SCL / BQA / QA_PIXEL into a boolean mask
+
+Band-meta infrastructure (per-band ``kind`` + normalisation recipe,
+used by ``tile_geotiff(nan_handling="auto")`` and ML-ready normalisation):
+
+* :func:`infer_band_kind` / :func:`get_band_kind`
+* :func:`get_band_norm` / :func:`apply_band_norm`
+* :data:`DEFAULT_KIND_NAN_STRATEGY` / :data:`DEFAULT_KIND_NORM`
 """
 
 from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
-from .band_ops import normalize_band, compute_ndvi, cloud_mask
+from .band_ops import (
+    normalize_band, compute_ndvi, cloud_mask,
+    infer_band_kind, get_band_kind, get_band_norm, apply_band_norm,
+    BAND_KIND_PATTERNS, DEFAULT_KIND_NAN_STRATEGY, DEFAULT_KIND_NORM,
+)
 from .export_zarr import export_to_zarr
 from .export_lmdb import export_to_lmdb
 
@@ -42,4 +53,11 @@ __all__ = [
     "normalize_band",
     "compute_ndvi",
     "cloud_mask",
+    "infer_band_kind",
+    "get_band_kind",
+    "get_band_norm",
+    "apply_band_norm",
+    "BAND_KIND_PATTERNS",
+    "DEFAULT_KIND_NAN_STRATEGY",
+    "DEFAULT_KIND_NORM",
 ]

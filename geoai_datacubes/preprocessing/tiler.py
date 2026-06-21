@@ -207,13 +207,168 @@ def _fill_nan_nearest(img, max_dist=3):
     return out, total_filled
 
 
-def _handle_nan(img, mode, max_fraction, max_dist):
+def _fill_band_mean(band):
+    """Replace NaN with the per-band mean. Returns ``(filled, n_filled)``.
+
+    The mean is taken over the finite values only. If every pixel is
+    NaN, returns the input unchanged with ``n_filled = 0`` so the caller
+    can decide to drop.
+    """
+    mask = np.isnan(band)
+    if not mask.any():
+        return band, 0
+    finite = band[~mask]
+    if finite.size == 0:
+        return band, 0
+    m = float(finite.mean())
+    out = band.copy()
+    out[mask] = m
+    return out, int(mask.sum())
+
+
+def _fill_band_nearest_int(band, max_dist):
+    """Nearest-neighbour fill then round to integer. For categorical bands."""
+    filled, n_filled = _fill_nan_nearest_2d(band, max_dist=max_dist)
+    if n_filled > 0:
+        finite_mask = np.isfinite(filled)
+        filled[finite_mask] = np.rint(filled[finite_mask])
+    return filled, n_filled
+
+
+def _fill_band_biharmonic(band, max_dist):
+    """Biharmonic in-painting (smooth interpolation).
+
+    Falls back to nearest-neighbour if scikit-image isn't available or
+    the inpaint call fails (e.g. nearly-empty tile).
+    """
+    mask = np.isnan(band)
+    if not mask.any():
+        return band, 0
+    try:
+        from skimage.restoration import inpaint_biharmonic   # type: ignore
+    except ImportError:
+        return _fill_nan_nearest_2d(band, max_dist=max_dist)
+    try:
+        # inpaint_biharmonic requires no NaN in the input; substitute 0
+        # at masked positions before the call.
+        seed = np.where(mask, 0.0, band).astype(np.float32)
+        filled = inpaint_biharmonic(seed, mask).astype(band.dtype, copy=False)
+    except Exception:
+        # Any solver failure (singular system, degenerate mask, ...)
+        # falls back to nearest-neighbour so the pipeline keeps going.
+        return _fill_nan_nearest_2d(band, max_dist=max_dist)
+    return filled, int(mask.sum())
+
+
+def _handle_nan_auto(img, max_fraction, max_dist, band_names, mission_name=None,
+                     strategy_per_kind=None, strategy_per_band=None):
+    """Per-band-kind NaN handling. See ``tile_geotiff(nan_handling='auto')``.
+
+    Drops the tile if the overall per-pixel NaN fraction exceeds
+    ``max_fraction``. Otherwise dispatches per band:
+
+      * ``spectral`` / ``sar`` / ``temperature`` / ``index`` -> fill_mean
+      * ``elevation``                                        -> fill_biharmonic
+      * ``categorical``                                      -> fill_nearest_int
+      * ``qa``                                               -> drop_tile
+
+    The strategy table is overridable via ``strategy_per_kind`` (and a
+    specific band by ``strategy_per_band[band_name]``).
+    """
+    # Local import to avoid the cyclic 'tiler imports band_ops imports tiler' path.
+    from .band_ops import (
+        get_band_kind, DEFAULT_KIND_NAN_STRATEGY,
+    )
+    from ..fetch.missions import MISSION_PROFILES
+
+    n_nan = int(np.isnan(img).sum())
+    info = {"n_nan_before": n_nan, "n_filled": 0, "added_mask_band": False}
+
+    if n_nan == 0:
+        return img, "kept", info
+
+    # Per-PIXEL NaN fraction (any-band) -- the right scalar to compare with
+    # the user's drop threshold. n_nan / img.size is per-channel, which is
+    # the same number only when NaNs are perfectly correlated across bands.
+    pixel_any_nan = np.isnan(img).any(axis=-1).mean() if img.ndim == 3 else (
+        np.isnan(img).mean()
+    )
+    if pixel_any_nan > max_fraction:
+        return img, "dropped", info
+
+    # Resolve per-band strategies.
+    strategies = {}
+    for ci, name in enumerate(band_names or []):
+        if strategy_per_band and name in strategy_per_band:
+            strategies[ci] = strategy_per_band[name]
+            continue
+        kind = get_band_kind(name, mission_name=mission_name,
+                             mission_profiles=MISSION_PROFILES)
+        per_kind = (strategy_per_kind or {})
+        strategies[ci] = per_kind.get(kind, DEFAULT_KIND_NAN_STRATEGY.get(
+            kind, "fill_mean"
+        ))
+
+    # Inside "auto" mode the policy is fraction-based ("patch if below the
+    # global budget, otherwise drop") -- a max_dist cap doesn't fit that
+    # model. Use an effectively-unlimited radius so a NaN cluster smaller
+    # than the budget always gets filled, even at its centre. Legacy modes
+    # keep their max_dist behaviour unchanged.
+    auto_max_dist = float("inf")
+
+    out = img.copy()
+    total_filled = 0
+    for ci in range(img.shape[-1]):
+        band = out[..., ci]
+        if not np.isnan(band).any():
+            continue
+        strategy = strategies.get(ci, "fill_mean")
+        if strategy == "drop_tile":
+            # A 'qa' (or user-specified) band cannot have NaN; bail.
+            return img, "dropped", info
+        if strategy == "fill_mean":
+            filled, n_f = _fill_band_mean(band)
+        elif strategy == "fill_nearest_int":
+            filled, n_f = _fill_band_nearest_int(band, auto_max_dist)
+        elif strategy == "fill_biharmonic":
+            filled, n_f = _fill_band_biharmonic(band, auto_max_dist)
+        elif strategy == "fill_nearest":
+            filled, n_f = _fill_nan_nearest_2d(band, max_dist=auto_max_dist)
+        else:
+            raise ValueError(f"Unknown per-band NaN strategy {strategy!r}")
+        out[..., ci] = filled
+        total_filled += int(n_f)
+
+    info["n_filled"] = total_filled
+
+    # If any NaN survived (a strategy couldn't reach all of them), drop.
+    if np.isnan(out).any():
+        return img, "dropped", info
+    return out, "kept", info
+
+
+def _handle_nan(img, mode, max_fraction, max_dist,
+                band_names=None, mission_name=None,
+                strategy_per_kind=None, strategy_per_band=None):
     """Apply the chosen NaN-handling policy to a tile ``(H, W, C)``.
 
     Returns ``(img_out, action, info)`` where ``action`` is ``"kept"`` or
     ``"dropped"`` and ``info`` is a dict with the counts. In ``"mask"`` mode
     the returned image has one extra band -- a binary validity mask -- so
     callers must update their output band count accordingly.
+
+    Modes:
+
+    * ``"drop"``        -- BINARY: any single NaN -> tile dropped.
+    * ``"interpolate"`` -- nearest-neighbour fill across all bands; falls
+                           back to dropping the tile when the per-channel
+                           NaN fraction exceeds ``max_fraction``.
+    * ``"mask"``        -- replace NaN with 0 in the data, append a
+                           per-pixel ``valid_mask`` band. Bails out when
+                           the NaN fraction exceeds ``max_fraction``.
+    * ``"auto"``        -- per-band dispatch by kind (recommended).
+                           See :func:`_handle_nan_auto`. Requires
+                           ``band_names``.
     """
     n_nan = int(np.isnan(img).sum())
     info = {"n_nan_before": n_nan, "n_filled": 0, "added_mask_band": False}
@@ -224,8 +379,15 @@ def _handle_nan(img, mode, max_fraction, max_dist):
     frac_nan = n_nan / img.size
     if mode == "drop":
         return img, "dropped", info
+    if mode == "auto":
+        return _handle_nan_auto(
+            img, max_fraction, max_dist,
+            band_names=band_names, mission_name=mission_name,
+            strategy_per_kind=strategy_per_kind,
+            strategy_per_band=strategy_per_band,
+        )
     if frac_nan > max_fraction:
-        # Too many NaNs to safely fill or mask — bail out regardless of mode.
+        # Too many NaNs to safely fill or mask -- bail out regardless of mode.
         return img, "dropped", info
 
     if mode == "interpolate":
@@ -246,7 +408,8 @@ def _handle_nan(img, mode, max_fraction, max_dist):
         return with_mask, "kept", info
 
     raise ValueError(
-        f"Unknown nan_handling {mode!r}. Use 'drop', 'interpolate', or 'mask'."
+        f"Unknown nan_handling {mode!r}. "
+        "Use 'drop', 'interpolate', 'mask', or 'auto'."
     )
 
 
@@ -432,9 +595,17 @@ def tile_geotiff(
     split_stripe_axis="horizontal",
     split_stripe_size_tiles=None,  # None -> auto-scale from grid size
     split_regions=None,
-    nan_handling="drop",           # "drop" | "interpolate" | "mask"
-    nan_max_fraction=0.05,         # tiles with more than this fraction NaN are dropped
+    nan_handling="auto",           # "auto" | "drop" | "interpolate" | "mask"
+    nan_max_fraction=0.10,         # tiles with > this per-pixel NaN fraction are dropped
+                                   # (defaults: 0.10 for "auto", 0.05 for legacy modes)
     nan_interp_max_dist=3,         # nearest-neighbour fill radius, in pixels (for "interpolate")
+    nan_strategy_per_kind=None,    # dict overriding the per-kind strategy used by "auto"
+                                   # e.g. {"elevation": "fill_mean"}
+    nan_strategy_per_band=None,    # dict overriding strategy for specific band names
+                                   # e.g. {"DEM": "fill_mean"}
+    mission_name=None,             # mission key from MISSION_PROFILES for "auto"-mode
+                                   # band_meta lookups; inferred from source metadata
+                                   # when None
     cloud_mask=False,              # when True, NaN-out cloudy pixels using SCL / BQA / QA_PIXEL
                                    # bands found in the input (then NaN-handling kicks in)
 ):
@@ -548,10 +719,13 @@ def tile_geotiff(
         # --- Gather source metadata once for embedding in every tile ---
         src_metadata_tags = _gather_source_metadata(input_tiff)
 
+        # --- Snapshot band-name list once (used by "auto" NaN-handling) ---
+        band_names = list(src.descriptions or [])
+
         # --- Detect cloud / QA bands once (used per tile if cloud_mask=True) ---
         cloud_bands = []
         if cloud_mask:
-            cloud_bands = _find_cloud_bands(list(src.descriptions or []))
+            cloud_bands = _find_cloud_bands(band_names)
             if cloud_bands:
                 names = ", ".join(b[2] for b in cloud_bands)
                 print(f"cloud_mask=True: NaN-ing cloudy pixels using {names}")
@@ -595,13 +769,18 @@ def tile_geotiff(
                             img[cloudy, ci] = np.nan
                         counts["cloud_masked_pixels"] += n_cloud_this_tile
 
-                # NaN handling: drop | interpolate (fill via nearest-neighbour) |
+                # NaN handling: auto (per-band kind dispatch) | drop |
+                # interpolate (fill via nearest-neighbour) |
                 # mask (keep, append validity-mask band).
                 img, action, nan_info = _handle_nan(
                     img,
                     mode=nan_handling,
                     max_fraction=nan_max_fraction,
                     max_dist=nan_interp_max_dist,
+                    band_names=band_names,
+                    mission_name=mission_name,
+                    strategy_per_kind=nan_strategy_per_kind,
+                    strategy_per_band=nan_strategy_per_band,
                 )
                 if action == "dropped":
                     counts["skipped_nan"] += 1

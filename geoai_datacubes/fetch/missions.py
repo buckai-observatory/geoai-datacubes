@@ -29,6 +29,23 @@ MISSION_PROFILES = {
         "cloud_filter":  True,                     # scene-level eo:cloud_cover
         "ndvi":          {"red": "B04", "nir": "B08"},
         "cloud_mask":    {"band": "SCL", "kind": "scl", "flag_values": [3, 8, 9, 10]},
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B08": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B8A": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B09": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B11": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B12": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "SCL": {"kind": "qa", "norm": ('one_hot', (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))},
+            "AOT": {"kind": "qa", "norm": ('passthrough',)},
+            "WVP": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "earthsearch": {
                 "collection": "sentinel-2-l2a",
@@ -66,6 +83,21 @@ MISSION_PROFILES = {
         "cloud_filter":  True,
         "ndvi":          {"red": "B04", "nir": "B08"},
         "cloud_mask":    None,                     # scene-level filter only
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B08": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B8A": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B09": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B10": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B11": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B12": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+        },
         "providers": {
             "earthsearch": {
                 "collection": "sentinel-2-l1c",
@@ -98,6 +130,12 @@ MISSION_PROFILES = {
         "cloud_filter":  False,                    # radar -- no cloud cover
         "ndvi":          None,
         "cloud_mask":    None,
+        "band_meta": {
+            "VV": {"kind": "sar", "norm": ('log_db', 1e-06)},
+            "VH": {"kind": "sar", "norm": ('log_db', 1e-06)},
+            "HH": {"kind": "sar", "norm": ('log_db', 1e-06)},
+            "HV": {"kind": "sar", "norm": ('log_db', 1e-06)},
+        },
         "providers": {
             "earthsearch": {
                 # NOTE: Earth Search hosts the raw GRD product. Its `vv`/`vh`
@@ -126,6 +164,17 @@ MISSION_PROFILES = {
         "cloud_filter":  True,
         "ndvi":          {"red": "B04", "nir": "B05"},
         "cloud_mask":    {"band": "BQA", "kind": "qa_bits", "flag_bits": [1, 3, 4]},
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 65535)},
+            "B10": {"kind": "temperature", "norm": ('kelvin_to_celsius_norm', -40.0, 60.0)},
+            "BQA": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "earthsearch": {
                 # NOTE: Earth Search references s3://usgs-landsat/ which is
@@ -164,6 +213,9 @@ MISSION_PROFILES = {
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,             # static dataset -> ignore TIME_RANGE, mosaic items
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
         "providers": {
             "earthsearch": {
                 "collection": "cop-dem-glo-30",
@@ -183,6 +235,9 @@ MISSION_PROFILES = {
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,             # static dataset -> ignore TIME_RANGE, mosaic items
+        "band_meta": {
+            "LULC": {"kind": "categorical", "norm": ('one_hot', (10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100))},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "esa-worldcover",
@@ -218,6 +273,20 @@ MISSION_PROFILES = {
         "cloud_filter":  True,
         "ndvi":          {"red": "R", "nir": "NIR"},
         "cloud_mask":    {"band": "udm2_clear", "kind": "udm2_clear", "flag_values": [0]},
+        "band_meta": {
+            "B": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "G": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "R": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "NIR": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "udm2_clear": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_snow": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_shadow": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_light_haze": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_heavy_haze": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_cloud": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_confidence": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_unusable": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "planet": {
                 "item_type":      "PSScene",
@@ -253,6 +322,24 @@ MISSION_PROFILES = {
         "cloud_filter":  True,
         "ndvi":          {"red": "R", "nir": "NIR"},
         "cloud_mask":    {"band": "udm2_clear", "kind": "udm2_clear", "flag_values": [0]},
+        "band_meta": {
+            "CB": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "GI": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "G": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "Y": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "R": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "RE": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "NIR": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "udm2_clear": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_snow": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_shadow": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_light_haze": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_heavy_haze": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_cloud": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_confidence": {"kind": "qa", "norm": ('passthrough',)},
+            "udm2_unusable": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "planet": {
                 "item_type":      "PSScene",
@@ -305,6 +392,12 @@ MISSION_PROFILES = {
         "cloud_filter":  False,
         "ndvi":          {"red": "R", "nir": "NIR"},
         "cloud_mask":    None,
+        "band_meta": {
+            "R": {"kind": "spectral", "norm": ('linear', 0, 255)},
+            "G": {"kind": "spectral", "norm": ('linear', 0, 255)},
+            "B": {"kind": "spectral", "norm": ('linear', 0, 255)},
+            "NIR": {"kind": "spectral", "norm": ('linear', 0, 255)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "naip",
@@ -345,6 +438,18 @@ MISSION_PROFILES = {
         "cloud_filter":  False,                      # 8-day composite, MODIS QC handles cloudiness
         "ndvi":          {"red": "B01", "nir": "B02"},
         "cloud_mask":    {"band": "QC", "kind": "qa_bits", "flag_bits": [0, 1]},
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "QC": {"kind": "qa", "norm": ('passthrough',)},
+            "STATE": {"kind": "qa", "norm": ('passthrough',)},
+            "DOY": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "modis-09A1-061",
@@ -380,6 +485,14 @@ MISSION_PROFILES = {
         "cloud_filter":  False,
         "ndvi":          None,
         "cloud_mask":    None,
+        "band_meta": {
+            "LST_Day": {"kind": "temperature", "norm": ('kelvin_to_celsius_norm', -40.0, 60.0)},
+            "LST_Night": {"kind": "temperature", "norm": ('kelvin_to_celsius_norm', -40.0, 60.0)},
+            "QC_Day": {"kind": "qa", "norm": ('passthrough',)},
+            "QC_Night": {"kind": "qa", "norm": ('passthrough',)},
+            "Emis_31": {"kind": "spectral", "norm": ('linear', 0, 255)},
+            "Emis_32": {"kind": "spectral", "norm": ('linear', 0, 255)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "modis-11A1-061",
@@ -412,6 +525,26 @@ MISSION_PROFILES = {
         "cloud_filter":  False,                      # HLS lacks eo:cloud_cover; rely on Fmask
         "ndvi":          {"red": "B04", "nir": "B08"},
         "cloud_mask":    {"band": "Fmask", "kind": "qa_bits", "flag_bits": [1, 2, 3, 4, 5]},
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B08": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B8A": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B09": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B10": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B11": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B12": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "Fmask": {"kind": "qa", "norm": ('passthrough',)},
+            "SAA": {"kind": "qa", "norm": ('passthrough',)},
+            "SZA": {"kind": "qa", "norm": ('passthrough',)},
+            "VAA": {"kind": "qa", "norm": ('passthrough',)},
+            "VZA": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "hls2-s30",
@@ -438,6 +571,23 @@ MISSION_PROFILES = {
         "cloud_filter":  False,
         "ndvi":          {"red": "B04", "nir": "B05"},
         "cloud_mask":    {"band": "Fmask", "kind": "qa_bits", "flag_bits": [1, 2, 3, 4, 5]},
+        "band_meta": {
+            "B01": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B02": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B03": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B04": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B05": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B06": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B07": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B09": {"kind": "spectral", "norm": ('linear', 0, 10000)},
+            "B10": {"kind": "temperature", "norm": ('kelvin_to_celsius_norm', -40.0, 60.0)},
+            "B11": {"kind": "temperature", "norm": ('kelvin_to_celsius_norm', -40.0, 60.0)},
+            "Fmask": {"kind": "qa", "norm": ('passthrough',)},
+            "SAA": {"kind": "qa", "norm": ('passthrough',)},
+            "SZA": {"kind": "qa", "norm": ('passthrough',)},
+            "VAA": {"kind": "qa", "norm": ('passthrough',)},
+            "VZA": {"kind": "qa", "norm": ('passthrough',)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "hls2-l30",
@@ -466,6 +616,14 @@ MISSION_PROFILES = {
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,
+        "band_meta": {
+            "occurrence": {"kind": "index", "norm": ('divide', 100.0)},
+            "change": {"kind": "index", "norm": ('linear', -100, 100)},
+            "seasonality": {"kind": "index", "norm": ('divide', 12.0)},
+            "recurrence": {"kind": "index", "norm": ('divide', 100.0)},
+            "transitions": {"kind": "categorical", "norm": ('one_hot', (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))},
+            "extent": {"kind": "categorical", "norm": ('one_hot', (0, 1, 2))},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "jrc-gsw",
@@ -503,6 +661,9 @@ MISSION_PROFILES = {
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "3dep-seamless",
@@ -542,6 +703,14 @@ MISSION_PROFILES = {
         # available, but the dispatcher will not route Sentinel-5P to any
         # provider (see PROVIDER_AUTO in fetch_data.py).
         "_netcdf_only":  True,
+        "band_meta": {
+            "NO2": {"kind": "spectral", "norm": ('passthrough',)},
+            "CO": {"kind": "spectral", "norm": ('passthrough',)},
+            "SO2": {"kind": "spectral", "norm": ('passthrough',)},
+            "CH4": {"kind": "spectral", "norm": ('passthrough',)},
+            "O3": {"kind": "spectral", "norm": ('passthrough',)},
+            "HCHO": {"kind": "spectral", "norm": ('passthrough',)},
+        },
         "providers": {
             "planetary_computer": {
                 "collection": "sentinel-5p-l2-netcdf",
