@@ -21,8 +21,8 @@ class_id,class_name,model,split,threshold,n,n_pos,pos_frac,acc,prec,rec,f1,iou,a
 40,cropland,RF,val,0.5224,200704,423,0.0021,0.9181,0.0114,0.4397,0.0221,0.0112,0.8252,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",25578,0.1667
 40,cropland,XGB,test,0.6803,151552,5560,0.0367,0.9274,0.2934,0.6959,0.4128,0.2601,0.9112,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",25578,0.1667
 40,cropland,XGB,val,0.6803,200704,423,0.0021,0.9360,0.0153,0.4634,0.0296,0.0150,0.8476,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",25578,0.1667
-40,cropland,U-Net,test,0.2566,151552,5560,0.0367,0.9539,0.0090,0.0023,0.0037,0.0019,0.6689,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",210,0.0051
-40,cropland,U-Net,val,0.2566,200704,423,0.0021,0.9904,0.0124,0.0449,0.0194,0.0098,0.6784,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",210,0.0051
+40,cropland,U-Net,test,0.4582,151552,5560,0.0367,0.6632,0.0886,0.8809,0.1610,0.0876,0.8019,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",9,0.0984
+40,cropland,U-Net,val,0.4582,200704,423,0.0021,0.7410,0.0042,0.5177,0.0084,0.0042,0.6245,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",9,0.0984
 50,built_up,LogReg,test,0.3926,151552,71967,0.4749,0.7899,0.7263,0.8946,0.8017,0.6691,0.8432,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",839680,0.5061
 50,built_up,LogReg,val,0.3926,200704,105914,0.5277,0.7828,0.7556,0.8696,0.8086,0.6788,0.8413,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",839680,0.5061
 50,built_up,RF,test,0.4288,151552,71967,0.4749,0.8397,0.7784,0.9261,0.8459,0.7329,0.9252,"Sentinel-2_B02,Sentinel-2_B03,Sentinel-2_B04,Sentinel-2_B08,Sentinel-1_VV,Sentinel-1_VH",839680,0.5061

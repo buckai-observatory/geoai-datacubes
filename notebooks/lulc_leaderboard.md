@@ -58,6 +58,8 @@ column over in `lulc_leaderboard.csv`.
 | **30 — grassland** | U-Net | **0.590** | 0.899 | 0.516 | 0.689 | 10.7% |
 | **40 — cropland** | XGB | **0.413** | 0.911 | 0.293 | 0.696 | 3.7% |
 
+*(U-Net cropland row in the CSV is from a re-sweep with `--min-pos-frac 0.02`; F1 = 0.161 with recall 0.88 / precision 0.09. The model is now actually predicting cropland — it had collapsed to F1=0.004 in the initial sweep without a class filter — but with only 9 training tiles passing the 2% filter, it over-predicts. The trees still win on this class by a wide margin.)*
+
 Per-class commentary:
 
 - **Water (80) and built-up (50)** are saturated for trees; the U-Net

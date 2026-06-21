@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from geoai_datacubes.preprocessing import LazyTileDataset, apply_band_norm, get_band_norm
 from geoai_datacubes.fetch.missions import MISSION_PROFILES
-from geoai_datacubes.ml_dl import WaterUNet
+from geoai_datacubes.ml_dl import WaterUNet, class_filtered_indices
 
 
 SEED = 42
@@ -179,6 +179,14 @@ def main():
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--lr",         type=float, default=1e-3)
     ap.add_argument("--base",       type=int, default=24)
+    ap.add_argument(
+        "--min-pos-frac", type=float, default=0.05,
+        help="Drop training tiles with less than this fraction of "
+             "positive-class pixels. Mirrors notebook 01's "
+             "UNET_TRAIN_MIN_TARGET_FRAC default; rare classes "
+             "(e.g. cropland at 0.5%% pos_frac) collapse to F1=0 "
+             "without it. Set 0 to disable.",
+    )
     ap.add_argument("--output-json", type=str, default=None)
     args = ap.parse_args()
 
@@ -191,15 +199,37 @@ def main():
           flush=True)
 
     t0 = time.time()
-    train_ds = ConcatDataset([build_dataset(c, "train", args.class_id) for c in CITIES])
+    train_per_city = [build_dataset(c, "train", args.class_id) for c in CITIES]
     val_ds   = ConcatDataset([build_dataset(c, "val",   args.class_id) for c in CITIES])
     test_ds  = ConcatDataset([build_dataset(c, "test",  args.class_id) for c in CITIES])
+
+    # Apply the same class-frac filter the notebook uses
+    # (UNET_TRAIN_MIN_TARGET_FRAC). Without it, rare classes like
+    # cropland (~0.5% positive pixels) collapse to F1=0 because 99.5%
+    # of training tiles contain no target.
+    if args.min_pos_frac > 0:
+        from torch.utils.data import Subset
+        kept_per_city = []
+        for c, ds in zip(CITIES, train_per_city):
+            keep = class_filtered_indices(ds, args.min_pos_frac)
+            kept_per_city.append(Subset(ds, keep))
+            print(f"[unet] train ({c:<11s})  kept {len(keep):>4d}/{len(ds):>4d} "
+                  f"tiles ({100*len(keep)/max(1,len(ds)):.1f}% with >= "
+                  f"{int(args.min_pos_frac*100)}% {args.class_name})",
+                  flush=True)
+        train_ds = ConcatDataset(kept_per_city)
+    else:
+        train_ds = ConcatDataset(train_per_city)
+
     print(f"[unet] datasets ready in {time.time()-t0:.1f}s  "
           f"train={len(train_ds)} val={len(val_ds)} test={len(test_ds)}", flush=True)
 
     if len(train_ds) == 0:
-        raise SystemExit("Training split has 0 valid tiles. "
-                         "Did the harvest helpers filter everything?")
+        raise SystemExit(
+            f"Training split has 0 valid tiles after min_pos_frac="
+            f"{args.min_pos_frac} filter. Lower it (e.g. 0.01) or set 0 "
+            "to disable."
+        )
 
     # Per-tile positive fraction (informational only -- never use the label
     # for sampler weights because the segmentation loss handles the imbalance
