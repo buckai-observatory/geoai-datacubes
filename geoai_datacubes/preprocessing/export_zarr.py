@@ -3,15 +3,22 @@ import os
 import json
 import rasterio
 import numpy as np
-import zarr
-import pandas as pd
 from tqdm import tqdm
+
+# zarr is a heavy optional dependency that is not required for any other
+# part of the package; import it lazily inside the function so users who
+# don't need Zarr export (a Colab tour, for example) can still do
+# `from geoai_datacubes.preprocessing import export_to_zarr` cleanly.
+
 
 def export_to_zarr(tiles_dir, output_path, metadata_csv=None):
     """
     Export GeoTIFF tiles and metadata to a Zarr dataset.
     Each Zarr dataset will also include metadata.json with tile info.
     """
+    import zarr           # lazy: optional dep used only on this code path
+    import pandas as pd   # lazy: only needed when metadata_csv is supplied
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     root = zarr.open_group(output_path, mode="w")
 
