@@ -1,9 +1,12 @@
 import os
-import lmdb
 import rasterio
 import numpy as np
 from tqdm import tqdm
 import pickle
+
+# lmdb is a heavy compiled dependency that is not required for any other
+# part of the package; import it lazily so users who don't need LMDB
+# export can still `from geoai_datacubes.preprocessing import ...` cleanly.
 
 def read_tiff(path):
     """Read GeoTIFF safely (supports float32 Sentinel data)."""
@@ -25,6 +28,7 @@ def read_tiff(path):
 
 def export_to_lmdb(tiles_dir, lmdb_path, map_size_gb=10):
     """Convert all .tif tiles in tiles_dir to LMDB."""
+    import lmdb  # lazy: lmdb is an optional dependency for this path only
     print(f"Exporting from {tiles_dir} → {lmdb_path}")
     all_files = []
     for root, _, files in os.walk(tiles_dir):

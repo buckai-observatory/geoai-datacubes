@@ -28,6 +28,8 @@ from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
 from .band_ops import normalize_band, compute_ndvi, cloud_mask
+from .export_zarr import export_to_zarr
+from .export_lmdb import export_to_lmdb
 
 __all__ = [
     "fuse_response_tiffs",
@@ -35,6 +37,8 @@ __all__ = [
     "AVAILABLE_AUGMENTATIONS",
     "LazyTileDataset",
     "geotiff_to_zarr",
+    "export_to_zarr",
+    "export_to_lmdb",
     "normalize_band",
     "compute_ndvi",
     "cloud_mask",
