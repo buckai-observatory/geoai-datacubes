@@ -1,0 +1,254 @@
+{
+  "started_at": "2026-06-21T18:34:40Z",
+  "finished_at": "2026-06-21T18:42:27Z",
+  "elapsed_sec_total": 467,
+  "n_cells": 39,
+  "section_elapsed_sec": {
+    "1. Setup": 3.86,
+    "2. USER INPUT": 0.01,
+    "3. Fetch NAIP for each city": 0.17,
+    "4. Download Microsoft US Building Footprints (Ohio)": 7.93,
+    "5. Visualise the ground truth": 22.83,
+    "6. Convert footprints to YOLO labels (the boring but critical step)": 105.13,
+    "7. Visualise tiles with their YOLO boxes overlaid": 0.62,
+    "8. Resolution sidebar: NAIP (1 m) vs Sentinel-2 (10 m)": 269.19,
+    "9. DL: Train a tiny YOLO model on NAIP": 46.95,
+    "10. Visualise predictions on test tiles": 2.69
+  },
+  "per_cell": [
+    {
+      "i": 0,
+      "type": "markdown",
+      "sec": null,
+      "preview": "# `geoai-datacubes` -- Building detection with YOLO on NAIP"
+    },
+    {
+      "i": 1,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 1. Setup"
+    },
+    {
+      "i": 2,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# --- Colab / local bootstrap ---"
+    },
+    {
+      "i": 3,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Imports, `sys.path` setup so the `geoai_datacubes` package is importable,"
+    },
+    {
+      "i": 4,
+      "type": "code",
+      "sec": 1.24,
+      "preview": "# --- imports + path setup ---"
+    },
+    {
+      "i": 5,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Pull in the four pieces of the pipeline this notebook actually uses --"
+    },
+    {
+      "i": 6,
+      "type": "code",
+      "sec": 2.61,
+      "preview": "from geoai_datacubes.fetch import resolve_aoi"
+    },
+    {
+      "i": 7,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 2. USER INPUT"
+    },
+    {
+      "i": 8,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# ============================================================"
+    },
+    {
+      "i": 9,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 3. Fetch NAIP for each city"
+    },
+    {
+      "i": 10,
+      "type": "code",
+      "sec": 0.14,
+      "preview": "%%time"
+    },
+    {
+      "i": 11,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Locate the per-city scene folder, read a few key fields from the"
+    },
+    {
+      "i": 12,
+      "type": "code",
+      "sec": 0.03,
+      "preview": "def _latest_naip_scene_dir(city_bbox):"
+    },
+    {
+      "i": 13,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 4. Download Microsoft US Building Footprints (Ohio)"
+    },
+    {
+      "i": 14,
+      "type": "code",
+      "sec": 0.0,
+      "preview": "%%time"
+    },
+    {
+      "i": 15,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Build a single union bbox covering all three city AOIs (with a small"
+    },
+    {
+      "i": 16,
+      "type": "code",
+      "sec": 1.28,
+      "preview": "%%time"
+    },
+    {
+      "i": 17,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Reproject the candidate frame to NAIP's CRS (EPSG:26917, UTM zone 17N"
+    },
+    {
+      "i": 18,
+      "type": "code",
+      "sec": 6.65,
+      "preview": "%%time"
+    },
+    {
+      "i": 19,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 5. Visualise the ground truth"
+    },
+    {
+      "i": 20,
+      "type": "code",
+      "sec": 22.83,
+      "preview": "%%time"
+    },
+    {
+      "i": 21,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 6. Convert footprints to YOLO labels (the boring but critical step)"
+    },
+    {
+      "i": 22,
+      "type": "code",
+      "sec": 105.13,
+      "preview": "%%time"
+    },
+    {
+      "i": 23,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 7. Visualise tiles with their YOLO boxes overlaid"
+    },
+    {
+      "i": 24,
+      "type": "code",
+      "sec": 0.62,
+      "preview": "%%time"
+    },
+    {
+      "i": 25,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 8. Resolution sidebar: NAIP (1 m) vs Sentinel-2 (10 m)"
+    },
+    {
+      "i": 26,
+      "type": "code",
+      "sec": 268.83,
+      "preview": "# Fetch S2 L2A over the Columbus AOI for the same time window"
+    },
+    {
+      "i": 27,
+      "type": "code",
+      "sec": 0.36,
+      "preview": "# Pick a small neighbourhood (300 x 300 m) near the AOI centre that has"
+    },
+    {
+      "i": 28,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 9. DL: Train a tiny YOLO model on NAIP"
+    },
+    {
+      "i": 29,
+      "type": "code",
+      "sec": 0.0,
+      "preview": "data_yaml = write_yolo_data_yaml(YOLO_DIR, class_names=(\"building\",))"
+    },
+    {
+      "i": 30,
+      "type": "code",
+      "sec": 0.08,
+      "preview": "%%time"
+    },
+    {
+      "i": 31,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Run the standard validation pass at the end and pull out the four"
+    },
+    {
+      "i": 32,
+      "type": "code",
+      "sec": 46.71,
+      "preview": "%%time"
+    },
+    {
+      "i": 33,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Plot the training-loss + val-mAP curves directly from the CSV"
+    },
+    {
+      "i": 34,
+      "type": "code",
+      "sec": 0.16,
+      "preview": "# Ultralytics drops a CSV with one row per epoch under results.csv."
+    },
+    {
+      "i": 35,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 10. Visualise predictions on test tiles"
+    },
+    {
+      "i": 36,
+      "type": "code",
+      "sec": 2.69,
+      "preview": "%%time"
+    },
+    {
+      "i": 37,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 11. Sidebar: PlanetScope at 3 m"
+    },
+    {
+      "i": 38,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 12. Where to go next"
+    }
+  ]
+}
