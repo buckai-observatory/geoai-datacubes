@@ -41,6 +41,53 @@ from tqdm import tqdm
 
 _SPLITS = ("train", "val", "test")
 
+#: Names of the augmentations the tiler can apply, in canonical order.
+#: ``tile_geotiff(augment=...)`` accepts any subset of these names.
+#:
+#: * ``"flipH"``  -- horizontal flip   (``np.fliplr``)
+#: * ``"flipV"``  -- vertical flip     (``np.flipud``)
+#: * ``"rot90"``  -- 90 deg rotation   (``skimage.transform.rotate``)
+#: * ``"rot270"`` -- 270 deg rotation
+#: * ``"noise"``  -- per-band Gaussian noise (sigma = 2 % of each band's std)
+AVAILABLE_AUGMENTATIONS = ("flipH", "flipV", "rot90", "rot270", "noise")
+
+
+def _resolve_augmentations(augment):
+    """Normalise the ``augment`` argument to a tuple of canonical names.
+
+    Accepts:
+        * ``False`` / ``None`` / empty sequence -> ``()``  (no augmentation)
+        * ``True``                              -> all of ``AVAILABLE_AUGMENTATIONS``
+        * a sequence of names                   -> validated, deduplicated subset
+                                                   in canonical order
+
+    Raises ``ValueError`` for any unknown name so a typo fails fast
+    instead of silently turning into "no augmentation".
+    """
+    if augment is False or augment is None:
+        return ()
+    if augment is True:
+        return AVAILABLE_AUGMENTATIONS
+    # Treat as a sequence of names.
+    try:
+        names = list(augment)
+    except TypeError:
+        raise ValueError(
+            f"augment must be bool or a sequence of names, got {type(augment).__name__}"
+        )
+    if not names:
+        return ()
+    unknown = [n for n in names if n not in AVAILABLE_AUGMENTATIONS]
+    if unknown:
+        raise ValueError(
+            f"Unknown augmentation name(s): {unknown}. "
+            f"Valid names: {list(AVAILABLE_AUGMENTATIONS)}"
+        )
+    # Return in canonical order, deduplicated.
+    seen = set()
+    return tuple(n for n in AVAILABLE_AUGMENTATIONS
+                 if n in names and not (n in seen or seen.add(n)))
+
 
 # ============================================================
 # Cloud / quality masking
@@ -410,6 +457,25 @@ def tile_geotiff(
                        spec language as ``main.py``). Tiles outside every
                        region are skipped. Tune via ``split_regions={"train":...,
                        "val":..., "test":...}``.
+
+    Augmentation
+    ------------
+    The ``augment`` argument accepts either a boolean or a sequence of
+    augmentation names from :data:`AVAILABLE_AUGMENTATIONS`:
+
+      * ``augment=False`` (default) -- no augmentation.
+      * ``augment=True``            -- all five augmentations: flipH,
+                                       flipV, rot90, rot270, noise.
+      * ``augment=("flipH", "flipV")`` -- just the two flips (the case
+                                          you want when rotations would
+                                          introduce wrong-orientation
+                                          features, e.g. detecting
+                                          buildings from overhead where
+                                          rotation is still meaningful
+                                          but reflection isn't.)
+      * ``augment=("noise",)`` -- noise only.
+
+    Unknown names raise ``ValueError`` before any tiling work begins.
     """
     # Pre-resolve region specs once (uses aoi.py) so we don't repeat work per tile.
     region_bboxes = None
@@ -420,6 +486,10 @@ def tile_geotiff(
                 "{'train': aoi_spec, 'val': aoi_spec, 'test': aoi_spec}"
             )
         region_bboxes = _resolve_region_specs(split_regions)
+
+    # Resolve the augment argument early so a typo fails fast (before we
+    # spend minutes tiling the input).
+    augmentations = _resolve_augmentations(augment)
 
     os.makedirs(output_dir, exist_ok=True)
     metadata_path = os.path.join(output_dir, "tiles_metadata.csv")
@@ -615,10 +685,11 @@ def tile_geotiff(
                                 nan_info["added_mask_band"],
                                 n_cloud_masked=n_cloud_this_tile)
 
-                if augment:
+                if augmentations:
                     do_augmentations(img, save_dir, tile_id, metadata_path,
                                      x, y, tile_size, tile_size, split, output_mode,
-                                     tile_tags=tile_tags_base)
+                                     tile_tags=tile_tags_base,
+                                     selected=augmentations)
 
                 tile_id += 1
 
@@ -666,6 +737,13 @@ def tile_geotiff(
                   f"by chance. Either fetch a larger AOI or accept the imbalance.")
 
 
+def _skimage_rotate(img, angle):
+    """Lazy import of skimage.transform.rotate so the no-rotation path
+    never has to pay the scikit-image import cost."""
+    from skimage.transform import rotate
+    return rotate(img, angle, preserve_range=True)
+
+
 def _add_gaussian_noise(img, sigma_frac=0.02):
     """Per-band-scaled Gaussian noise: sigma is a fraction of each band's
     standard deviation. Works across any DN scale (Sentinel-2 reflectance
@@ -690,16 +768,29 @@ def _add_gaussian_noise(img, sigma_frac=0.02):
 
 
 def do_augmentations(img, save_dir, tile_id, metadata_path, x, y, w, h, split, mode,
-                     tile_tags=None):
-    """Apply common augmentations and save results. Requires scikit-image."""
-    from skimage.transform import rotate    # lazy (random_noise no longer needed)
-    aug_imgs = {
-        "flipH":  np.fliplr(img),
-        "flipV":  np.flipud(img),
-        "rot90":  rotate(img, 90,  preserve_range=True),
-        "rot270": rotate(img, 270, preserve_range=True),
-        "noise":  _add_gaussian_noise(img, sigma_frac=0.02),
+                     tile_tags=None, selected=AVAILABLE_AUGMENTATIONS):
+    """Apply the requested augmentations and save results.
+
+    ``selected`` is the tuple of canonical augmentation names produced by
+    :func:`_resolve_augmentations`. Defaults to every known augmentation
+    so older callers that didn't pass the argument keep their behaviour.
+    Only the names present in ``selected`` are computed -- the matching
+    skimage rotate calls and noise generation are skipped for the rest.
+    """
+    selected = tuple(selected)
+    if not selected:
+        return
+
+    # Lazily compute only the augmentations the caller asked for. Each
+    # branch closes over `img` and produces the augmented array on demand.
+    factories = {
+        "flipH":  lambda: np.fliplr(img),
+        "flipV":  lambda: np.flipud(img),
+        "rot90":  lambda: _skimage_rotate(img, 90),
+        "rot270": lambda: _skimage_rotate(img, 270),
+        "noise":  lambda: _add_gaussian_noise(img, sigma_frac=0.02),
     }
+    aug_imgs = {name: factories[name]() for name in selected}
 
     for name, im in aug_imgs.items():
         aug_name = f"tile_{tile_id:05d}_{name}.tif"

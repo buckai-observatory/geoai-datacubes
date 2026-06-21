@@ -25,13 +25,14 @@ Lower-level helpers (NDVI math, cloud-mask decoders) live in ``band_ops.py``:
 """
 
 from .fusion import fuse_response_tiffs
-from .tiler import tile_geotiff
+from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
 from .band_ops import normalize_band, compute_ndvi, cloud_mask
 
 __all__ = [
     "fuse_response_tiffs",
     "tile_geotiff",
+    "AVAILABLE_AUGMENTATIONS",
     "LazyTileDataset",
     "geotiff_to_zarr",
     "normalize_band",
