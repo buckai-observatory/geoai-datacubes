@@ -301,11 +301,24 @@ def train_yolo_detector(
     batch: int = 4,
     device: str = "cpu",
     seed: int = 42,
-    pretrained: str = "yolov8n.pt",
+    weights: str = "yolov8n.pt",
     workers: int = 2,
     verbose: bool = False,
+    **train_kwargs,
 ):
     """Run Ultralytics YOLO training with the arguments the notebook needs.
+
+    Parameters
+    ----------
+    weights : str
+        Starting weights file. Standard sizes ``"yolov8n.pt"`` (~3 M
+        params), ``"yolov8s.pt"`` (~11 M), ``"yolov8m.pt"`` (~26 M)
+        download from Ultralytics on first use and live in their cache.
+    **train_kwargs
+        Forwarded verbatim to ``model.train(...)``. Use this for
+        per-experiment augmentation tweaks (``degrees=15.0``,
+        ``scale=0.5``, ``translate=0.1``, ...) without having to add a
+        new keyword for each.
 
     Returns ``(model, results)``. ``model`` is the trained
     ``ultralytics.YOLO`` instance (carrying the best-validation weights);
@@ -318,7 +331,7 @@ def train_yolo_detector(
     from ultralytics import YOLO
 
     logging.getLogger("ultralytics").setLevel(logging.WARNING)
-    model = YOLO(pretrained)
+    model = YOLO(weights)
     results = model.train(
         data=str(data_yaml),
         epochs=epochs,
@@ -336,6 +349,7 @@ def train_yolo_detector(
         save=True,
         save_period=-1,        # only the last + best checkpoint
         plots=True,
+        **train_kwargs,
     )
     return model, results
 
