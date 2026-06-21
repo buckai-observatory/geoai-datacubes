@@ -121,8 +121,16 @@ def best_demo_tile(mode_dir,
         rows = [r for r in rows if int(r.get("n_filled") or 0) > 0]
         rows.sort(key=lambda r: int(r.get("n_filled") or 0), reverse=True)
     elif mode == "mask":
-        rows = [r for r in rows
-                if str(r.get("has_mask_band")).lower() == "true"]
+        # NOTE: the tiler writes `has_mask_band` as integer 0/1, not the
+        # string "True"/"False" -- the previous .lower() == "true" check
+        # never matched any row so this branch silently dropped every
+        # tile. Match either the int-as-string form ("0"/"1") or any
+        # truthy string variant; the int() conversion handles both.
+        def _has_mask(v):
+            try:    return int(v) == 1
+            except (TypeError, ValueError):
+                return str(v).lower() in ("true", "yes")
+        rows = [r for r in rows if _has_mask(r.get("has_mask_band"))]
         rows.sort(key=lambda r: int(r.get("n_cloud_masked") or 0), reverse=True)
 
     if not rows:
@@ -226,8 +234,25 @@ def visualize_nan_handling_modes(
 
         for row, mode in enumerate(("drop", "interpolate", "mask")):
             mode_dir = modes_root_dir / mode
-            tp, n_nan_before = best_demo_tile(mode_dir, mode,
-                                              min_nan_pct=min_nan_pct)
+
+            # Drop is BINARY in the tiler: any NaN -> tile is dropped.
+            # That means survivors in drop/ all have n_nan_before == 0 and
+            # there is nothing to demonstrate. We therefore borrow a
+            # source tile from interpolate/ (where high-NaN tiles DO get
+            # kept) and label it explicitly as 'this tile would be
+            # discarded by drop'.
+            borrowed_from = None
+            if mode == "drop":
+                tp, n_nan_before = best_demo_tile(
+                    modes_root_dir / "interpolate", "interpolate",
+                    min_nan_pct=min_nan_pct,
+                )
+                if tp is not None:
+                    mode_dir = modes_root_dir / "interpolate"
+                    borrowed_from = "interpolate"
+            else:
+                tp, n_nan_before = best_demo_tile(mode_dir, mode,
+                                                  min_nan_pct=min_nan_pct)
             if tp is None:
                 for c in range(3):
                     axes[row][c].axis("off")
@@ -301,9 +326,18 @@ def visualize_nan_handling_modes(
             ax1 = axes[row][1]
             if mode == "drop":
                 ax1.axis("off")
+                # 'drop' is BINARY in the tiler -- any single NaN drops
+                # the tile (see tiler.py:_handle_nan, line ~225).
+                # The tile at left was borrowed from interpolate/'s pool
+                # specifically because it has NaN; drop would have
+                # discarded it.
                 ax1.set_title(
-                    "drop: any tile whose NaN fraction is too high\n"
-                    "is REMOVED. The tile at left was kept.",
+                    "drop mode is BINARY:\n"
+                    "any NaN -> tile dropped.\n"
+                    f"(tile borrowed from '{borrowed_from}' pool to demo)"
+                    if borrowed_from else
+                    "drop: any NaN -> tile dropped.\n"
+                    "(the tile at left was kept,\nso it had zero NaN.)",
                     fontsize=9,
                 )
             else:
