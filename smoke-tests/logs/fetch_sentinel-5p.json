@@ -1,0 +1,7 @@
+{
+  "test": "fetch_sentinel-5p",
+  "mission": "Sentinel-5P",
+  "started_at": "2026-06-21T08:25:31",
+  "status": "skipped",
+  "reason": "Sentinel-5P is a documented stub; STAC items are NetCDF, not COG"
+}

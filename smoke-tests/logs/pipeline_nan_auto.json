@@ -1,0 +1,19 @@
+{
+  "test": "pipeline_nan_auto",
+  "started_at": "2026-06-21T08:22:39",
+  "status": "passed",
+  "elapsed_sec": 0.5,
+  "unit_checks": {
+    "auto_kept_clean": true,
+    "auto_lulc_int_valued": true,
+    "auto_drops_above_10pct": true
+  },
+  "tile_counts": {
+    "auto": 3,
+    "drop": 3,
+    "interpolate": 3,
+    "mask": 3
+  },
+  "work": "/tmp/geoai_smoke/pipeline_nan_auto_106my1q_",
+  "finished_at": "2026-06-21T08:22:40"
+}

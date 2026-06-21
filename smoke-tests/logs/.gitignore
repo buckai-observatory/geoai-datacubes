@@ -1,0 +1,10 @@
+# SLURM stdout/stderr drops -- keep them local, never commit.
+*.out
+*.err
+slurm-*
+
+# Conda / pip per-script overrides if a contributor symlinks them here.
+*.lock
+
+# Allow the JSON summaries written by _run_fetch.py / pipeline tests.
+# (No exclusion -- *.json is tracked.)
