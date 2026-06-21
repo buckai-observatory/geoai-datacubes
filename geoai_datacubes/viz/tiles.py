@@ -354,6 +354,98 @@ def visualize_nan_handling_modes(
     plt.show()
 
 
+def describe_tile(tile_path, *, base=None) -> None:
+    """Pretty-print a one-tile property overview as a set of small tables.
+
+    Renders four sections as pandas DataFrames (so a Jupyter notebook
+    gets HTML tables instead of a wall of ``print()`` output):
+
+      1. **Geometry** -- shape, CRS, pixel size, world-coordinate origin
+      2. **Bands** -- per-band index + description
+      3. **source_\\* tags** -- provenance from the parent scene
+         (which mission, which scene id, what time, what cloud cover)
+      4. **tile_\\* tags** -- how this tile was cut (offsets, NaN handling
+         choices, augmentation lineage, the per-tile NaN/cloud counts)
+
+    Other tags (rasterio's own ``AREA_OR_POINT``, ``TIFFTAG_*``, ...) are
+    grouped into a final fourth table when present.
+
+    Parameters
+    ----------
+    tile_path : path-like
+        Path to one ``.tif`` produced by ``tile_geotiff``.
+    base : path-like, optional
+        Folder the first 'File' row should be relative to. When ``None``
+        the absolute path is printed. The tour notebook passes its per-
+        notebook ``OUT`` so the row stays short.
+    """
+    import pandas as pd
+    try:
+        from IPython.display import display
+    except ImportError:           # pragma: no cover -- non-IPython fallback
+        display = print            # type: ignore[assignment]
+
+    tile_path = Path(tile_path)
+    with rasterio.open(tile_path) as src:
+        count = src.count
+        height, width = src.height, src.width
+        crs = src.crs
+        transform = src.transform
+        descs = list(src.descriptions or [])
+        tags = src.tags()
+
+    px_x, px_y = transform.a, -transform.e
+    if base is not None:
+        try:
+            file_print = os.path.relpath(tile_path, base)
+        except ValueError:
+            file_print = str(tile_path)
+    else:
+        file_print = str(tile_path)
+
+    print(f"Inspecting:  {file_print}")
+
+    # ---- 1. Geometry ----
+    geom_df = pd.DataFrame([
+        ("File",                file_print),
+        ("Shape (C, H, W)",     f"({count}, {height}, {width})"),
+        ("CRS",                 str(crs)),
+        ("Pixel size",          f"{px_x:g} x {px_y:g}  (CRS units, usually metres)"),
+        ("Origin (x, y)",       f"({transform.c:.1f}, {transform.f:.1f})"),
+    ], columns=["property", "value"])
+    print("\nGeometry:")
+    display(geom_df)
+
+    # ---- 2. Bands ----
+    bands_df = pd.DataFrame({
+        "band": list(range(1, count + 1)),
+        "description": descs if descs else ["(none)"] * count,
+    })
+    print("\nBands:")
+    display(bands_df)
+
+    # ---- 3. source_* tags ----
+    source_tags = {k: v for k, v in tags.items() if k.startswith("source_")}
+    tile_tags   = {k: v for k, v in tags.items() if k.startswith("tile_")}
+    other_tags  = {k: v for k, v in tags.items()
+                   if not (k.startswith("source_") or k.startswith("tile_"))}
+
+    if source_tags:
+        print("\nsource_* tags  (where did this tile come from?):")
+        display(pd.DataFrame(list(source_tags.items()),
+                             columns=["tag", "value"]))
+
+    if tile_tags:
+        print("\ntile_* tags  (how was this tile cut?):")
+        display(pd.DataFrame(list(tile_tags.items()),
+                             columns=["tag", "value"]))
+
+    if other_tags:
+        print("\nOther tags:")
+        display(pd.DataFrame(list(other_tags.items()),
+                             columns=["tag", "value"]))
+
+
 # ============================================================
 # Tile-grid overlay
 # ============================================================

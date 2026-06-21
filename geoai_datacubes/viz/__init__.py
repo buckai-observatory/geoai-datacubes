@@ -46,6 +46,7 @@ from .tiles import (
     count_tiles,
     open_tile,
     best_demo_tile,
+    describe_tile,
     tile_grid_overlay,
     visualize_nan_handling_modes,
 )
@@ -75,6 +76,7 @@ __all__ = [
     "count_tiles",
     "open_tile",
     "best_demo_tile",
+    "describe_tile",
     "tile_grid_overlay",
     "visualize_nan_handling_modes",
     # splits
