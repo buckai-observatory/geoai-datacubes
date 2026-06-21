@@ -1,19 +1,19 @@
 {
-  "started_at": "2026-06-21T18:34:40Z",
-  "finished_at": "2026-06-21T18:42:27Z",
-  "elapsed_sec_total": 467,
+  "started_at": "2026-06-21T18:47:31Z",
+  "finished_at": "2026-06-21T18:51:02Z",
+  "elapsed_sec_total": 211,
   "n_cells": 39,
   "section_elapsed_sec": {
-    "1. Setup": 3.86,
+    "1. Setup": 3.64,
     "2. USER INPUT": 0.01,
-    "3. Fetch NAIP for each city": 0.17,
-    "4. Download Microsoft US Building Footprints (Ohio)": 7.93,
-    "5. Visualise the ground truth": 22.83,
-    "6. Convert footprints to YOLO labels (the boring but critical step)": 105.13,
-    "7. Visualise tiles with their YOLO boxes overlaid": 0.62,
-    "8. Resolution sidebar: NAIP (1 m) vs Sentinel-2 (10 m)": 269.19,
-    "9. DL: Train a tiny YOLO model on NAIP": 46.95,
-    "10. Visualise predictions on test tiles": 2.69
+    "3. Fetch NAIP for each city": 0.16,
+    "4. Download Microsoft US Building Footprints (Ohio)": 16.21,
+    "5. Visualise the ground truth": 21.53,
+    "6. Convert footprints to YOLO labels (the boring but critical step)": 95.16,
+    "7. Visualise tiles with their YOLO boxes overlaid": 0.47,
+    "8. Resolution sidebar: NAIP (1 m) vs Sentinel-2 (10 m)": 14.25,
+    "9. DL: Train a tiny YOLO model on NAIP": 50.52,
+    "10. Visualise predictions on test tiles": 2.8
   },
   "per_cell": [
     {
@@ -43,7 +43,7 @@
     {
       "i": 4,
       "type": "code",
-      "sec": 1.24,
+      "sec": 1.1,
       "preview": "# --- imports + path setup ---"
     },
     {
@@ -55,7 +55,7 @@
     {
       "i": 6,
       "type": "code",
-      "sec": 2.61,
+      "sec": 2.53,
       "preview": "from geoai_datacubes.fetch import resolve_aoi"
     },
     {
@@ -79,7 +79,7 @@
     {
       "i": 10,
       "type": "code",
-      "sec": 0.14,
+      "sec": 0.13,
       "preview": "%%time"
     },
     {
@@ -115,19 +115,19 @@
     {
       "i": 16,
       "type": "code",
-      "sec": 1.28,
+      "sec": 1.24,
       "preview": "%%time"
     },
     {
       "i": 17,
       "type": "markdown",
       "sec": null,
-      "preview": "Reproject the candidate frame to NAIP's CRS (EPSG:26917, UTM zone 17N"
+      "preview": "Reproject the candidate frame to **each NAIP scene's CRS** -- not a"
     },
     {
       "i": 18,
       "type": "code",
-      "sec": 6.65,
+      "sec": 14.97,
       "preview": "%%time"
     },
     {
@@ -139,7 +139,7 @@
     {
       "i": 20,
       "type": "code",
-      "sec": 22.83,
+      "sec": 21.53,
       "preview": "%%time"
     },
     {
@@ -151,7 +151,7 @@
     {
       "i": 22,
       "type": "code",
-      "sec": 105.13,
+      "sec": 95.16,
       "preview": "%%time"
     },
     {
@@ -163,7 +163,7 @@
     {
       "i": 24,
       "type": "code",
-      "sec": 0.62,
+      "sec": 0.47,
       "preview": "%%time"
     },
     {
@@ -175,7 +175,7 @@
     {
       "i": 26,
       "type": "code",
-      "sec": 268.83,
+      "sec": 13.89,
       "preview": "# Fetch S2 L2A over the Columbus AOI for the same time window"
     },
     {
@@ -199,7 +199,7 @@
     {
       "i": 30,
       "type": "code",
-      "sec": 0.08,
+      "sec": 0.06,
       "preview": "%%time"
     },
     {
@@ -211,7 +211,7 @@
     {
       "i": 32,
       "type": "code",
-      "sec": 46.71,
+      "sec": 50.28,
       "preview": "%%time"
     },
     {
@@ -223,7 +223,7 @@
     {
       "i": 34,
       "type": "code",
-      "sec": 0.16,
+      "sec": 0.18,
       "preview": "# Ultralytics drops a CSV with one row per epoch under results.csv."
     },
     {
@@ -235,7 +235,7 @@
     {
       "i": 36,
       "type": "code",
-      "sec": 2.69,
+      "sec": 2.8,
       "preview": "%%time"
     },
     {
