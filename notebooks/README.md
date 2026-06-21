@@ -71,7 +71,13 @@ preprocessed into city-relative elevation + gradient magnitude),
 per-city test breakdown, and a collapsible explainer for TP / FP /
 FN / TN / precision / recall / F1 / IoU / AUC.
 
-Runs end-to-end in ~20–25 minutes on a laptop CPU.
+**Runtime:** ~5 minutes end-to-end on a laptop CPU **for the default
+water target**, because cached weights for the four classifiers ship in
+[`sample_data/models/`](sample_data/models/) (~33 MB) and the notebook
+loads them when `USE_CACHED_MODELS = True` (the default). Pick a
+different `CLASS_ID` at the top and the cells fall through to fresh
+training -- count on ~25-30 minutes for that path, dominated by the
+RandomForest fit and the six-RF fusion-comparison cell.
 
 ### 3. Building detection on NAIP — `02_building_detection.ipynb`
 

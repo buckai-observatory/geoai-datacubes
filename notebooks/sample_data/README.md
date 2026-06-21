@@ -60,3 +60,59 @@ gdf.to_file("building_footprints_<your_aois>.gpkg", driver="GPKG", layer="footpr
 ```
 
 (The full build script lives in the commit message of `74b7b94`.)
+
+## `models/` -- pre-trained model weights for notebook 01
+
+Cached weights for the four classifiers trained in
+[`01_classification.ipynb`](../01_classification.ipynb) on the default
+target class (ESA WorldCover class 80, permanent water bodies).
+Loaded at runtime when `USE_CACHED_MODELS = True` (the default at
+the top of the notebook); cuts a Colab cold-start from ~30 minutes
+to ~5 minutes.
+
+**Files:**
+
+| File | What it is | Size |
+|---|---|---|
+| `rf_class80.joblib` | RandomForestClassifier (200 trees, max_depth=14), joblib-pickled with `compress=3` | ~28 MB |
+| `xgb_class80.joblib` | XGBClassifier (300 trees, max_depth=6), joblib-pickled | ~0.5 MB |
+| `unet_class80.pt` | WaterUNet best-val state_dict + per-epoch learning history | ~4.4 MB |
+| `fusion_df_class80.json` | Pre-computed per-feature-set fusion comparison metrics (section 8 of the notebook) | ~2 KB |
+
+Total ~33 MB.
+
+**Scope:** All four files are keyed on `class80` (water) in the
+filename. If the user changes `CLASS_ID` at the top of the notebook
+to something else (e.g. 10 for tree cover, 50 for built-up), the
+cache check misses cleanly and the cells fall through to retraining
+from scratch -- there is no risk of silently using stale weights on
+the wrong target.
+
+**Provenance:** All weights were produced by re-executing
+notebook 01 end-to-end on a clean checkout. The notebook itself is
+the canonical recipe; the cache files are deterministic given a
+fixed `SEED = 42` and the same Sentinel-2 + Sentinel-1 + Copernicus
+DEM + ESA WorldCover scenes for the Columbus / Cincinnati /
+Cleveland AOIs.
+
+**How to rebuild:** From the repository root,
+
+```bash
+# 1. Set USE_CACHED_MODELS = False at the top of the notebook (or
+#    delete the cache files first), then:
+jupyter nbconvert --to notebook --execute --inplace \
+    notebooks/01_classification.ipynb
+```
+
+That walks through fetch + fuse + zarr + train + evaluate and writes
+fresh weights to `notebooks/sample_data/models/`. Roughly 25-30 min
+on a laptop CPU, dominated by the RandomForest fit (~10 min) and the
+six-RF fusion-comparison cell (~13 min).
+
+**Why we ship weights for the default class only:** The other ESA
+WorldCover classes (tree cover, cropland, built-up, ...) all train
+in the same time budget. Shipping cached weights for every class
+would balloon the repo by ~150 MB without much pedagogical value --
+the notebook explicitly demonstrates the trade-off in its class-
+quality table at the top, and a user who wants to scan many classes
+should reach for `benchmark_lulc_class.py` next door.
