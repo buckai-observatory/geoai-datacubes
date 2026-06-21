@@ -268,7 +268,7 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ## Data providers — when to use which
 
-The pipeline supports **fifteen missions** end-to-end. The full per-mission reference (bands, native resolutions, value ranges, normalisation recipes, tile-seam caveats) lives in [`docs/data_layers.md`](docs/data_layers.md); this section covers a widely-used subset and the **four interchangeable providers** that serve them. The default is `"auto"`, which routes each mission to the best free option:
+The pipeline supports **fifteen missions** end-to-end. The full per-mission reference (bands, native resolutions, value ranges, normalisation recipes, tile-seam caveats) lives in [`docs/data_layers.md`](docs/data_layers.md); this section covers a widely-used subset and the **four interchangeable providers** that serve them. The default is `"auto"`, which routes each mission to the best free option. (The table below is the *capability* matrix; for a *throughput* discussion — which provider wins for a Colab demo vs which one wins for a continental-scale workflow — see [`docs/providers.md`](docs/providers.md).)
 
 | | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
 |---|---|---|---|---|
