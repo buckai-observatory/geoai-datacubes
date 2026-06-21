@@ -67,6 +67,7 @@ def build_dataset(city, split, class_id):
         split_method="random",
         nan_handling="drop",
         augment=(split == "train"),
+        return_window_xy=True,   # 3-tuple return so per-tile meta is available
         seed=SEED,
     )
 

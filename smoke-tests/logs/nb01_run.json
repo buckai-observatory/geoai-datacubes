@@ -1,21 +1,21 @@
 {
-  "started_at": "2026-06-21T14:20:02Z",
-  "finished_at": "2026-06-21T14:20:42Z",
-  "elapsed_sec_total": 40,
+  "started_at": "2026-06-21T15:53:10Z",
+  "finished_at": "2026-06-21T16:24:31Z",
+  "elapsed_sec_total": 1881,
   "n_cells": 78,
   "section_elapsed_sec": {
-    "1. Setup": 2.45,
+    "1. Setup": 1.95,
     "2. USER INPUT": 0.01,
     "3. Fetch satellite data for each city": 0.01,
-    "4. Fuse each city's missions into a single multi-band cube": 0.3,
-    "5. Convert each cube to Zarr for fast multi-worker DataLoader access": 0.96,
-    "6. Visualise the multi-modal features and the water-mask ground truth": 1.35,
-    "7. ML: Pixel-level classifiers (Logistic Regression, Random Forest, XGBoost)": 19.58,
-    "8. Does adding modalities help? Within-context vs across-context": 0.11,
-    "9. DL: Lightweight U-Net (tile-level semantic segmentation)": 6.48,
-    "10. Does the model generalise across cities?": 0.74,
-    "11. Scanning all classes at once: the LULC leaderboard": 0.19,
-    "Bonus: unsupervised clustering with KMeans": 0.51
+    "4. Fuse each city's missions into a single multi-band cube": 0.26,
+    "5. Convert each cube to Zarr for fast multi-worker DataLoader access": 0.0,
+    "6. Visualise the multi-modal features and the water-mask ground truth": 1.32,
+    "7. ML: Pixel-level classifiers (Logistic Regression, Random Forest, XGBoost)": 31.35,
+    "8. Does adding modalities help? Within-context vs across-context": 1483.41,
+    "9. DL: Lightweight U-Net (tile-level semantic segmentation)": 355.09,
+    "10. Does the model generalise across cities?": 0.63,
+    "11. Scanning all classes at once: the LULC leaderboard": 0.09,
+    "12. Bonus: unsupervised clustering with KMeans": 0.57
   },
   "per_cell": [
     {
@@ -45,7 +45,7 @@
     {
       "i": 4,
       "type": "code",
-      "sec": 1.11,
+      "sec": 0.87,
       "preview": "# --- imports + path setup ---"
     },
     {
@@ -57,7 +57,7 @@
     {
       "i": 6,
       "type": "code",
-      "sec": 1.33,
+      "sec": 1.07,
       "preview": "# --- pipeline imports ---"
     },
     {
@@ -111,8 +111,8 @@
     {
       "i": 15,
       "type": "code",
-      "sec": 0.3,
-      "preview": "def find_response(scene_dir):"
+      "sec": 0.26,
+      "preview": "CITY_CUBES = {}     # city -> Path to fused .tiff"
     },
     {
       "i": 16,
@@ -129,7 +129,7 @@
     {
       "i": 18,
       "type": "code",
-      "sec": 0.96,
+      "sec": 0.0,
       "preview": "CITY_ZARRS = {}"
     },
     {
@@ -147,8 +147,8 @@
     {
       "i": 21,
       "type": "code",
-      "sec": 0.01,
-      "preview": "# --- helpers (copied from the tour notebook so this stays self-contained) ---"
+      "sec": 0.0,
+      "preview": "# Visualisation helpers (stretch01, joint_rgb, downsample, show_rgb,"
     },
     {
       "i": 22,
@@ -159,7 +159,7 @@
     {
       "i": 23,
       "type": "code",
-      "sec": 0.81,
+      "sec": 0.76,
       "preview": "def show_city_panels(city, cube_path):"
     },
     {
@@ -172,12 +172,12 @@
       "i": 25,
       "type": "markdown",
       "sec": null,
-      "preview": "### Spectral indices: NDVI, NDWI, NDMI"
+      "preview": "### Spectral indices: NDVI and NDWI"
     },
     {
       "i": 26,
       "type": "code",
-      "sec": 0.47,
+      "sec": 0.37,
       "preview": "# --- Spectral indices on one city (Columbus) for visual intuition ---"
     },
     {
@@ -189,8 +189,8 @@
     {
       "i": 28,
       "type": "code",
-      "sec": 0.06,
-      "preview": "# --- Pre-compute DEM-derived features per city (once) ---"
+      "sec": 0.19,
+      "preview": "# --- Pre-compute the DEM-gradient feature per city (once) ----------"
     },
     {
       "i": 29,
@@ -201,8 +201,8 @@
     {
       "i": 30,
       "type": "code",
-      "sec": 0.42,
-      "preview": "# --- Harvest pixel-level (X, y) per (city, split) with derived-feature support "
+      "sec": 0.44,
+      "preview": "# --- Harvest pixel-level (X, y) per (city, split) ------------------"
     },
     {
       "i": 31,
@@ -225,7 +225,7 @@
     {
       "i": 34,
       "type": "code",
-      "sec": 5.84,
+      "sec": 6.9,
       "preview": "# --- Train three classifiers on the mixed-city training set ---"
     },
     {
@@ -237,7 +237,7 @@
     {
       "i": 36,
       "type": "code",
-      "sec": 8.48,
+      "sec": 17.85,
       "preview": "# --- Evaluate with the tuned threshold on val and on test ---"
     },
     {
@@ -249,7 +249,7 @@
     {
       "i": 38,
       "type": "code",
-      "sec": 0.53,
+      "sec": 0.55,
       "preview": "# --- Confusion matrices (row-normalised): 3 models x 4 evaluation scopes ---"
     },
     {
@@ -273,7 +273,7 @@
     {
       "i": 42,
       "type": "code",
-      "sec": 0.28,
+      "sec": 0.31,
       "preview": "# --- ROC curves on the mixed test set ---"
     },
     {
@@ -285,7 +285,7 @@
     {
       "i": 44,
       "type": "code",
-      "sec": 3.79,
+      "sec": 5.06,
       "preview": "# --- Baseline: threshold a physical spectral index ---"
     },
     {
@@ -303,7 +303,7 @@
     {
       "i": 47,
       "type": "code",
-      "sec": 0.02,
+      "sec": 1483.31,
       "preview": "# Three feature sets, three context settings:"
     },
     {
@@ -315,7 +315,7 @@
     {
       "i": 49,
       "type": "code",
-      "sec": 0.09,
+      "sec": 0.1,
       "preview": "# Side-by-side bar chart: mixed-city training vs Columbus-only training."
     },
     {
@@ -333,7 +333,7 @@
     {
       "i": 52,
       "type": "code",
-      "sec": 0.02,
+      "sec": 0.03,
       "preview": "# --- Lightweight 4-level U-Net (still CPU-friendly, ~1M params with 6 inputs) -"
     },
     {
@@ -345,8 +345,8 @@
     {
       "i": 54,
       "type": "code",
-      "sec": 0.05,
-      "preview": "# --- Per-tile feature normalisation: simple online standardisation ---"
+      "sec": 0.0,
+      "preview": "# --- Per-band normalisation for the U-Net ---"
     },
     {
       "i": 55,
@@ -357,8 +357,8 @@
     {
       "i": 56,
       "type": "code",
-      "sec": 0.44,
-      "preview": "# --- Mixed-city U-Net datasets at 128x128 tiles, water-filtered for training --"
+      "sec": 0.61,
+      "preview": "# --- Mixed-city U-Net datasets at 128x128 tiles, class-filtered for training --"
     },
     {
       "i": 57,
@@ -370,7 +370,7 @@
       "i": 58,
       "type": "code",
       "sec": 0.01,
-      "preview": "# --- Wrap with normalisation + invalid-tile filter ---"
+      "preview": "# --- Apply per-band normalisation via apply_band_norm + invalid-pixel clamp ---"
     },
     {
       "i": 59,
@@ -381,7 +381,7 @@
     {
       "i": 60,
       "type": "code",
-      "sec": 0.14,
+      "sec": 0.22,
       "preview": "# --- Loss weighting from training class balance ---"
     },
     {
@@ -393,8 +393,8 @@
     {
       "i": 62,
       "type": "code",
-      "sec": 0.85,
-      "preview": "# --- Training loop with best-val checkpointing ---"
+      "sec": 348.73,
+      "preview": "# --- Training loop with cosine-annealed LR + best-val checkpointing ---"
     },
     {
       "i": 63,
@@ -417,7 +417,7 @@
     {
       "i": 66,
       "type": "code",
-      "sec": 4.14,
+      "sec": 4.63,
       "preview": "# --- Evaluate on the mixed test set with a tuned probability threshold ---"
     },
     {
@@ -429,8 +429,8 @@
     {
       "i": 68,
       "type": "code",
-      "sec": 0.67,
-      "preview": "# --- Visualise predictions on 6 test tiles with INTERESTING water coverage ---"
+      "sec": 0.7,
+      "preview": "# --- Visualise predictions on 6 test tiles with INTERESTING target coverage ---"
     },
     {
       "i": 69,
@@ -447,7 +447,7 @@
     {
       "i": 71,
       "type": "code",
-      "sec": 0.74,
+      "sec": 0.63,
       "preview": "# --- Per-city F1 across all four models on the mixed test set ---"
     },
     {
@@ -465,26 +465,26 @@
     {
       "i": 74,
       "type": "code",
-      "sec": 0.19,
+      "sec": 0.09,
       "preview": "# --- Display the persisted leaderboard ---------------------------------"
     },
     {
       "i": 75,
       "type": "markdown",
       "sec": null,
-      "preview": "## Bonus: unsupervised clustering with KMeans"
+      "preview": "## 12. Bonus: unsupervised clustering with KMeans"
     },
     {
       "i": 76,
       "type": "code",
-      "sec": 0.51,
+      "sec": 0.57,
       "preview": "%%time"
     },
     {
       "i": 77,
       "type": "markdown",
       "sec": null,
-      "preview": "## 11. Where to go next"
+      "preview": "## 13. Where to go next"
     }
   ]
 }

@@ -35,8 +35,10 @@ from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
 from .band_ops import (
-    normalize_band, compute_ndvi, cloud_mask,
+    normalize_band, compute_ndvi, compute_ndwi, compute_dem_gradient_magnitude,
+    cloud_mask,
     infer_band_kind, get_band_kind, get_band_norm, apply_band_norm,
+    split_mission_band,
     BAND_KIND_PATTERNS, DEFAULT_KIND_NAN_STRATEGY, DEFAULT_KIND_NORM,
 )
 from .export_zarr import export_to_zarr
@@ -52,11 +54,14 @@ __all__ = [
     "export_to_lmdb",
     "normalize_band",
     "compute_ndvi",
+    "compute_ndwi",
+    "compute_dem_gradient_magnitude",
     "cloud_mask",
     "infer_band_kind",
     "get_band_kind",
     "get_band_norm",
     "apply_band_norm",
+    "split_mission_band",
     "BAND_KIND_PATTERNS",
     "DEFAULT_KIND_NAN_STRATEGY",
     "DEFAULT_KIND_NORM",

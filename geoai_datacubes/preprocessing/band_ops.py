@@ -45,6 +45,44 @@ def compute_ndvi(red, nir):
     return (nir - red) / (nir + red + 1e-6)
 
 
+def compute_ndwi(green, nir):
+    """NDWI (McFeeters 1996) = (GREEN - NIR) / (GREEN + NIR).
+
+    Positive over water, negative over vegetation / bare ground. The
+    standard "is this pixel wet" index for Sentinel-2 / Landsat green +
+    NIR. For shortwave-IR-based water indices (MNDWI) use a SWIR1 band
+    in place of NIR — same formula shape, different signal.
+    """
+    return (green - nir) / (green + nir + 1e-6)
+
+
+def compute_dem_gradient_magnitude(dem):
+    """Per-pixel terrain slope proxy: ``sqrt((dy)^2 + (dx)^2)`` in metres.
+
+    Encodes "is this flat or sloped" without referring to absolute
+    elevation, so the result transfers across cities without retraining.
+    Pairs naturally with the ``mean_subtract`` recipe on the elevation
+    band, which gives a city-relative DEM as the first channel.
+
+    NaN-safe: when the input has missing pixels, fills them with the
+    finite mean before computing the gradient and restores NaN
+    afterwards.
+    """
+    arr = np.asarray(dem, dtype=np.float32)
+    finite = np.isfinite(arr)
+    if not finite.all():
+        if finite.any():
+            fill = float(arr[finite].mean())
+            arr = np.where(finite, arr, fill)
+        else:
+            return np.full_like(arr, np.nan)
+    gy, gx = np.gradient(arr)
+    mag = np.sqrt(gy * gy + gx * gx)
+    if not finite.all():
+        mag = np.where(finite, mag, np.nan)
+    return mag
+
+
 def cloud_mask(qa_band, spec):
     """Build a boolean cloud / shadow mask from a quality band.
 
@@ -136,6 +174,35 @@ def _band_suffix(band_name: str) -> str:
     return band_name.rsplit("_", 1)[-1]
 
 
+def split_mission_band(band_name: str,
+                       mission_profiles: Optional[Mapping[str, Mapping]] = None,
+                       ) -> Tuple[Optional[str], str]:
+    """Split a fused-cube band name into ``(mission, bare_band)``.
+
+    Examples (with the default ``MISSION_PROFILES``)::
+
+        "Sentinel-2_B04"       -> ("Sentinel-2",    "B04")
+        "Sentinel-1_VV"        -> ("Sentinel-1",    "VV")
+        "Copernicus-DEM_DEM"   -> ("Copernicus-DEM","DEM")
+        "MODIS_LST_LST_Day"    -> ("MODIS_LST",     "LST_Day")
+        "DEM"                  -> (None,            "DEM")
+
+    Why this is non-trivial: mission keys themselves can contain
+    underscores (``MODIS_LST``, ``HLS_S30``), so the obvious
+    ``rsplit("_", 1)`` puts the prefix in the wrong place. Iterate
+    profile keys longest-first and pick the first prefix that matches.
+    """
+    if not band_name:
+        return None, band_name
+    if mission_profiles is None:
+        return None, band_name
+    for mission in sorted(mission_profiles, key=len, reverse=True):
+        prefix = mission + "_"
+        if band_name.startswith(prefix):
+            return mission, band_name[len(prefix):]
+    return None, band_name
+
+
 def _band_name_candidates(band_name: str):
     """Yield band-name candidates from most-specific suffix to full name.
 
@@ -187,9 +254,16 @@ def get_band_kind(
       1. ``override[band_name]`` -- a user-supplied per-band dict
       2. ``mission_profiles[mission_name]["band_meta"][bare_band]["kind"]``
       3. :func:`infer_band_kind`
+
+    When ``mission_name`` is not given and ``band_name`` carries a
+    ``"<Mission>_..."`` prefix that matches a key in
+    ``mission_profiles`` (e.g. fused cubes write
+    ``"Sentinel-2_B04"``), the mission is auto-resolved.
     """
     if override is not None and band_name in override:
         return override[band_name]
+    if mission_name is None and mission_profiles is not None:
+        mission_name, _ = split_mission_band(band_name, mission_profiles)
     if mission_name and mission_profiles and mission_name in mission_profiles:
         meta = mission_profiles[mission_name].get("band_meta", {})
         # Try every candidate suffix so MODIS_LST_LST_Day finds LST_Day in
@@ -214,9 +288,14 @@ def get_band_norm(
       1. ``override[band_name]`` -- a user-supplied per-band dict
       2. ``mission_profiles[mission_name]["band_meta"][bare_band]["norm"]``
       3. ``DEFAULT_KIND_NORM[get_band_kind(...)]``
+
+    Mission auto-resolution from a fused-cube band name (e.g.
+    ``"Sentinel-2_B04"``) is the same as in :func:`get_band_kind`.
     """
     if override is not None and band_name in override:
         return tuple(override[band_name])
+    if mission_name is None and mission_profiles is not None:
+        mission_name, _ = split_mission_band(band_name, mission_profiles)
     if mission_name and mission_profiles and mission_name in mission_profiles:
         meta = mission_profiles[mission_name].get("band_meta", {})
         for key in _band_name_candidates(band_name):

@@ -17,6 +17,16 @@ as sibling modules without disturbing the existing API.
 """
 
 from .segmentation import TinyUNet, WaterUNet
+from .classification import (
+    harvest_pixels,
+    balance_pos_neg,
+    tune_threshold,
+    binary_pixel_metrics,
+    predict_with_threshold,
+    full_metrics,
+    class_filtered_indices,
+    pick_class_balanced_tiles,
+)
 from .object_detection import (
     YOLOBuildingDetector,
     box_iou,
@@ -33,6 +43,15 @@ __all__ = [
     # segmentation
     "TinyUNet",
     "WaterUNet",
+    # classification (pixel-level + tile-level eval)
+    "harvest_pixels",
+    "balance_pos_neg",
+    "tune_threshold",
+    "binary_pixel_metrics",
+    "predict_with_threshold",
+    "full_metrics",
+    "class_filtered_indices",
+    "pick_class_balanced_tiles",
     # object detection
     "YOLOBuildingDetector",
     "box_iou",
