@@ -1,0 +1,490 @@
+{
+  "started_at": "2026-06-21T14:20:02Z",
+  "finished_at": "2026-06-21T14:20:42Z",
+  "elapsed_sec_total": 40,
+  "n_cells": 78,
+  "section_elapsed_sec": {
+    "1. Setup": 2.45,
+    "2. USER INPUT": 0.01,
+    "3. Fetch satellite data for each city": 0.01,
+    "4. Fuse each city's missions into a single multi-band cube": 0.3,
+    "5. Convert each cube to Zarr for fast multi-worker DataLoader access": 0.96,
+    "6. Visualise the multi-modal features and the water-mask ground truth": 1.35,
+    "7. ML: Pixel-level classifiers (Logistic Regression, Random Forest, XGBoost)": 19.58,
+    "8. Does adding modalities help? Within-context vs across-context": 0.11,
+    "9. DL: Lightweight U-Net (tile-level semantic segmentation)": 6.48,
+    "10. Does the model generalise across cities?": 0.74,
+    "11. Scanning all classes at once: the LULC leaderboard": 0.19,
+    "Bonus: unsupervised clustering with KMeans": 0.51
+  },
+  "per_cell": [
+    {
+      "i": 0,
+      "type": "markdown",
+      "sec": null,
+      "preview": "# `geoai-datacubes` -- Land-cover classification end-to-end"
+    },
+    {
+      "i": 1,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 1. Setup"
+    },
+    {
+      "i": 2,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# --- Colab / local bootstrap ---"
+    },
+    {
+      "i": 3,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Load the standard scientific stack (numpy, matplotlib, pandas, torch, sklearn, x"
+    },
+    {
+      "i": 4,
+      "type": "code",
+      "sec": 1.11,
+      "preview": "# --- imports + path setup ---"
+    },
+    {
+      "i": 5,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Import the four pipeline pieces this notebook uses throughout: `fetch_sentinel_d"
+    },
+    {
+      "i": 6,
+      "type": "code",
+      "sec": 1.33,
+      "preview": "# --- pipeline imports ---"
+    },
+    {
+      "i": 7,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 2. USER INPUT"
+    },
+    {
+      "i": 8,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# ============================================================"
+    },
+    {
+      "i": 9,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### Which class should I pick?"
+    },
+    {
+      "i": 10,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 3. Fetch satellite data for each city"
+    },
+    {
+      "i": 11,
+      "type": "markdown",
+      "sec": null,
+      "preview": "We define a helper that fetches every requested mission for one city, then loop "
+    },
+    {
+      "i": 12,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "def fetch_one_city(city, bbox):"
+    },
+    {
+      "i": 13,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 4. Fuse each city's missions into a single multi-band cube"
+    },
+    {
+      "i": 14,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Fuse each city's per-mission scenes into a single multi-band cube on a common UT"
+    },
+    {
+      "i": 15,
+      "type": "code",
+      "sec": 0.3,
+      "preview": "def find_response(scene_dir):"
+    },
+    {
+      "i": 16,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 5. Convert each cube to Zarr for fast multi-worker DataLoader access"
+    },
+    {
+      "i": 17,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Re-pack each city's fused GeoTIFF into a **chunked Zarr** array. Zarr is faster "
+    },
+    {
+      "i": 18,
+      "type": "code",
+      "sec": 0.96,
+      "preview": "CITY_ZARRS = {}"
+    },
+    {
+      "i": 19,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 6. Visualise the multi-modal features and the water-mask ground truth"
+    },
+    {
+      "i": 20,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Pre-define a few small visualisation helpers we'll reuse below: a per-band perce"
+    },
+    {
+      "i": 21,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# --- helpers (copied from the tour notebook so this stays self-contained) ---"
+    },
+    {
+      "i": 22,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Render the multi-modal feature panel for each city. Each row shows the Sentinel-"
+    },
+    {
+      "i": 23,
+      "type": "code",
+      "sec": 0.81,
+      "preview": "def show_city_panels(city, cube_path):"
+    },
+    {
+      "i": 24,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Read the four panels per row left to right:"
+    },
+    {
+      "i": 25,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### Spectral indices: NDVI, NDWI, NDMI"
+    },
+    {
+      "i": 26,
+      "type": "code",
+      "sec": 0.47,
+      "preview": "# --- Spectral indices on one city (Columbus) for visual intuition ---"
+    },
+    {
+      "i": 27,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### DEM preprocessing"
+    },
+    {
+      "i": 28,
+      "type": "code",
+      "sec": 0.06,
+      "preview": "# --- Pre-compute DEM-derived features per city (once) ---"
+    },
+    {
+      "i": 29,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 7. ML: Pixel-level classifiers (Logistic Regression, Random Forest, XGBoost)"
+    },
+    {
+      "i": 30,
+      "type": "code",
+      "sec": 0.42,
+      "preview": "# --- Harvest pixel-level (X, y) per (city, split) with derived-feature support "
+    },
+    {
+      "i": 31,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Mix all three cities into a single training set. Validation and test pixels are "
+    },
+    {
+      "i": 32,
+      "type": "code",
+      "sec": 0.06,
+      "preview": "t0 = time.time()"
+    },
+    {
+      "i": 33,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### What \u201cthreshold tuning\u201d means"
+    },
+    {
+      "i": 34,
+      "type": "code",
+      "sec": 5.84,
+      "preview": "# --- Train three classifiers on the mixed-city training set ---"
+    },
+    {
+      "i": 35,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### Reading the binary classification metrics"
+    },
+    {
+      "i": 36,
+      "type": "code",
+      "sec": 8.48,
+      "preview": "# --- Evaluate with the tuned threshold on val and on test ---"
+    },
+    {
+      "i": 37,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Confusion matrices for each (model, scope) pair. Columns are evaluation scopes ("
+    },
+    {
+      "i": 38,
+      "type": "code",
+      "sec": 0.53,
+      "preview": "# --- Confusion matrices (row-normalised): 3 models x 4 evaluation scopes ---"
+    },
+    {
+      "i": 39,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Tree-based models naturally expose **feature importance** \u2014 which input bands th"
+    },
+    {
+      "i": 40,
+      "type": "code",
+      "sec": 0.18,
+      "preview": "# --- Feature importance for tree models ---"
+    },
+    {
+      "i": 41,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**ROC curves** plot the false-positive rate against the true-positive rate as th"
+    },
+    {
+      "i": 42,
+      "type": "code",
+      "sec": 0.28,
+      "preview": "# --- ROC curves on the mixed test set ---"
+    },
+    {
+      "i": 43,
+      "type": "markdown",
+      "sec": null,
+      "preview": "### Sanity-check baseline: a thresholded spectral index"
+    },
+    {
+      "i": 44,
+      "type": "code",
+      "sec": 3.79,
+      "preview": "# --- Baseline: threshold a physical spectral index ---"
+    },
+    {
+      "i": 45,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**Reading the diagnostics:**"
+    },
+    {
+      "i": 46,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 8. Does adding modalities help? Within-context vs across-context"
+    },
+    {
+      "i": 47,
+      "type": "code",
+      "sec": 0.02,
+      "preview": "# Three feature sets, three context settings:"
+    },
+    {
+      "i": 48,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Bar chart comparing F1 across feature sets and the two contexts. Within-context "
+    },
+    {
+      "i": 49,
+      "type": "code",
+      "sec": 0.09,
+      "preview": "# Side-by-side bar chart: mixed-city training vs Columbus-only training."
+    },
+    {
+      "i": 50,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**Interpretation -- read the result rather than what we hoped to see.**"
+    },
+    {
+      "i": 51,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 9. DL: Lightweight U-Net (tile-level semantic segmentation)"
+    },
+    {
+      "i": 52,
+      "type": "code",
+      "sec": 0.02,
+      "preview": "# --- Lightweight 4-level U-Net (still CPU-friendly, ~1M params with 6 inputs) -"
+    },
+    {
+      "i": 53,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**Normalisation matters for neural networks.** Sentinel-2 surface reflectance is"
+    },
+    {
+      "i": 54,
+      "type": "code",
+      "sec": 0.05,
+      "preview": "# --- Per-tile feature normalisation: simple online standardisation ---"
+    },
+    {
+      "i": 55,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Build the U-Net training, validation, and test datasets. Two critical design cho"
+    },
+    {
+      "i": 56,
+      "type": "code",
+      "sec": 0.44,
+      "preview": "# --- Mixed-city U-Net datasets at 128x128 tiles, water-filtered for training --"
+    },
+    {
+      "i": 57,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Wrap each `LazyTileDataset` / `ConcatDataset` in a PyTorch `DataLoader`. `num_wo"
+    },
+    {
+      "i": 58,
+      "type": "code",
+      "sec": 0.01,
+      "preview": "# --- Wrap with normalisation + invalid-tile filter ---"
+    },
+    {
+      "i": 59,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Compute the **class weights** for the loss function. Loss on a water pixel is mu"
+    },
+    {
+      "i": 60,
+      "type": "code",
+      "sec": 0.14,
+      "preview": "# --- Loss weighting from training class balance ---"
+    },
+    {
+      "i": 61,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**The training loop.** We use Adam with a cosine-annealed learning rate, gradien"
+    },
+    {
+      "i": 62,
+      "type": "code",
+      "sec": 0.85,
+      "preview": "# --- Training loop with best-val checkpointing ---"
+    },
+    {
+      "i": 63,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**Learning curves.** Training loss going down + validation loss going down means"
+    },
+    {
+      "i": 64,
+      "type": "code",
+      "sec": 0.16,
+      "preview": "# --- Learning curves ---"
+    },
+    {
+      "i": 65,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Evaluate the best-checkpoint U-Net on the **mixed test set** and compare to the "
+    },
+    {
+      "i": 66,
+      "type": "code",
+      "sec": 4.14,
+      "preview": "# --- Evaluate on the mixed test set with a tuned probability threshold ---"
+    },
+    {
+      "i": 67,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**Visualise predictions on six test tiles** with **5\u201370% water cover**. Random u"
+    },
+    {
+      "i": 68,
+      "type": "code",
+      "sec": 0.67,
+      "preview": "# --- Visualise predictions on 6 test tiles with INTERESTING water coverage ---"
+    },
+    {
+      "i": 69,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 10. Does the model generalise across cities?"
+    },
+    {
+      "i": 70,
+      "type": "markdown",
+      "sec": null,
+      "preview": "Finally, break the headline test F1 down per city. Aggregate metrics can hide a "
+    },
+    {
+      "i": 71,
+      "type": "code",
+      "sec": 0.74,
+      "preview": "# --- Per-city F1 across all four models on the mixed test set ---"
+    },
+    {
+      "i": 72,
+      "type": "markdown",
+      "sec": null,
+      "preview": "**What to take from this plot:**"
+    },
+    {
+      "i": 73,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 11. Scanning all classes at once: the LULC leaderboard"
+    },
+    {
+      "i": 74,
+      "type": "code",
+      "sec": 0.19,
+      "preview": "# --- Display the persisted leaderboard ---------------------------------"
+    },
+    {
+      "i": 75,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## Bonus: unsupervised clustering with KMeans"
+    },
+    {
+      "i": 76,
+      "type": "code",
+      "sec": 0.51,
+      "preview": "%%time"
+    },
+    {
+      "i": 77,
+      "type": "markdown",
+      "sec": null,
+      "preview": "## 11. Where to go next"
+    }
+  ]
+}

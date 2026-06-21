@@ -1,19 +1,51 @@
 # ESA WorldCover per-class binary classification leaderboard
 
-Single-date Sentinel-2 + Sentinel-1 features over Columbus, Cincinnati, and
-Cleveland. Random-split mixed-city train/val/test, threshold tuned on val.
+Per-class, per-model, per-split metrics for the ML/DL methods in
+`notebooks/01_classification.ipynb`. Single-date Sentinel-2 + Sentinel-1
+features (B02 / B03 / B04 / B08 + VV / VH) over Columbus, Cincinnati,
+and Cleveland. Random-split mixed-city train/val/test, threshold tuned
+on val.
 
-Each row is the best of {LogisticRegression, RandomForest, XGBoost}; XGB
-won on every class we have benchmarked.
+> **The canonical source is [`lulc_leaderboard.csv`](lulc_leaderboard.csv)**.
+> This markdown summarises the headline table; the CSV holds the full
+> per-model per-split grid (LR / RF / XGB plus U-Net rows when DL has
+> been run for that class). Re-run the aggregator to regenerate.
 
-> **Where these numbers come from:** all rows below were produced by the
-> [`benchmark_lulc_class.py`](benchmark_lulc_class.py) CLI in this folder,
-> which uses the exact same `geoai_datacubes.preprocessing.LazyTileDataset`
-> and the same per-city Zarr cubes that
-> [`01_classification.ipynb`](01_classification.ipynb) builds. The notebook
-> trains for one class at a time and shows you the full diagnostic suite;
-> this table is what you get from running the same pipeline over every
-> class that has a non-trivial positive fraction in these Ohio AOIs.
+## Reproduce the whole table
+
+```bash
+# 1) Per-class ML benchmark  (a few minutes each; ~10 minutes total)
+for cid_name in "10 tree_cover" "30 grassland" "40 cropland" "50 built_up" "80 water"; do
+    cid=$(echo "$cid_name"  | cut -d' ' -f1)
+    name=$(echo "$cid_name" | cut -d' ' -f2)
+    python notebooks/benchmark_lulc_class.py \
+        --class-id "$cid" --class-name "$name" \
+        --output-json "/tmp/lulc_${cid}.json"
+done
+
+# 2) (Optional) Per-class U-Net DL benchmark  (~10 minutes per class on CPU)
+for cid_name in "10 tree_cover" "30 grassland" "40 cropland" "50 built_up" "80 water"; do
+    cid=$(echo "$cid_name"  | cut -d' ' -f1)
+    name=$(echo "$cid_name" | cut -d' ' -f2)
+    python notebooks/benchmark_unet_class.py \
+        --class-id "$cid" --class-name "$name" \
+        --output-json "/tmp/unet_class${cid}.json"
+done
+
+# 3) Aggregate -> CSV + Parquet
+python notebooks/aggregate_leaderboard.py \
+    --inputs-dir /tmp \
+    $(printf -- "--unet-json /tmp/unet_class%s.json " 10 30 40 50 80)
+```
+
+Both benchmark CLIs read the per-city Zarr cubes that
+[`01_classification.ipynb`](01_classification.ipynb) builds, so **run
+notebook 01 first** to populate `notebooks/_ml_outputs/zarr/`.
+
+## Headline table (pixel-level test split, best F1 per class)
+
+Each row is the **best** of {LR, RF, XGB, U-Net}. The full per-model
+breakdown is one column over in `lulc_leaderboard.csv`.
 
 | LULC class | best model | F1 | AUC | Precision | Recall | pos_frac_train | pos_frac_test |
 |---|---|---|---|---|---|---|---|
@@ -22,6 +54,12 @@ won on every class we have benchmarked.
 | **10 — tree cover** | XGB | **0.710** | 0.933 | 0.649 | 0.784 | 26.2% | 18.3% |
 | **30 — grassland** | XGB | **0.581** | 0.911 | 0.567 | 0.595 | balanced | 10.7% |
 | **40 — cropland** | XGB | **0.413** | 0.911 | 0.293 | 0.696 | balanced | 3.7% |
+
+*(Numbers above are from the last full ML sweep. The DL column was
+introduced after that sweep; once `benchmark_unet_class.py` has been
+run for each class the CSV will carry the U-Net rows and this table can
+be regenerated from a single `pd.read_csv` + groupby in the notebook
+display cell.)*
 
 ## What this tells us
 
@@ -42,32 +80,16 @@ won on every class we have benchmarked.
   pasture, and the small AOIs over urban areas have very few crop pixels
   anyway (3.7% in test).
 
-## Reproduce
+## Where the leaderboard lives
 
-```bash
-# from the repo root
-python notebooks/benchmark_lulc_class.py \
-    --class-id 50 --class-name built_up \
-    --output-json /tmp/lulc_50.json
-```
+| Artefact | Purpose |
+|---|---|
+| `notebooks/lulc_leaderboard.csv`      | Long-format DataFrame: one row per (class, model, split). Git-tracked. |
+| `notebooks/lulc_leaderboard.parquet`  | Same data as Parquet for fast notebook reads. |
+| `notebooks/benchmark_lulc_class.py`   | ML CLI (LR / RF / XGB) for one class. Writes `lulc_<id>.json`. |
+| `notebooks/benchmark_unet_class.py`   | DL CLI (U-Net) for one class. Writes `unet_class<id>.json`. |
+| `notebooks/aggregate_leaderboard.py`  | Walks the per-class JSONs and writes the CSV + Parquet. |
+| `notebooks/01_classification.ipynb` § 11 | Notebook cell that loads the CSV and renders the styled table. |
 
-The script reads the Zarr cubes the notebook produced at
-`notebooks/_ml_outputs/zarr/{columbus,cincinnati,cleveland}_cube.zarr`, so
-**run [`01_classification.ipynb`](01_classification.ipynb) first if those
-cubes are not on disk yet** -- otherwise the script will exit with a clear
-"cube missing" message.
-
-To regenerate the whole table:
-
-```bash
-for id_name in "10 tree_cover" "30 grassland" "40 cropland" "50 built_up" "80 water"; do
-    cid=$(echo "$id_name" | cut -d' ' -f1)
-    cname=$(echo "$id_name" | cut -d' ' -f2)
-    python notebooks/benchmark_lulc_class.py \
-        --class-id "$cid" --class-name "$cname" \
-        --output-json "/tmp/lulc_${cid}.json"
-done
-```
-
-Each per-class run takes a few minutes once the cubes are on disk; the
-full sweep is a one-coffee-cup job.
+The aggregator is **idempotent**: re-running picks up any new
+`lulc_*.json` / `unet_class*.json` it finds.
