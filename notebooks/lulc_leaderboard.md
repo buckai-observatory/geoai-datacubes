@@ -44,22 +44,41 @@ notebook 01 first** to populate `notebooks/_ml_outputs/zarr/`.
 
 ## Headline table (pixel-level test split, best F1 per class)
 
-Each row is the **best** of {LR, RF, XGB, U-Net}. The full per-model
-breakdown is one column over in `lulc_leaderboard.csv`.
+Each row is the **best** of {LR, RF, XGB, U-Net} on the mixed-city
+test split, after `band_meta`-driven per-band normalisation
+(`linear/10000` for S2 spectral, `log_db` for S1 SAR,
+`mean_subtract/1km` for DEM). The full per-model breakdown is one
+column over in `lulc_leaderboard.csv`.
 
-| LULC class | best model | F1 | AUC | Precision | Recall | pos_frac_train | pos_frac_test |
-|---|---|---|---|---|---|---|---|
-| **80 — water** | XGB | **0.939** | 0.977 | 0.987 | 0.895 | balanced | 9.3% |
-| **50 — built-up** | XGB | **0.849** | 0.928 | 0.776 | 0.938 | 50.6% | 47.5% |
-| **10 — tree cover** | XGB | **0.710** | 0.933 | 0.649 | 0.784 | 26.2% | 18.3% |
-| **30 — grassland** | XGB | **0.581** | 0.911 | 0.567 | 0.595 | balanced | 10.7% |
-| **40 — cropland** | XGB | **0.413** | 0.911 | 0.293 | 0.696 | balanced | 3.7% |
+| LULC class | best model | F1 | AUC | Precision | Recall | pos_frac_test |
+|---|---|---|---|---|---|---|
+| **80 — water** | XGB | **0.944** | 0.983 | 0.975 | 0.915 | 18.0% |
+| **50 — built-up** | XGB | **0.849** | 0.928 | 0.776 | 0.938 | 47.5% |
+| **10 — tree cover** | **U-Net** | **0.762** | 0.950 | 0.733 | 0.793 | 18.3% |
+| **30 — grassland** | U-Net | **0.590** | 0.899 | 0.516 | 0.689 | 10.7% |
+| **40 — cropland** | XGB | **0.413** | 0.911 | 0.293 | 0.696 | 3.7% |
 
-*(Numbers above are from the last full ML sweep. The DL column was
-introduced after that sweep; once `benchmark_unet_class.py` has been
-run for each class the CSV will carry the U-Net rows and this table can
-be regenerated from a single `pd.read_csv` + groupby in the notebook
-display cell.)*
+Per-class commentary:
+
+- **Water (80) and built-up (50)** are saturated for trees; the U-Net
+  matches XGB to within ~1 pp. Both classes have unambiguous multimodal
+  signatures (low NIR + dark SAR for water; high SAR + characteristic
+  visible / NIR mix for built-up) that XGBoost extracts cleanly without
+  needing CNN context.
+- **Tree cover (10)** is the headline win for the U-Net (+5 pp vs XGB).
+  Spatial context (canopy texture, forest-patch shape) is exactly what
+  a tile-level segmentation model learns and a per-pixel tree model
+  cannot.
+- **Grassland (30)** sees a small U-Net edge (+1 pp). Probably noise.
+- **Cropland (40) — the trees win and the U-Net collapses (F1=0.004).**
+  Pos fraction is only 0.5% on the U-Net's train split, and the CLI
+  trains the U-Net on *all* tiles (no class filter). 99.5% of training
+  tiles contain zero cropland pixels, so the model learns "predict no
+  cropland" everywhere. The trees side-steps this because the pixel
+  harvest balances 1:5 (target:rest) before training. To get an honest
+  U-Net cropland number, the CLI would need a class-filtered training
+  subset (à la `class_filtered_indices(min_pos_frac=0.05)` in the
+  notebook).
 
 ## What this tells us
 

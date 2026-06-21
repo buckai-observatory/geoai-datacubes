@@ -34,7 +34,8 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from geoai_datacubes.preprocessing import LazyTileDataset
+from geoai_datacubes.preprocessing import LazyTileDataset, apply_band_norm, get_band_norm
+from geoai_datacubes.fetch.missions import MISSION_PROFILES
 from geoai_datacubes.ml_dl import WaterUNet
 
 
@@ -72,6 +73,43 @@ def build_dataset(city, split, class_id):
     )
 
 
+# Resolve each feature band's normalisation recipe ONCE at import time so
+# the per-batch hot path doesn't re-lookup. Same recipe table the notebook
+# uses inside its BandNormDataset.
+NORM_RECIPES = [get_band_norm(b, mission_profiles=MISSION_PROFILES)
+                for b in FEATURE_BANDS]
+
+
+class BandNormDataset:
+    """Wrap a LazyTileDataset and apply per-band apply_band_norm at __getitem__.
+
+    Same pattern as the notebook's section 9 BandNormDataset, embedded
+    here so the CLI sees the same normalised features (S2 linear/10000,
+    S1 log_db, ...) that the notebook trains on.
+    """
+    def __init__(self, base):
+        import torch
+        self.base = base
+        self._torch = torch
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, i):
+        item = self.base[i]
+        if len(item) >= 3:
+            feat, lab, _ = item[0], item[1], item[2]
+        else:
+            feat, lab = item
+        f = feat.numpy()
+        for ci, recipe in enumerate(NORM_RECIPES):
+            if recipe[0] == "passthrough":
+                continue
+            f[ci] = apply_band_norm(f[ci], recipe)
+        f = np.where(np.isfinite(f), f, 0.0)
+        return self._torch.from_numpy(f).float(), lab
+
+
 def evaluate(model, loaders, device, threshold=0.5):
     """Return per-split dict with accuracy / prec / rec / F1 / IoU / AUC."""
     import torch
@@ -82,7 +120,7 @@ def evaluate(model, loaders, device, threshold=0.5):
     for split, loader in loaders.items():
         ys, ps = [], []
         with torch.no_grad():
-            for x, y, meta in loader:
+            for x, y in loader:
                 logits = model(x.to(device))
                 prob1  = torch.softmax(logits, dim=1)[:, 1].cpu().numpy().ravel()
                 yy = y.numpy().ravel()
@@ -116,7 +154,7 @@ def tune_threshold(model, val_loader, device):
     ys, ps = [], []
     model.eval()
     with torch.no_grad():
-        for x, y, meta in val_loader:
+        for x, y in val_loader:
             logits = model(x.to(device))
             prob1  = torch.softmax(logits, dim=1)[:, 1].cpu().numpy().ravel()
             yy = y.numpy().ravel()
@@ -175,11 +213,18 @@ def main():
     pos_frac_train = pos / max(1, total)
     print(f"[unet] pos_frac_train pixel-level = {pos_frac_train:.4f}", flush=True)
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+    # Wrap with BandNormDataset so the U-Net sees features normalised by
+    # each band's band_meta recipe (S2 linear/10000, S1 log_db, ...).
+    # Same normalisation path the notebook uses; doing it here means
+    # cluster runs and laptop runs cannot drift.
+    train_loader = DataLoader(BandNormDataset(train_ds),
+                              batch_size=args.batch_size, shuffle=True,
                               num_workers=0, drop_last=False)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False,
+    val_loader   = DataLoader(BandNormDataset(val_ds),
+                              batch_size=args.batch_size, shuffle=False,
                               num_workers=0)
-    test_loader  = DataLoader(test_ds,  batch_size=args.batch_size, shuffle=False,
+    test_loader  = DataLoader(BandNormDataset(test_ds),
+                              batch_size=args.batch_size, shuffle=False,
                               num_workers=0)
 
     in_ch = len(FEATURE_BANDS)
@@ -196,7 +241,7 @@ def main():
         model.train()
         t1 = time.time()
         tot, n_batches = 0.0, 0
-        for x, y, meta in train_loader:
+        for x, y in train_loader:
             opt.zero_grad()
             logits = model(x.to(device))
             loss = loss_fn(logits, y.to(device).long())
