@@ -63,6 +63,8 @@ PROVIDER_AUTO = {
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
     "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
+    "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
+    "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray

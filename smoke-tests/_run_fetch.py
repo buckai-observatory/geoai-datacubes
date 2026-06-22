@@ -58,6 +58,8 @@ DEFAULT_BANDS = {
     "3DEP":             ["DEM"],
     "PlanetScope-4b":   ["B", "G", "R", "NIR"],
     "PlanetScope-8b":   ["B", "G", "R", "NIR"],
+    "ALOS-PALSAR":      ["HH", "HV"],
+    "ALOS-FNF":         ["C"],
 }
 DEFAULT_DATES = {
     # Optical: clear summer-2024 window over the US Midwest.
@@ -77,6 +79,8 @@ DEFAULT_DATES = {
     "JRC-GSW":        ("2020-01-01", "2020-12-31"),
     "3DEP":           ("2020-01-01", "2020-12-31"),
     "NAIP":           ("2023-01-01", "2023-12-31"),
+    "ALOS-PALSAR":    ("2020-01-01", "2020-12-31"),  # annual mosaic
+    "ALOS-FNF":       ("2020-01-01", "2020-12-31"),  # annual mosaic
 }
 DEFAULT_RES = {
     "Sentinel-2":     10,  "Sentinel-2-L1C": 10,  "Sentinel-1":     10,
@@ -84,6 +88,7 @@ DEFAULT_RES = {
     "NAIP":            1,  "MODIS_SR":      500,  "MODIS_LST":    1000,
     "HLS_S30":        30,  "HLS_L30":        30,  "JRC-GSW":        30,
     "3DEP":           10,  "PlanetScope-4b":  3,  "PlanetScope-8b":  3,
+    "ALOS-PALSAR":    25,  "ALOS-FNF":       25,
 }
 TIGHT_AOI_MISSIONS = {"NAIP", "PlanetScope-4b", "PlanetScope-8b"}
 

@@ -96,6 +96,8 @@ needs zero `band_meta` entries.
 | HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
 | JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | occurrence, change, seasonality, recurrence, transitions, extent | per-band (see below) |
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
+| ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
+| ALOS Forest / Non-Forest | `ALOS-FNF` | 25 m | annual (2015–2020) | C (categorical 1–4) | uint8 class IDs |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 
 ---
@@ -643,6 +645,83 @@ globally consistent DEM.
 
 ---
 
+## ALOS PALSAR Annual L-band SAR Mosaic (JAXA)
+
+**Mission name:** `ALOS-PALSAR`
+**Provider:** Microsoft Planetary Computer, collection `alos-palsar-mosaic`
+**Spatial resolution:** 25 m, served as one COG per 1° × 1° lat/lon tile
+in EPSG:4326.
+**Temporal:** annual mosaic, 2015–2021 (PALSAR-2 era; PALSAR-1
+2007–2010 is hosted by JAXA but not on PC).
+**Why this matters:** ALOS PALSAR's L-band (~24 cm wavelength)
+penetrates dry vegetation canopies much further than the Sentinel-1
+C-band (~5.6 cm), making it the standard input for global
+forest-biomass studies and dense-canopy tropical work. Use it as a
+biomass-proxy stack alongside the `ALOS-FNF` categorical product
+below.
+
+| Band | Description |
+|---|---|
+| HH | Horizontal-horizontal backscatter (primary) |
+| HV | Horizontal-vertical backscatter (primary; cross-pol) |
+| mask | QA mask: 0 = no-data, 50 = water, 100 = layover, 150 = shadow, 255 = land |
+| linci | Local incidence angle (degrees × 100) |
+| date | Day-of-year of the acquisition |
+
+**Value range:** HH/HV are uint16 *digital numbers* (DN). Convert to
+backscatter γ⁰ in dB via:
+
+```
+gamma0_dB = 10 * log10(DN^2) - 83.0     # DN > 0; DN == 0 is no-data
+```
+
+The `band_meta` recipe for HH and HV is `("palsar_db", -83.0)`, which
+applies this formula and clips the result to a `[-30, 0]` dB working
+range mapped to `[0, 1]`. Use `apply_band_norm` to get features on
+the same scale as `Sentinel-1` after its `("log_db", 1e-6)` recipe.
+
+**Coverage caveat:** PC indexes per-tile items, so a fetch for a
+small AOI returns one 1° × 1° tile and crops to the AOI. Tiles are
+land-only (no ocean coverage), so coastal AOIs may see ~half no-data
+on the seaward side.
+
+---
+
+## ALOS Forest / Non-Forest Annual Mosaic (JAXA)
+
+**Mission name:** `ALOS-FNF`
+**Provider:** Microsoft Planetary Computer, collection
+`alos-fnf-mosaic`
+**Spatial resolution:** 25 m, served as one COG per 1° × 1° lat/lon
+tile in EPSG:4326.
+**Temporal:** annual, 2015–2020.
+
+**Class IDs (2017–2020 4-class scheme, the default):**
+
+- 0 — No data
+- 1 — Dense forest (≥ 90% canopy)
+- 2 — Non-dense forest
+- 3 — Non-forest
+- 4 — Water
+
+(The 2015–2016 mosaics use a 3-class scheme: 0 = no-data, 1 = forest,
+2 = non-forest, 3 = water. The default `one_hot` recipe covers the
+4-class numbering; a 2015–2016 fetch will leave class 4 all-zero.)
+
+**Why this matters:** Annual updates make this a strong complement
+to the static `ESA-WorldCover` LULC layer when you need a moving
+target for forest cover change over a decade. Pair with `ALOS-PALSAR`
+for the underlying backscatter, with `JRC-GSW` for water, and with
+`Copernicus-DEM` for relief — the four together cover the standard
+"forest-biomass change" feature stack without any optical input.
+
+**Normalisation for ML:** treat as categorical via the
+`("one_hot", (1, 2, 3, 4))` recipe declared on `band_meta`, OR use
+the raw integer class IDs as a target via `label_remap` (e.g.
+`{1: 1, 2: 1, 3: 0, 4: 0}` to collapse to a binary forest mask).
+
+---
+
 ## Sentinel-5P TROPOMI *(stub only — not yet fetchable)*
 
 **Mission name:** `Sentinel-5P`
@@ -685,6 +764,8 @@ work over major metros.
 | HLS_S30 / HLS_L30 | `x / 10000.0` then `clip(0, 1)` (same as Sentinel-2) |
 | JRC-GSW (continuous bands) | divide by 100 (or 12 for `seasonality`); leave `transitions` / `extent` categorical |
 | 3DEP | per-AOI mean-subtract; optionally add gradient magnitude as a second channel (same recipe as Copernicus DEM) |
+| ALOS-PALSAR (HH / HV) | DN → dB via `10*log10(DN²) − 83.0`, then map `[-30, 0]` dB to `[0, 1]`. The `("palsar_db", -83.0)` recipe in `band_meta` does this in one call. |
+| ALOS-FNF | do not normalise; use as a categorical label / mask via `label_remap` |
 
 For tree-based models (Random Forest, XGBoost) the normalisation
 question is mostly moot — they are invariant to monotonic per-feature

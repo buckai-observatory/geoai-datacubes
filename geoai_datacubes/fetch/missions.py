@@ -673,6 +673,98 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ALOS PALSAR Annual Mosaic (L-band SAR backscatter, JAXA).
+    # PC collection "alos-palsar-mosaic". Annual mosaic, 2015-2021,
+    # 25 m native resolution, served as one COG per 1 deg x 1 deg lat/lon
+    # tile. Two primary polarisations: HH (co-pol) + HV (cross-pol).
+    #
+    # **Value range / unit conversion.** Pixels are stored as uint16
+    # *digital numbers*; the canonical conversion to backscatter
+    # gamma-naught in dB is
+    #
+    #     gamma0_dB = 10 * log10(DN^2) - 83.0   (DN > 0 required)
+    #
+    # with DN == 0 representing no-data. We expose this via the
+    # ("palsar_db", -83.0) recipe (see band_ops.apply_band_norm) so a
+    # caller can apply_band_norm and get features in the same [0, 1] band
+    # that the Sentinel-1 ("log_db", ...) recipe produces.
+    #
+    # L-band penetrates dry vegetation canopies much further than the
+    # Sentinel-1 C-band, making this mosaic the standard input for
+    # global forest-biomass studies. Pair with the ALOS-FNF profile
+    # below for an integer forest mask + this backscatter for a
+    # biomass-proxy stack without any LIDAR.
+    # ============================================================
+    "ALOS-PALSAR": {
+        "default_bands": ["HH", "HV"],
+        "extra_bands":   ["mask", "linci", "date"],
+        "cloud_filter":  False,    # SAR sees through cloud
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "HH":    {"kind": "sar",         "norm": ("palsar_db", -83.0)},
+            "HV":    {"kind": "sar",         "norm": ("palsar_db", -83.0)},
+            "mask":  {"kind": "qa",          "norm": ("passthrough",)},
+            "linci": {"kind": "index",       "norm": ("divide", 100.0)},
+            "date":  {"kind": "qa",          "norm": ("passthrough",)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "alos-palsar-mosaic",
+                "asset_map": {
+                    "HH":    "HH",
+                    "HV":    "HV",
+                    "mask":  "mask",
+                    "linci": "linci",
+                    "date":  "date",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
+    # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
+    # ALOS PALSAR mosaic by JAXA. Single classified band per tile;
+    # categorical IDs change between epochs:
+    #
+    #   2015-2016 (3-class): 0 = no-data, 1 = forest, 2 = non-forest,
+    #                        3 = water
+    #   2017-2020 (4-class): 0 = no-data, 1 = dense forest,
+    #                        2 = non-dense forest, 3 = non-forest,
+    #                        4 = water
+    #
+    # The one_hot recipe below covers the 4-class scheme (which a 2015-
+    # 2016 fetch will simply leave as a 0/1/2/3 one-hot with class 4
+    # all-zero). When training, the LULC-style label_remap pattern from
+    # nb 01 works as-is.
+    #
+    # Native CRS is EPSG:4326 (1 deg x 1 deg lat/lon tiles); the fetcher
+    # reprojects to the user-set output CRS at fetch time using nearest
+    # for categorical correctness.
+    # ============================================================
+    "ALOS-FNF": {
+        "default_bands": ["C"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "C": {"kind": "categorical", "norm": ("one_hot", (1, 2, 3, 4))},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "alos-fnf-mosaic",
+                "asset_map": {
+                    "C": "C",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # Sentinel-5P TROPOMI atmospheric chemistry -- STUB ONLY.
     #
     # PC collection: "sentinel-5p-l2-netcdf". Gas products (NO2, CO, SO2,

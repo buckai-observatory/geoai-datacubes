@@ -1,0 +1,41 @@
+{
+  "test": "fetch_alos-fnf",
+  "mission": "ALOS-FNF",
+  "started_at": "2026-06-22T07:39:23",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "C"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 25,
+  "save_folder": "/tmp/geoai_smoke/ALOS-FNF",
+  "elapsed_sec": 4.1,
+  "bands_returned": [
+    "C"
+  ],
+  "scene": "ALOS-FNF_2020-01-01_N41W084_20_FNF",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/ALOS-FNF/ALOS-FNF_2020-01-01_N41W084_20_FNF/ALOS-FNF_full_size.tiff",
+    "shape": [
+      104,
+      71,
+      1
+    ],
+    "bands": [
+      "C"
+    ],
+    "crs": "EPSG:32617",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 1996
+  },
+  "finished_at": "2026-06-22T07:39:27"
+}

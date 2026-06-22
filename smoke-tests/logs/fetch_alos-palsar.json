@@ -1,0 +1,44 @@
+{
+  "test": "fetch_alos-palsar",
+  "mission": "ALOS-PALSAR",
+  "started_at": "2026-06-22T07:40:32",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "HH",
+    "HV"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 25,
+  "save_folder": "/tmp/geoai_smoke/ALOS-PALSAR",
+  "elapsed_sec": 4.8,
+  "bands_returned": [
+    "HH",
+    "HV"
+  ],
+  "scene": "ALOS-PALSAR_2020-01-01_N41W084_20_F02DAR_MOS",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/ALOS-PALSAR/ALOS-PALSAR_2020-01-01_N41W084_20_F02DAR_MOS/ALOS-PALSAR_full_size.tiff",
+    "shape": [
+      104,
+      71,
+      2
+    ],
+    "bands": [
+      "HH",
+      "HV"
+    ],
+    "crs": "EPSG:32617",
+    "nan_fraction_centre_window": 0.9438,
+    "size_bytes": 4975
+  },
+  "finished_at": "2026-06-22T07:40:36"
+}

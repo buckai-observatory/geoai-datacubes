@@ -375,6 +375,17 @@ def apply_band_norm(arr: np.ndarray, recipe: Tuple, *,
         # map [-25, 0] dB to [0, 1]
         return np.clip((db + 25.0) / 25.0, 0.0, 1.0)
 
+    if name == "palsar_db":
+        # ALOS PALSAR mosaic DN -> backscatter gamma-naught in dB:
+        #   gamma0_dB = 10 * log10(DN^2) + offset, offset = -83.0 for
+        # JAXA's L-band annual mosaic. Map a typical [-30, 0] dB range
+        # to [0, 1]. DN == 0 is no-data; clip to 1 before log to avoid
+        # -inf and let the NaN-handling layer drop those pixels later.
+        _, offset = recipe
+        dn = np.maximum(a, 1.0)
+        db = 10.0 * np.log10(dn * dn) + float(offset)
+        return np.clip((db + 30.0) / 30.0, 0.0, 1.0)
+
     if name == "mean_subtract":
         _, scale = recipe
         scale = float(scale) or 1.0
