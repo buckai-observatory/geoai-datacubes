@@ -20,11 +20,17 @@ this document is the minimum tactical recipe.
 ```bash
 ssh unity                                                # or your usual alias
 cd $HOME                                                 # or wherever you keep code
-git clone git@github.com:buckai-observatory/geoai-datacubes.git
+git clone https://github.com/buckai-observatory/geoai-datacubes.git
 cd geoai-datacubes
 ```
 
-If you've already cloned it on a previous job, `git pull` and skip ahead.
+HTTPS clone needs no credentials (the repo is public). Use the
+`git@github.com:buckai-observatory/geoai-datacubes.git` SSH form only
+if you've already registered a Unity-side public key with GitHub and
+plan to `git push` from the cluster -- which you usually shouldn't, the
+cluster is for compute, the laptop is for commits.
+
+If you've already cloned on a previous session, `git pull` and skip ahead.
 
 ## 2. Check whether your existing conda env has everything
 
