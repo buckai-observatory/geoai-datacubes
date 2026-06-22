@@ -63,12 +63,23 @@ contextily:contextily
 case "$MODE" in
   --pip|-p)
     echo "[check_env] pip dry-run against requirements.txt"
-    echo "(lines saying 'Would install <pkg>' = missing from your env)"
+    echo "(lines starting 'Would install' = missing from your env;"
+    echo " 'Requirement already satisfied' = OK)"
     echo
-    python -m pip install --dry-run --quiet -r requirements.txt 2>&1 | \
-        grep -E "Would install|already satisfied|ERROR" | head -50
+    # No --quiet -- the 'already satisfied' lines are the proof
+    # everything is OK. Without them, empty output is ambiguous.
+    LOG=$(mktemp)
+    python -m pip install --dry-run -r requirements.txt > "$LOG" 2>&1 || true
+    grep -E "Would install|Requirement already satisfied|ERROR" "$LOG" | head -80
     echo
-    echo "[check_env] done. Anything under 'Would install' is missing."
+    echo "[check_env] summary:"
+    awk '
+        /Would install/                  { miss++ ; print "  MISS  " substr($0, index($0, "Would install")) }
+        /Requirement already satisfied/  { ok++ }
+        END                              { print "  total OK   = " (ok ? ok : 0)
+                                           print "  total MISS = " (miss ? miss : 0) }
+    ' "$LOG"
+    rm -f "$LOG"
     ;;
   import|--import|-i)
     echo "[check_env] import check (fast, no network)"
