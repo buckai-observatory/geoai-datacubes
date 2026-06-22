@@ -52,9 +52,14 @@ A central architectural contribution is the **declarative `band_meta` taxonomy**
 every band on every mission carries a `kind` (`spectral`, `sar`, `elevation`,
 `temperature`, `index`, `categorical`, or `qa`) and a normalisation recipe
 (`linear`, `log_db`, `mean_subtract`, `kelvin_to_celsius_norm`, `divide`,
-`one_hot`, `passthrough`, …). One call — `apply_band_norm(arr,
-get_band_norm("Sentinel-2_B04"))` — produces ML-ready features without the
-caller knowing the per-mission scale factor or offset. The same taxonomy drives
+`one_hot`, `passthrough`, …). The recipes encode the canonical per-mission
+scale factors and offsets — Sentinel-2 reflectance DN ÷ 10 000, Sentinel-1 γ⁰
+to dB, MODIS LST DN × 0.02 − 273.15, ALOS PALSAR DN to dB, and so on — as
+declared defaults that the user can either accept or override at the call site
+(`apply_band_norm(arr, ("linear", 0, 5000))` to clip an over-bright AOI, for
+example). One call — `apply_band_norm(arr,
+get_band_norm("Sentinel-2_B04"))` — applies the documented mission default and
+the recipe being applied is fully visible in the call. The same taxonomy drives
 a `nan_handling="auto"` mode that dispatches per-band-kind: spectral and SAR
 bands fill from per-band means (neutral for CNN gradients), elevation in-paints
 biharmonically, categorical class IDs fill from nearest-neighbour rounded to
@@ -114,10 +119,12 @@ tooling:
 1. **A declarative per-band metadata system (`band_meta`)** that pairs every
    band of every mission with a `kind` (spectral / SAR / elevation /
    temperature / index / categorical / QA) and a normalisation recipe. The
-   `apply_band_norm` and `get_band_norm` helpers produce ML-ready float-valued
-   features without the caller knowing per-mission scale factors, offsets, or
-   no-data conventions. A regex-based fallback infers a sensible recipe for
-   bands a contributor hasn't yet declared.
+   recipes carry the canonical per-mission scale factors, offsets, and
+   no-data conventions as declared defaults that the user can inspect and
+   override at the call site; `apply_band_norm` and `get_band_norm` produce
+   ML-ready features by applying those defaults explicitly, not by hiding
+   them. A regex-based fallback infers a sensible recipe for bands a
+   contributor hasn't yet declared.
 
 2. **Multi-mission fusion onto a common UTM grid** (`fuse_response_tiffs`)
    with per-band correct resampling — bilinear for continuous reflectance and
@@ -164,24 +171,33 @@ The library is targeted at:
 sensing foundation models (Prithvi-EO-2.0, Clay, DOFA, SatMAE, DINOv3),
 pretrained task-specific models (e.g. `BuildingFootprintExtractor` for
 Mask R-CNN building extraction from NAIP), Segment Anything Model wrappers,
-super-resolution, and a QGIS plugin. `geoai` is a *modelling-breadth* package:
-twenty foundation models, hundred-plus task-specific tutorials, downstream
-training utilities, and broad coverage of the segmentation / classification /
-super-resolution model zoo.
+super-resolution, and a QGIS plugin. `geoai` is a *modelling-breadth*
+package: twenty foundation models, hundred-plus task-specific tutorials,
+downstream training utilities, and broad coverage of the segmentation /
+classification / super-resolution model zoo. The companion open-access
+*GeoAI Book* devotes seven chapters to modelling tasks but only three to
+the upstream data pipeline, and the data-download chapter handles four
+raster missions one at a time (NAIP via `geoai.download_naip`, plus
+Sentinel-2, Landsat, and one commercial source via the generic
+`geoai.download_pc_stac_item`), with no multi-mission fusion, no per-band
+normalisation, and no spatially-aware splits.
 
-`geoai-datacubes` is a *data-engineering-depth* package. We do not provide
-foundation-model wrappers or a model registry; instead, we focus on the
-upstream pieces a researcher must get right *before* a model can be trained:
-multi-mission STAC fetching, declarative per-band metadata, multi-mission
-fusion onto a common grid, spatially-aware splits, automatic NaN handling per
-band kind, and SLURM integration. A fused cube from `geoai-datacubes` is
-trivially consumable by `geoai`'s training utilities (the multi-band COG +
-mission-prefixed band descriptions are exactly what `geoai`'s
-`create_geo_dataloader` and TerraTorch loaders expect as input). The two
-packages share data formats, agree on `torchgeo`-style raster datasets as the
-lingua franca, and target overlapping audiences — but they answer different
-questions: *how do I get the data ready?* (this package) versus *which model
-do I train, and how?* (Wu, 2026).
+`geoai-datacubes` is a *data-engineering-depth* package and fills that gap
+by design. We do not provide foundation-model wrappers or a model registry;
+instead, we focus on the upstream pieces a researcher must get right
+*before* a model can be trained: 23 missions in a unified registry, four
+provider classes plus a non-STAC `direct_http` path, declarative per-band
+metadata, multi-mission fusion onto a common grid, spatially-aware
+train / validation / test splits, automatic NaN / cloud / QA handling per
+band kind, and SLURM integration. A fused cube from `geoai-datacubes` is a
+multi-band COG with mission-prefixed band descriptions — exactly the
+input that `geoai`'s downstream training utilities and TerraTorch
+foundation-model loaders expect, so the two packages chain naturally: this
+package answers *how do I get a multi-mission AOI ready for training?*,
+and `geoai` answers *which model do I train on it, and how?*. The two
+share `torchgeo`-style raster datasets as the lingua franca, target
+overlapping audiences, and we recommend using them together rather than
+in competition.
 
 ## Other related tooling
 
