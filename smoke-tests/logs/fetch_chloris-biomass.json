@@ -1,0 +1,41 @@
+{
+  "test": "fetch_chloris-biomass",
+  "mission": "Chloris-Biomass",
+  "started_at": "2026-06-22T09:34:44",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "biomass"
+  ],
+  "time_range": [
+    "2018-01-01",
+    "2018-12-31"
+  ],
+  "resolution_m": 5000,
+  "save_folder": "/tmp/geoai_smoke/Chloris-Biomass",
+  "elapsed_sec": 2.2,
+  "bands_returned": [
+    "biomass"
+  ],
+  "scene": "Chloris-Biomass_2019-01-01_chloris_biomass_50km_2019",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/Chloris-Biomass/Chloris-Biomass_2019-01-01_chloris_biomass_50km_2019/Chloris-Biomass_full_size.tiff",
+    "shape": [
+      1,
+      1,
+      1
+    ],
+    "bands": [
+      "biomass"
+    ],
+    "crs": "PROJCS[\"unnamed\",GEOGCS[\"unnamed ellipse\",DATUM[\"unknown\",SPHEROID[\"unnamed\",6371007.181,0]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Sinusoidal\"],PARAMETER[\"longitude_of_center\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 1004
+  },
+  "finished_at": "2026-06-22T09:34:46"
+}

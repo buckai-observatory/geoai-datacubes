@@ -1,0 +1,41 @@
+{
+  "test": "fetch_io-lulc",
+  "mission": "IO-LULC",
+  "started_at": "2026-06-22T09:34:41",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "LULC"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 10,
+  "save_folder": "/tmp/geoai_smoke/IO-LULC",
+  "elapsed_sec": 2.5,
+  "bands_returned": [
+    "LULC"
+  ],
+  "scene": "IO-LULC_2020-01-01_17T-2020",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/IO-LULC/IO-LULC_2020-01-01_17T-2020/IO-LULC_full_size.tiff",
+    "shape": [
+      260,
+      177,
+      1
+    ],
+    "bands": [
+      "LULC"
+    ],
+    "crs": "EPSG:32617",
+    "nan_fraction_centre_window": 0.215,
+    "size_bytes": 2920
+  },
+  "finished_at": "2026-06-22T09:34:44"
+}

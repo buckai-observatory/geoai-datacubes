@@ -673,6 +673,31 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # Copernicus DEM GLO-90 (TanDEM-X 90 m derivative). PC collection
+    # "cop-dem-glo-90". Static global mosaic, 90 m. The lower-resolution
+    # complement to GLO-30 (we already have); pick GLO-90 when you need
+    # global coverage including high latitudes where GLO-30 has gaps,
+    # or when 30 m oversamples your task.
+    # ============================================================
+    "Copernicus-DEM-90": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "cop-dem-glo-90",
+                "asset_map":  {"DEM": "data"},
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Mosaic (L-band SAR backscatter, JAXA).
     # PC collection "alos-palsar-mosaic". Annual mosaic, 2015-2021,
     # 25 m native resolution, served as one COG per 1 deg x 1 deg lat/lon
@@ -765,6 +790,170 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # USDA Cropland Data Layer (CDL). PC collection "usda-cdl".
+    # Annual 30 m crop-type raster covering CONUS, ~100 crop classes.
+    # 2008-2021 available on PC; later years released by USDA but not
+    # yet ingested. Per-item assets:
+    #   cropland   -- main crop-class raster (0-250, nodata 0)
+    #   confidence -- per-pixel classification confidence (0-100)
+    #   cultivated -- 1 = cultivated, 2 = non-cultivated
+    #   {corn, wheat, cotton, soybeans} -- crop-frequency rasters
+    # Native CRS: Albers Equal Area (EPSG:5070).
+    # ============================================================
+    "USDA-CDL": {
+        "default_bands": ["cropland"],
+        "extra_bands":   ["confidence", "cultivated",
+                          "corn", "wheat", "cotton", "soybeans"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,    # annual
+        "band_meta": {
+            # The cropland band is integer class IDs; one_hot for CNN use.
+            # The full ~100-class enumeration is long; users typically
+            # pass label_remap={class_id: 1} for binary "is-this-class"
+            # targets. We leave the recipe as passthrough so the raw
+            # class IDs survive for downstream label remapping.
+            "cropland":   {"kind": "categorical", "norm": ('passthrough',)},
+            "confidence": {"kind": "index",       "norm": ('divide', 100.0)},
+            "cultivated": {"kind": "categorical", "norm": ('one_hot', (1, 2))},
+            "corn":       {"kind": "index",       "norm": ('divide', 255.0)},
+            "wheat":      {"kind": "index",       "norm": ('divide', 255.0)},
+            "cotton":     {"kind": "index",       "norm": ('divide', 255.0)},
+            "soybeans":   {"kind": "index",       "norm": ('divide', 255.0)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "usda-cdl",
+                "asset_map": {
+                    "cropland":   "cropland",
+                    "confidence": "confidence",
+                    "cultivated": "cultivated",
+                    "corn":       "corn",
+                    "wheat":      "wheat",
+                    "cotton":     "cotton",
+                    "soybeans":   "soybeans",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # USGS LCMAP CONUS v1.3. PC collection "usgs-lcmap-conus-v13".
+    # Annual 30 m US land cover + land cover change, 1985-2021.
+    # We use it as the substitute for the *real* NLCD (which lives at
+    # MRLC, has no anonymous bucket listing, and would need a separate
+    # scraper). LCMAP's land-cover classes are simpler (8 classes) than
+    # NLCD's (16) but the temporal cadence is annual, which NLCD is not.
+    # Per-item assets:
+    #   lcpri  -- primary land-cover class (1-8)
+    #   lcsec  -- secondary land-cover class
+    #   lcpconf, lcsconf -- per-pixel confidence for each
+    #   lcachg -- annual change (boolean)
+    # Native CRS: Albers Equal Area (EPSG:5070).
+    # ============================================================
+    "LCMAP-CONUS": {
+        "default_bands": ["lcpri"],
+        "extra_bands":   ["lcsec", "lcpconf", "lcsconf", "lcachg"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,    # annual
+        "band_meta": {
+            "lcpri":   {"kind": "categorical", "norm": ('one_hot', (1, 2, 3, 4, 5, 6, 7, 8))},
+            "lcsec":   {"kind": "categorical", "norm": ('one_hot', (1, 2, 3, 4, 5, 6, 7, 8))},
+            "lcpconf": {"kind": "index",       "norm": ('divide', 100.0)},
+            "lcsconf": {"kind": "index",       "norm": ('divide', 100.0)},
+            "lcachg":  {"kind": "qa",          "norm": ('passthrough',)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "usgs-lcmap-conus-v13",
+                "asset_map": {
+                    "lcpri":   "lcpri",
+                    "lcsec":   "lcsec",
+                    "lcpconf": "lcpconf",
+                    "lcsconf": "lcsconf",
+                    "lcachg":  "lcachg",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # Impact Observatory + Esri Annual LULC v2. PC collection
+    # "io-lulc-annual-v02". Annual 10 m global land cover from
+    # Sentinel-2 ML inference, 2017-2023 (annual updates).
+    #
+    # Tiled on the Sentinel-2 MGRS grid; per item one COG with a
+    # single "data" asset carrying integer class IDs:
+    #   1 = water, 2 = trees, 4 = flooded vegetation,
+    #   5 = crops, 7 = built area, 8 = bare ground,
+    #   9 = snow/ice, 10 = clouds, 11 = rangeland
+    # nodata = 0. Note class 3 (grass) and 6 (shrub) are intentionally
+    # not used in v02 (they were collapsed into 11 / 2 respectively).
+    # CC-BY-4.0; cite Karra et al. 2021 + IO+Esri.
+    # ============================================================
+    "IO-LULC": {
+        "default_bands": ["LULC"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,    # annual
+        "band_meta": {
+            "LULC": {"kind": "categorical",
+                     "norm": ('one_hot', (1, 2, 4, 5, 7, 8, 9, 10, 11))},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "io-lulc-annual-v02",
+                "asset_map": {"LULC": "data"},
+            },
+        },
+    },
+
+    # ============================================================
+    # Chloris Aboveground Biomass. PC collection "chloris-biomass".
+    # Global annual biomass mosaic at ~4.6 km (15-arcmin) resolution,
+    # 2003-2019. *Coarse* compared to ESA-WorldCover / Hansen-GFC, but
+    # the canonical anonymous-access global biomass dataset until GEDI
+    # L4B's Earthdata-Login path lands here.
+    #
+    # Licence is CC-BY-NC-SA (non-commercial use). Acknowledge this in
+    # any redistribution.
+    # ============================================================
+    "Chloris-Biomass": {
+        "default_bands": ["biomass"],
+        "extra_bands":   ["biomass_change", "biomass_wm", "biomass_change_wm"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,    # annual
+        "band_meta": {
+            # Biomass values are Mg/ha; declared as 'index' so the
+            # default norm divides by a sensible upper bound. Adjust
+            # with apply_band_norm(..., override=...) if your AOI is
+            # in a high-biomass tropical region.
+            "biomass":           {"kind": "index", "norm": ('divide', 500.0)},
+            "biomass_change":    {"kind": "index", "norm": ('linear', -100, 100)},
+            "biomass_wm":        {"kind": "index", "norm": ('divide', 500.0)},
+            "biomass_change_wm": {"kind": "index", "norm": ('linear', -100, 100)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "chloris-biomass",
+                "asset_map": {
+                    "biomass":           "biomass",
+                    "biomass_change":    "biomass_change",
+                    "biomass_wm":        "biomass_wm",
+                    "biomass_change_wm": "biomass_change_wm",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # Hansen Global Forest Change v1.11 (Hansen et al. 2013, annual
     # updates by UMD GLAD; hosted on Google Cloud Storage as anonymous
     # COGs). 30 m global tree-cover baseline + annual forest-loss /
@@ -832,6 +1021,35 @@ MISSION_PROFILES = {
             "QF":   {"kind": "qa",          "norm": ("passthrough",)},
         },
         "providers": {},   # intentionally empty until Earthdata auth lands
+    },
+
+    # ============================================================
+    # GEBCO 2024 Global Bathymetry -- STUB ONLY.
+    # 15-arcsec global elevation + bathymetry grid (-32768 to +9000 m).
+    # The canonical anonymous-access source is BODC at
+    # https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/zip/
+    # but it ships as a *4 GB zipped GeoTIFF*, not a /vsicurl/-streamable
+    # COG. The direct_http fetcher would need a download-and-cache
+    # extension to handle this. NetCDF variant (7.5 GB) needs the
+    # xarray backend (same blocker as Sentinel-5P / DAYMET / GOES-R).
+    #
+    # When wired, GEBCO is the standard global bathymetry input for
+    # coastal / ocean studies + serves as a global DEM where Cop-DEM
+    # GLO-30 lacks coverage (open ocean).
+    # ============================================================
+    "GEBCO": {
+        "default_bands": ["elevation"],
+        "extra_bands":   ["tid"],   # type-identifier flag (source provenance)
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "_needs_zip_unpack": True,
+        "band_meta": {
+            "elevation": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+            "tid":       {"kind": "qa",        "norm": ('passthrough',)},
+        },
+        "providers": {},   # empty until download-and-cache lands in direct_http
     },
 
     # ============================================================

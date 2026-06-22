@@ -1,0 +1,44 @@
+{
+  "test": "fetch_usda-cdl",
+  "mission": "USDA-CDL",
+  "started_at": "2026-06-22T09:34:34",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "cropland",
+    "confidence"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 30,
+  "save_folder": "/tmp/geoai_smoke/USDA-CDL",
+  "elapsed_sec": 2.8,
+  "bands_returned": [
+    "cropland",
+    "confidence"
+  ],
+  "scene": "USDA-CDL_2020-01-01_cropland_2020_1063905_2002575_90000",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/USDA-CDL/USDA-CDL_2020-01-01_cropland_2020_1063905_2002575_90000/USDA-CDL_full_size.tiff",
+    "shape": [
+      93,
+      68,
+      2
+    ],
+    "bands": [
+      "cropland",
+      "confidence"
+    ],
+    "crs": "EPSG:5070",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 29944
+  },
+  "finished_at": "2026-06-22T09:34:37"
+}

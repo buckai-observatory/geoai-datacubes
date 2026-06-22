@@ -1,0 +1,41 @@
+{
+  "test": "fetch_copernicus-dem-90",
+  "mission": "Copernicus-DEM-90",
+  "started_at": "2026-06-22T09:34:30",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "DEM"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 90,
+  "save_folder": "/tmp/geoai_smoke/Copernicus-DEM-90",
+  "elapsed_sec": 4.0,
+  "bands_returned": [
+    "DEM"
+  ],
+  "scene": "Copernicus-DEM-90_cop-dem-glo-90_mosaic_2021-04-22",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/Copernicus-DEM-90/Copernicus-DEM-90_cop-dem-glo-90_mosaic_2021-04-22/Copernicus-DEM-90_full_size.tiff",
+    "shape": [
+      29,
+      20,
+      1
+    ],
+    "bands": [
+      "DEM"
+    ],
+    "crs": "EPSG:32617",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 2937
+  },
+  "finished_at": "2026-06-22T09:34:34"
+}

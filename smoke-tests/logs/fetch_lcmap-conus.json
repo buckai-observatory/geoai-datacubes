@@ -1,0 +1,44 @@
+{
+  "test": "fetch_lcmap-conus",
+  "mission": "LCMAP-CONUS",
+  "started_at": "2026-06-22T09:34:38",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "lcpri",
+    "lcpconf"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 30,
+  "save_folder": "/tmp/geoai_smoke/LCMAP-CONUS",
+  "elapsed_sec": 2.9,
+  "bands_returned": [
+    "lcpri",
+    "lcpconf"
+  ],
+  "scene": "LCMAP-CONUS_2020-01-01_LCMAP_CU_024009_2020_V13_CCDC",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/LCMAP-CONUS/LCMAP-CONUS_2020-01-01_LCMAP_CU_024009_2020_V13_CCDC/LCMAP-CONUS_full_size.tiff",
+    "shape": [
+      93,
+      68,
+      2
+    ],
+    "bands": [
+      "lcpri",
+      "lcpconf"
+    ],
+    "crs": "PROJCS[\"AEA        WGS84\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Albers_Conic_Equal_Area\"],PARAMETER[\"latitude_of_center\",23],PARAMETER[\"longitude_of_center\",-96],PARAMETER[\"standard_parallel_1\",29.5],PARAMETER[\"standard_parallel_2\",45.5],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 20445
+  },
+  "finished_at": "2026-06-22T09:34:41"
+}

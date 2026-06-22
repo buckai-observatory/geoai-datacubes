@@ -55,6 +55,11 @@ TESTS=(
     smoke-tests/fetch_alos-palsar.sh
     smoke-tests/fetch_alos-fnf.sh
     smoke-tests/fetch_hansen-gfc.sh
+    smoke-tests/fetch_copernicus-dem-90.sh
+    smoke-tests/fetch_usda-cdl.sh
+    smoke-tests/fetch_lcmap-conus.sh
+    smoke-tests/fetch_io-lulc.sh
+    smoke-tests/fetch_chloris-biomass.sh
     smoke-tests/fetch_sentinel-5p.sh
 )
 

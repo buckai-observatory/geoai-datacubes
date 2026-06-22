@@ -66,6 +66,11 @@ PROVIDER_AUTO = {
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
+    "Copernicus-DEM-90": "planetary_computer", # 90 m static, lower-res complement
+    "USDA-CDL":       "planetary_computer", # annual US crop-type raster
+    "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)
+    "IO-LULC":        "planetary_computer", # annual global 10 m LULC
+    "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray

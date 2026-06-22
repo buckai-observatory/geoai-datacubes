@@ -61,6 +61,11 @@ DEFAULT_BANDS = {
     "ALOS-PALSAR":      ["HH", "HV"],
     "ALOS-FNF":         ["C"],
     "Hansen-GFC":       ["treecover2000", "lossyear", "datamask"],
+    "Copernicus-DEM-90": ["DEM"],
+    "USDA-CDL":         ["cropland", "confidence"],
+    "LCMAP-CONUS":      ["lcpri", "lcpconf"],
+    "IO-LULC":          ["LULC"],
+    "Chloris-Biomass":  ["biomass"],
 }
 DEFAULT_DATES = {
     # Optical: clear summer-2024 window over the US Midwest.
@@ -83,6 +88,11 @@ DEFAULT_DATES = {
     "ALOS-PALSAR":    ("2020-01-01", "2020-12-31"),  # annual mosaic
     "ALOS-FNF":       ("2020-01-01", "2020-12-31"),  # annual mosaic
     "Hansen-GFC":     ("2023-01-01", "2023-12-31"),  # v1.11 release
+    "Copernicus-DEM-90": ("2020-01-01", "2020-12-31"),  # static
+    "USDA-CDL":       ("2020-01-01", "2020-12-31"),     # annual; 2020 has CONUS coverage
+    "LCMAP-CONUS":    ("2020-01-01", "2020-12-31"),     # annual
+    "IO-LULC":        ("2020-01-01", "2020-12-31"),     # annual; year-tiled items
+    "Chloris-Biomass": ("2018-01-01", "2018-12-31"),    # annual; 2003-2019 available
 }
 DEFAULT_RES = {
     "Sentinel-2":     10,  "Sentinel-2-L1C": 10,  "Sentinel-1":     10,
@@ -92,6 +102,9 @@ DEFAULT_RES = {
     "3DEP":           10,  "PlanetScope-4b":  3,  "PlanetScope-8b":  3,
     "ALOS-PALSAR":    25,  "ALOS-FNF":       25,
     "Hansen-GFC":     30,
+    "Copernicus-DEM-90": 90,  "USDA-CDL":       30,
+    "LCMAP-CONUS":    30,  "IO-LULC":         10,
+    "Chloris-Biomass": 5000,   # ~4.6 km, round up
 }
 TIGHT_AOI_MISSIONS = {"NAIP", "PlanetScope-4b", "PlanetScope-8b"}
 

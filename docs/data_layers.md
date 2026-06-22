@@ -77,7 +77,39 @@ needs zero `band_meta` entries.
 
 ---
 
-## Quick reference matrix
+## Direct observation vs. derived products
+
+The pipeline supports **two kinds of dataset** and treats them
+identically at the API level — every entry in `MISSION_PROFILES`
+exposes the same `bands` / `band_meta` / `providers` shape. Conceptually
+they're different though:
+
+* **Direct-observation missions** carry a physical measurement from a
+  specific sensor: surface reflectance, SAR backscatter, brightness
+  temperature, elevation from interferometric SAR / LIDAR. The pipeline
+  hands you the *radiometrically-calibrated raw observation* — what
+  the satellite actually measured, after standard atmospheric +
+  geometric corrections.
+
+* **Derived products** are machine-learning or rule-based *outputs*
+  built on top of direct observations: a land-cover class per pixel
+  (someone trained a classifier), a biomass estimate, a year-of-
+  forest-loss code, a long-term water-occurrence frequency. The
+  underlying signal is no longer "what the satellite saw"; it's "what
+  someone's model says the satellite saw means."
+
+In practice you'll typically combine the two in a single training set
+— direct-observation inputs (S2, S1, DEM) as features + derived
+labels (ESA-WorldCover, Hansen-GFC `lossyear`) as targets. The
+distinction matters when you're building a study: derived products
+have *their own* error models, version histories, and label-schema
+quirks that are independent of the underlying physics. Notebook 01
+uses ESA-WorldCover as a target precisely because it's a derived
+product with documented per-class quality.
+
+---
+
+## Quick reference — direct observation
 
 | Mission | Mission name (in pipeline) | Spatial resolution | Native temporal revisit | Bands | Typical value range |
 |---|---|---|---|---|---|
@@ -86,7 +118,7 @@ needs zero `band_meta` entries.
 | Sentinel-1 RTC (SAR backscatter) | `Sentinel-1` | 10 m (IW mode) | 12 days per orbit | VV, VH (HH, HV in EW) | 0.0–~5.0 (linear γ°) |
 | Landsat 8 / 9 Collection 2 Level 2 | `Landsat` | 30 m optical, 100 m thermal | 16 days per satellite (8 days combined) | 7 reflectance + 1 thermal + 1 QA | uint16 DN with scale + offset |
 | Copernicus DEM (GLO-30) | `Copernicus-DEM` | ~30 m (1 arc-second) | static | DEM | metres above the EGM2008 geoid (typically −400 to +9000) |
-| ESA WorldCover | `ESA-WorldCover` | 10 m | static, two epochs (2020 v100, 2021 v200) | LULC | integer class IDs in {10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100} |
+| Copernicus DEM (GLO-90) | `Copernicus-DEM-90` | ~90 m (3 arc-second) | static | DEM | metres above the EGM2008 geoid |
 | PlanetScope 4-band (PSScene legacy) | `PlanetScope-4b` | ~3 m | up to daily | B, G, R, NIR + 8 UDM2 layers | 0–10000 DN |
 | PlanetScope 8-band (SuperDove) | `PlanetScope-8b` | ~3 m | up to daily | 8 spectral + 8 UDM2 layers | 0–10000 DN |
 | NAIP (US aerial imagery) | `NAIP` | ~1 m (0.6 m for newer) | every 2–3 years per state | R, G, B, NIR | 0–255 (uint8) |
@@ -94,13 +126,24 @@ needs zero `band_meta` entries.
 | MODIS Land Surface Temperature | `MODIS_LST` | 1 km | daily (Terra) + daily (Aqua) | LST_Day, LST_Night + QC + Emis | int16, Kelvin × 50 |
 | HLS Harmonized Sentinel-2 | `HLS_S30` | 30 m | 5 days (S2A+B) | 13 spectral + Fmask + angles | 0–10000 DN |
 | HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
-| JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | occurrence, change, seasonality, recurrence, transitions, extent | per-band (see below) |
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
-| ALOS Forest / Non-Forest | `ALOS-FNF` | 25 m | annual (2015–2020) | C (categorical 1–4) | uint8 class IDs |
-| Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual updates (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | uint8 (% / year / mask / RGB); served via `direct_http` (no STAC) |
-| GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
+
+## Quick reference — derived products
+
+| Product | Mission name | Spatial resolution | Temporal | Bands | Notes |
+|---|---|---|---|---|---|
+| ESA WorldCover (LULC) | `ESA-WorldCover` | 10 m | static, 2020 v100 + 2021 v200 | LULC | 11 classes; ML model on S1+S2 |
+| ALOS Forest / Non-Forest | `ALOS-FNF` | 25 m | annual (2015–2020) | C (categorical 1–4) | derived from PALSAR L-band SAR |
+| USDA Cropland Data Layer | `USDA-CDL` | 30 m | annual (2008–2021) | cropland + 6 frequency layers | ~100 US crop classes; ML on Landsat + ancillary |
+| LCMAP CONUS (NLCD substitute) | `LCMAP-CONUS` | 30 m | annual (1985–2021) | lcpri + 4 ancillary | 8-class US LULC + change |
+| IO + Esri Annual LULC | `IO-LULC` | 10 m | annual (2017–2023) | LULC | 9-class global, ML on S2 |
+| JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | 6 layers | water occurrence / change / season / transitions |
+| Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | served via `direct_http`; canonical forest-loss raster |
+| Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
+| GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
+| GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
 
 ---
 
