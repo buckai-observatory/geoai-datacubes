@@ -17,6 +17,19 @@ torch
 torchvision
 pillow
 
+# --- ML / DL stack used by notebooks 01 + 02 + benchmark CLIs ----------------
+# Notebook 01 (LR / RF / XGB + U-Net) and notebook 02 (YOLOv8 + OWLv2 +
+# HF community detector) together need this stack. Optional for users
+# who only run the data-acquisition / tiling pipeline.
+scikit-learn
+xgboost
+joblib
+threadpoolctl
+ultralytics                # YOLOv8 detector framework used by nb 02
+transformers               # for OWLv2 zero-shot detection in nb 02
+huggingface_hub            # for downloading pretrained YOLO from HF in nb 02
+seaborn                    # nicer figure styling in the diagnostic cells
+
 # --- optional / advanced (Sentinel Hub provider + .env loading) --------------
 python-dotenv
 sentinelhub

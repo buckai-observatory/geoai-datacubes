@@ -9,6 +9,14 @@ __pycache__/
 
 # YOLO pretrained weights downloaded by ultralytics into the cwd
 notebooks/yolov8n.pt
+notebooks/yolov8s.pt
+notebooks/yolov8m.pt
+yolov8n.pt
+yolov8s.pt
+yolov8m.pt
+# Ultralytics' default training output directory if a job ran with a
+# relative project= path. Real outputs live under notebooks/_outputs_obj/.
+runs/
 
 # OS
 .DS_Store
