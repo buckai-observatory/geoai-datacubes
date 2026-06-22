@@ -29,28 +29,55 @@ bibliography: paper.bib
 # Summary
 
 `geoai-datacubes` is an open-source Python pipeline that turns raw multi-mission
-satellite imagery into AI-ready data cubes for machine-learning and deep-learning
-workflows. From a single configuration block — a region of interest, a time
-window, a set of bands — it fetches, co-registers, fuses, and tiles imagery from
-six free public missions (Sentinel-2 L1C and L2A, Sentinel-1 RTC, Landsat 8/9
-Collection-2 Level-2, Copernicus DEM at 30 m, and the ESA WorldCover global
-land-cover product), with optional support for the commercial PlanetScope
-constellation through Planet's Orders API. The output is a multi-band
-GeoTIFF or Zarr cube on a common Universal Transverse Mercator (UTM) grid at a
-user-specified resolution, ready to be consumed by a `torch.utils.data.Dataset`
-that streams training tiles on the fly without ever materialising them to disk.
+Earth-observation imagery into AI-ready data cubes for machine-learning and
+deep-learning workflows. From a single configuration block — a region of
+interest, a time window, a set of bands — it fetches, co-registers, fuses, and
+tiles imagery from **23 missions** spanning direct sensor observations
+(Sentinel-2 L1C and L2A, Sentinel-1 RTC, Landsat 8/9 Collection-2 Level-2,
+NAIP, PlanetScope 4-band and 8-band, MODIS surface reflectance and land-surface
+temperature, HLS Harmonized Landsat–Sentinel, ALOS PALSAR L-band SAR,
+Copernicus DEM at 30 m and 90 m, USGS 3DEP) and **derived products** (ESA
+WorldCover, ALOS Forest / Non-Forest, USDA Cropland Data Layer, USGS LCMAP,
+Impact Observatory annual LULC, JRC Global Surface Water, Hansen Global Forest
+Change, Chloris aboveground biomass). Four data providers are unified behind
+one dispatcher: Element 84's Earth Search, Microsoft Planetary Computer, the
+commercial Planet Orders API, and a new direct-HTTP / S3 path that supports
+missions outside any STAC catalogue (e.g. Hansen GFC on Google Cloud Storage).
+The output is a multi-band GeoTIFF or Zarr cube on a common Universal Transverse
+Mercator (UTM) grid at a user-specified resolution, ready to be consumed by a
+PyTorch `Dataset` that streams training tiles on the fly without ever
+materialising them to disk.
 
-The pipeline is opinionated about correctness and pedagogy. It applies
-smear-protected reprojection so nodata never bleeds into valid pixels;
-per-pixel cloud masking via Sentinel-2 SCL, Landsat BQA, or PlanetScope UDM2
-bit-decoded layers; user-selectable NaN-handling modes; and four spatially
-aware train / validation / test split strategies that the user can swap with a
-single argument. Two extensively documented Jupyter notebooks ship with the
-repository: a *grand tour* that walks a new user through every feature of the
-data pipeline, and a *water-classification* notebook that trains and compares
-four standard models (logistic regression, random forest, XGBoost, and a
-lightweight U-Net) end-to-end on a fused cube. Both notebooks are
-self-bootstrapping on Google Colab.
+A central architectural contribution is the **declarative `band_meta` taxonomy**:
+every band on every mission carries a `kind` (`spectral`, `sar`, `elevation`,
+`temperature`, `index`, `categorical`, or `qa`) and a normalisation recipe
+(`linear`, `log_db`, `mean_subtract`, `kelvin_to_celsius_norm`, `divide`,
+`one_hot`, `passthrough`, …). One call — `apply_band_norm(arr,
+get_band_norm("Sentinel-2_B04"))` — produces ML-ready features without the
+caller knowing the per-mission scale factor or offset. The same taxonomy drives
+a `nan_handling="auto"` mode that dispatches per-band-kind: spectral and SAR
+bands fill from per-band means (neutral for CNN gradients), elevation in-paints
+biharmonically, categorical class IDs fill from nearest-neighbour rounded to
+int, and a NaN in any QA band drops the entire tile.
+
+The pipeline is opinionated about correctness, reproducibility, and pedagogy.
+It applies smear-protected reprojection so nodata never bleeds into valid
+pixels; per-pixel cloud masking via Sentinel-2 SCL, Landsat BQA, HLS Fmask, or
+PlanetScope UDM2 bit-decoded layers; four spatially-aware train / validation /
+test split strategies (random, block, stripes, region-based) that the user can
+swap with a single argument; and persistent metadata embedded in every output
+tile. Three extensively documented Jupyter notebooks ship with the repository:
+a *grand tour* of every mission and data-pipeline feature, an *LULC
+classification* notebook that trains and compares four standard models
+(logistic regression, random forest, XGBoost, and a lightweight U-Net)
+end-to-end on a fused cube with a persisted per-class leaderboard CSV, and a
+*building-detection* notebook that fine-tunes YOLOv8 on NAIP + Microsoft US
+Building Footprints and compares it to two pretrained alternatives (OWLv2
+zero-shot and a community-trained YOLO from Hugging Face). All three notebooks
+are self-bootstrapping on Google Colab. A `smoke-tests/` folder ships
+SLURM-or-bash scripts for every mission and a quickstart for running the
+pipeline on a SLURM cluster (Unity, OSC) — each script is a valid SBATCH job
+*and* a valid `bash` invocation.
 
 # Statement of need
 
@@ -58,22 +85,58 @@ Machine-learning research on satellite imagery is bottlenecked by the data
 preparation pipeline, not by the models. A typical workflow involves stitching
 together vendor-specific SDKs, manually reprojecting between coordinate systems,
 hand-rolling cloud masks per mission, deciding where in the pipeline to drop or
-fill nodata, and writing thousands of tile files to disk before any model can
-be trained. Each of those steps is error-prone in a way that silently degrades
-the final model: nodata smeared across cloud boundaries shows up as systematic
-biases, integer QA bands resampled with bilinear interpolation produce nonsense
-classification masks, and ad-hoc per-tile cloud thresholds make experiments
-irreproducible across runs.
+fill nodata, choosing per-band normalisation recipes that account for radically
+different value ranges (Sentinel-2 reflectance at 0–10 000 DN, Sentinel-1 SAR
+in linear γ⁰, DEM in metres above an ellipsoid, MODIS land-surface temperature
+in Kelvin × 50), and writing thousands of tile files to disk before any model
+can be trained. Each of those steps is error-prone in a way that silently
+degrades the final model: nodata smeared across cloud boundaries shows up as
+systematic biases, integer QA bands resampled with bilinear interpolation
+produce nonsense classification masks, ad-hoc per-tile cloud thresholds make
+experiments irreproducible across runs, and feeding raw DN values to CNNs that
+expect [0, 1] normalised inputs collapses training stability without any error
+message.
 
 `geoai-datacubes` consolidates these steps into a single configuration-driven
 pipeline and exposes the right knobs for an Earth-observation ML researcher to
-turn. The four no-credential providers (Element 84's Earth Search, Microsoft
-Planetary Computer, Planet, and the optional Sentinel Hub Process API) are
-unified behind one dispatcher; the same `BANDS_<mission>` configuration drives
-each fetcher; and downstream code never sees the differences. Cloud masking
-applies to fused multi-mission cubes, where bands carry mission-prefixed
-descriptions (`Sentinel-2_SCL`, `Landsat_BQA`), with NaN-safe QA decoding so
-pixels outside a single mission's footprint are not falsely masked.
+turn. The four data providers (Element 84's Earth Search, Microsoft Planetary
+Computer, Planet's commercial Orders API, the Sentinel Hub Process API) and a
+direct-HTTP / S3 path for non-STAC datasets are unified behind one dispatcher;
+the same `BANDS_<mission>` configuration drives each fetcher; and downstream
+code never sees the differences. Cloud masking applies to fused multi-mission
+cubes, where bands carry mission-prefixed descriptions (`Sentinel-2_SCL`,
+`Landsat_BQA`), with NaN-safe QA decoding so pixels outside a single mission's
+footprint are not falsely masked.
+
+Three architectural decisions distinguish `geoai-datacubes` from existing
+tooling:
+
+1. **A declarative per-band metadata system (`band_meta`)** that pairs every
+   band of every mission with a `kind` (spectral / SAR / elevation /
+   temperature / index / categorical / QA) and a normalisation recipe. The
+   `apply_band_norm` and `get_band_norm` helpers produce ML-ready float-valued
+   features without the caller knowing per-mission scale factors, offsets, or
+   no-data conventions. A regex-based fallback infers a sensible recipe for
+   bands a contributor hasn't yet declared.
+
+2. **Multi-mission fusion onto a common UTM grid** (`fuse_response_tiffs`)
+   with per-band correct resampling — bilinear for continuous reflectance and
+   elevation, nearest-neighbour for categorical and QA bands — and provenance
+   preserved in mission-prefixed band descriptions. A cube produced by
+   `geoai-datacubes` is a single multi-band COG that any downstream PyTorch
+   `Dataset` (including those provided by `torchgeo` [@torchgeo] and `geoai`
+   [@wu2026geoai]) can consume directly.
+
+3. **`nan_handling="auto"` with spatially-aware train / validation / test
+   splits.** The auto-mode tiler dispatches NaN-fill strategies per
+   `band_meta` kind: per-band mean fill for spectral, SAR, and temperature
+   bands (neutral for CNN gradients); biharmonic in-painting for elevation;
+   nearest-neighbour rounded to integer for categorical class IDs; tile-drop
+   for any NaN in a QA band. Spatially-aware splits (`block`, `stripes`,
+   `regions`) close the train / test leakage hole that random tile splits
+   leave open in spatially-autocorrelated imagery; the `regions` strategy
+   accepts the same AOI spec language as the fetcher, so a per-split polygon
+   (or shapefile, or city centre + radius) is a one-line change.
 
 A novel `LazyTileDataset` class allows researchers to sweep tile size, stride,
 augmentation, NaN-handling, and split-method choices at training time without
@@ -85,42 +148,98 @@ The library is targeted at:
 
 - **Graduate students and postdocs** entering Earth-observation ML, for whom
   the existing tooling fragmentation is a serious onboarding barrier.
-- **Researchers running cross-modal experiments** (optical + SAR + DEM) who
-  need carefully aligned multi-mission cubes without writing the alignment
-  code themselves.
+- **Researchers running cross-modal experiments** (optical + SAR + DEM + LULC
+  labels) who need carefully aligned multi-mission cubes without writing the
+  alignment code themselves.
+- **HPC users** moving training jobs from laptop to cluster, served by an
+  `smoke-tests/` folder with SLURM-or-bash scripts for every mission and a
+  `docs/HPC_QUICKSTART.md` recipe for SLURM submission.
 - **Instructors** teaching applied remote sensing or AI, since the bundled
   notebooks double as runnable lecture material.
 
-Comparable open-source tools exist but each addresses a slice of the problem:
-`stac-tools` and `pystac` [@stac-spec] handle catalogue queries; `rasterio`
-[@rasterio] and `xarray` [@xarray] handle raster I/O; `torchgeo` [@torchgeo]
-provides PyTorch datasets for pre-existing benchmark cubes. `geoai-datacubes`
-sits between these layers, offering an opinionated end-to-end workflow that
-combines a multi-provider STAC fetcher, multi-mission fusion, on-the-fly tile
-sampling, and the operational guardrails (nodata, cloud, split-leakage) that
-production-grade ML on satellite imagery requires.
+## Relationship to `geoai` (Wu, 2026)
+
+`geoai-datacubes` is deliberately **complementary** to the recently published
+`geoai` package [@wu2026geoai], which provides a curated catalogue of remote
+sensing foundation models (Prithvi-EO-2.0, Clay, DOFA, SatMAE, DINOv3),
+pretrained task-specific models (e.g. `BuildingFootprintExtractor` for
+Mask R-CNN building extraction from NAIP), Segment Anything Model wrappers,
+super-resolution, and a QGIS plugin. `geoai` is a *modelling-breadth* package:
+twenty foundation models, hundred-plus task-specific tutorials, downstream
+training utilities, and broad coverage of the segmentation / classification /
+super-resolution model zoo.
+
+`geoai-datacubes` is a *data-engineering-depth* package. We do not provide
+foundation-model wrappers or a model registry; instead, we focus on the
+upstream pieces a researcher must get right *before* a model can be trained:
+multi-mission STAC fetching, declarative per-band metadata, multi-mission
+fusion onto a common grid, spatially-aware splits, automatic NaN handling per
+band kind, and SLURM integration. A fused cube from `geoai-datacubes` is
+trivially consumable by `geoai`'s training utilities (the multi-band COG +
+mission-prefixed band descriptions are exactly what `geoai`'s
+`create_geo_dataloader` and TerraTorch loaders expect as input). The two
+packages share data formats, agree on `torchgeo`-style raster datasets as the
+lingua franca, and target overlapping audiences — but they answer different
+questions: *how do I get the data ready?* (this package) versus *which model
+do I train, and how?* (Wu, 2026).
+
+## Other related tooling
+
+`stac-tools` and `pystac` [@stac-spec] handle STAC catalogue queries.
+`rasterio` [@rasterio] and `xarray` [@xarray] handle raster I/O.
+`torchgeo` [@torchgeo] provides PyTorch datasets for pre-existing benchmark
+cubes and is the lingua franca for the raster-dataset abstraction. None of
+these address the per-band-metadata, multi-mission-fusion, spatially-aware-
+split, or HPC-integration concerns that `geoai-datacubes` exists to solve.
 
 # Software features
 
-- **Six free public missions** plus optional PlanetScope, switched through a
-  single `MISSION` parameter; provider routing happens automatically.
+- **23 missions** spanning direct sensor observations (Sentinel-2 L2A and L1C,
+  Sentinel-1 RTC, Landsat 8/9 C2 L2, NAIP, PlanetScope 4-band and 8-band,
+  MODIS surface reflectance and land-surface temperature, HLS Harmonized
+  Landsat–Sentinel, ALOS PALSAR L-band SAR, Copernicus DEM at 30 m and 90 m,
+  USGS 3DEP) and derived products (ESA WorldCover, ALOS Forest / Non-Forest,
+  USDA Cropland Data Layer, USGS LCMAP CONUS, Impact Observatory annual LULC,
+  JRC Global Surface Water, Hansen Global Forest Change, Chloris Aboveground
+  Biomass), each declared in a single `MISSION_PROFILES` registry with
+  per-band metadata.
+- **Four provider classes** unified behind one dispatcher: Element 84's Earth
+  Search, Microsoft Planetary Computer, the commercial Planet Orders API, and
+  a new `direct_http` provider for datasets outside any STAC catalogue (e.g.
+  Hansen GFC's anonymous Google Cloud Storage COGs).
+- **Declarative per-band metadata.** Every band on every mission carries a
+  `kind` and a normalisation recipe; `apply_band_norm` + `get_band_norm`
+  yield ML-ready features in one call.
 - **Four area-of-interest formats** — bounding box, vector shapefile,
   centre-point with side length in miles, or native Sentinel-2 MGRS tile.
 - **Polygon-aware Sentinel-1 selection and same-day mosaicking**, so
   orbit-strip products that cover only part of a target AOI are
   automatically composed into a complete scene.
-- **Multi-mission fusion** onto a common UTM grid with the correct resampling
-  per band (bilinear for continuous reflectance, nearest-neighbour for
-  classified QA bands).
-- **PyTorch `LazyTileDataset`** that supports four split methods, three
-  NaN-handling modes, per-pixel cloud masking, on-the-fly augmentation
-  (flips, rotations, scale-aware Gaussian noise), and label remapping for
-  arbitrary binary or multi-class targets from any band of the cube.
+- **Multi-mission fusion** (`fuse_response_tiffs`) onto a common UTM grid
+  with the correct resampling per band kind: bilinear for continuous
+  reflectance / elevation / temperature, nearest-neighbour for categorical
+  and QA bands. Mission prefixes are preserved in band descriptions
+  (`Sentinel-2_B04`, `Sentinel-1_VV`).
+- **Automatic NaN handling per band kind** (`nan_handling="auto"`):
+  per-band mean fill for spectral / SAR / temperature / index, biharmonic
+  in-painting for elevation, nearest-neighbour-rounded-to-int for
+  categorical, tile-drop on any NaN in a QA band.
+- **Four spatially-aware train / validation / test split strategies**
+  (`random`, `block`, `stripes`, `regions`) selectable as a single argument.
+  The `regions` strategy uses the same AOI spec language as the fetcher, so
+  per-split polygons / shapefiles / city centres just work.
+- **PyTorch `LazyTileDataset`** for on-the-fly tile streaming directly from
+  a fused GeoTIFF or Zarr cube; supports the full split / NaN-handling /
+  augmentation matrix without ever materialising a tile to disk.
 - **Reproducible tile metadata.** Every tile written to disk carries
   source-scene provenance (acquisition date, satellite, instrument, cloud
   cover, provider, scene ID) and per-tile parameters (window x/y, split
   method, split bucket, NaN handling, cloud mask state, augmentation label)
   embedded as GeoTIFF tags.
+- **SLURM-or-bash smoke-tests + HPC quickstart.** Every per-mission fetch
+  ships as a single shell script that runs both via `bash` and via
+  `sbatch`; the `train_yolov8s.slurm` template + `docs/HPC_QUICKSTART.md`
+  walk a user from `ssh unity` to a trained checkpoint on a GPU node.
 
 # Acknowledgements
 
