@@ -1,0 +1,173 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geoai-datacubes"
+version = "0.1.0"
+description = "AI-ready multi-mission Earth-observation data cubes for machine-learning and deep-learning workflows."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Joachim Moortgat", email = "moortgat.1@osu.edu" },
+]
+maintainers = [
+    { name = "Joachim Moortgat", email = "moortgat.1@osu.edu" },
+]
+keywords = [
+    "remote sensing",
+    "earth observation",
+    "satellite imagery",
+    "data cubes",
+    "machine learning",
+    "geospatial",
+    "STAC",
+    "Sentinel",
+    "Landsat",
+    "NAIP",
+    "MODIS",
+    "ALOS PALSAR",
+    "Copernicus DEM",
+    "HLS",
+    "PlanetScope",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies -- everything needed to run the data-acquisition,
+# fusion, tiling, and lazy-streaming pipeline. Anything beyond that
+# (ML/DL training, opengeos/geoai interop, notebook visualisation)
+# lives in optional-dependency extras below.
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=2.0",
+    "matplotlib>=3.6",
+    "tqdm>=4.60",
+    "requests>=2.28",
+    "pillow>=9.0",
+    "rasterio>=1.3",
+    "pystac>=1.10",
+    "pystac-client>=0.7",
+    "planetary-computer>=1.0",
+    "zarr>=2.16,<3",
+    "lmdb>=1.4",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "scikit-image>=0.20",
+]
+
+[project.optional-dependencies]
+
+# Tree-based ML + CNN + foundation-model wrappers used by the two
+# pedagogical notebooks (01_classification.ipynb, 02_building_detection.ipynb)
+# and the per-class benchmark CLIs. Install with:
+#
+#     pip install geoai-datacubes[ml]
+#
+ml = [
+    "scikit-learn>=1.3",
+    "xgboost>=2.0",
+    "joblib>=1.3",
+    "threadpoolctl>=3.1",
+    "ultralytics>=8.4",
+    "transformers>=4.30",
+    "huggingface_hub>=0.20",
+]
+
+# Bridge to the opengeos/geoai package (Wu 2026, JOSS 11(118):9605):
+# 20+ foundation-model wrappers (Prithvi, Clay, DOFA, SatMAE, DINOv3),
+# pretrained task-specific models (BuildingFootprintExtractor, etc.),
+# SAM wrappers, super-resolution, and downstream training utilities.
+# Use this extra when you want our data-prep front-end + their
+# modelling back-end in one environment. See
+# notebooks/03_with_opengeos_geoai.ipynb for the integration pattern.
+#
+#     pip install geoai-datacubes[geoai]
+#
+geoai = [
+    # Lower bound chosen to keep the Python-3.9 floor open; on 3.10+
+    # pip resolves to a much newer geoai-py (0.4x+) automatically.
+    "geoai-py>=0.5",
+]
+
+# Notebook-side extras: nicer figures, interactive widgets, vector
+# AOI support (shapefiles / geopackages), basemap tiles.
+#
+#     pip install geoai-datacubes[notebooks]
+#
+notebooks = [
+    "jupyterlab>=4.0",
+    "ipywidgets>=8.0",
+    "seaborn>=0.12",
+    "geopandas>=0.14",
+    "contextily>=1.4",
+]
+
+# Optional commercial providers (Planet Orders API + Sentinel Hub).
+# Pulls in the credentialing surface plus the SH SDK; the default
+# pipeline never imports them.
+#
+#     pip install geoai-datacubes[planet]
+#
+planet = [
+    "python-dotenv>=1.0",
+    "sentinelhub>=3.10",
+]
+
+# Development tooling (formatter, linter, tests).
+#
+#     pip install geoai-datacubes[dev]
+#
+dev = [
+    "ruff>=0.5",
+    "pytest>=7.0",
+    "pre-commit>=3.5",
+]
+
+# Convenience: everything above in one go.
+#
+#     pip install geoai-datacubes[all]
+#
+all = [
+    "geoai-datacubes[ml,geoai,notebooks,planet]",
+]
+
+[project.urls]
+Homepage      = "https://github.com/buckai-observatory/geoai-datacubes"
+Repository    = "https://github.com/buckai-observatory/geoai-datacubes"
+Documentation = "https://github.com/buckai-observatory/geoai-datacubes#readme"
+Issues        = "https://github.com/buckai-observatory/geoai-datacubes/issues"
+Paper         = "https://github.com/buckai-observatory/geoai-datacubes/blob/main/paper.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["geoai_datacubes*"]
+exclude = ["tests*", "smoke-tests*", "notebooks*", "docs*"]
+
+[tool.setuptools.package-data]
+"geoai_datacubes" = ["py.typed"]
+
+# Default for `ruff format` and `ruff check`.
+[tool.ruff]
+line-length    = 92
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "PIE"]
+ignore = ["E501"]   # let the formatter handle long lines, don't error on them

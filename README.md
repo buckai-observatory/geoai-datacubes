@@ -165,13 +165,47 @@ mamba activate geoai
 
 If you already have conda installed and prefer not to switch, substitute `conda` for `mamba` in the commands above.
 
-### 3. Install the dependencies
+### 3. Install the package
+
+The package ships with a `pyproject.toml` that declares the **core data
+pipeline** as required and bundles everything else into named **optional-
+dependency extras** so you only pull in what you actually need:
 
 ```bash
-pip install -r requirements.txt
+# Core only: data acquisition + multi-mission fusion + tiling + LazyTileDataset.
+pip install -e .
+
+# + ML / DL stack used by the bundled notebooks (scikit-learn, XGBoost,
+#   Ultralytics YOLO, transformers, huggingface_hub):
+pip install -e ".[ml]"
+
+# + opengeos/geoai integration for downstream modelling (Wu 2026, JOSS
+#   11(118):9605 — 20+ foundation-model wrappers, pretrained models,
+#   SAM, training utilities, QGIS plugin):
+pip install -e ".[geoai]"
+
+# + notebook-friendly extras (jupyterlab, ipywidgets, seaborn, geopandas,
+#   contextily for basemaps):
+pip install -e ".[notebooks]"
+
+# + commercial providers (Planet Orders API, Sentinel Hub) — only when
+#   you have credentials and intend to use them:
+pip install -e ".[planet]"
+
+# Everything in one go:
+pip install -e ".[all]"
 ```
 
-> If you only intend to use the free default path you can skip the optional `sentinelhub` and `python-dotenv` packages — see the comments inside `requirements.txt`.
+Use the **`[geoai]`** extra to combine `geoai-datacubes` (data-prep
+front-end) with `geoai-py` (modelling back-end) in the same
+environment. See `notebooks/03_with_opengeos_geoai.ipynb` for the
+integration pattern.
+
+`pip install -e .` is the editable / developer install. If you just
+want to use the package without modifying it, drop the `-e`. The flat
+`requirements.txt` file is preserved for tooling that doesn't read
+`pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh` import
+check).
 
 ### 4. Choose what to download
 

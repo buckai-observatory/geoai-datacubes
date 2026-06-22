@@ -57,19 +57,39 @@ section) or create a fresh env.
 
 ## 3. Set up a fresh env (only if step 2 reports anything missing)
 
+The package ships with a `pyproject.toml` that declares optional-dependency
+**extras** so you only install what you need. Pick one:
+
 ```bash
-# Create a new env named geoai with Python 3.10:
-mamba create -y -n geoai python=3.10
+# Create a new env. Python 3.10 is the recommended minimum but 3.9 is
+# supported for users with a pre-existing 3.9 conda env.
+mamba create -y -n geoai python=3.11
 mamba activate geoai
 
-# Install everything from requirements.txt via conda-forge (recommended
-# over pip on HPC -- avoids the libLerc / GDAL loader-chain breakage we
-# hit on macOS):
-mamba install -y -c conda-forge --file requirements.txt
+# Hybrid: GDAL/rasterio/torch via conda (avoids the libLerc/GDAL loader-
+# chain breakage that pure-pip installs occasionally hit on macOS), then
+# the rest of the project via the pyproject extras.
+mamba install -y -c conda-forge \
+    rasterio gdal pyproj pystac pystac-client planetary-computer \
+    "pytorch>=2.0" "torchvision>=0.15" zarr lmdb scikit-image pillow \
+    matplotlib numpy pandas tqdm requests
+
+# Then add the project itself + whichever extras you want:
+pip install -e .                  # core only
+pip install -e ".[ml]"            # + scikit-learn, xgboost, ultralytics, transformers
+pip install -e ".[geoai]"         # + opengeos/geoai (Wu 2026) for downstream ML/DL
+pip install -e ".[ml,geoai]"      # both
+pip install -e ".[all]"           # all extras (ml + geoai + notebooks + planet)
 
 # Verify:
 bash smoke-tests/check_env.sh
 ```
+
+Most clusters have CUDA-enabled `pytorch` packaged separately
+(`pytorch-cuda=12.1` on Unity, for example) — add `pytorch-cuda=<v>` to
+the `mamba install` line to pick the right CUDA build. If torch
+reports `cuda available: False` inside an interactive GPU job, you
+may also need to `module load cuda/<ver>` before running Python.
 
 Some clusters require you to `module load cuda` before `pytorch` will
 see the GPU. Check with `nvidia-smi` inside an interactive job; if
