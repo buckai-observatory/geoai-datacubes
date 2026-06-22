@@ -98,6 +98,8 @@ needs zero `band_meta` entries.
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | ALOS Forest / Non-Forest | `ALOS-FNF` | 25 m | annual (2015–2020) | C (categorical 1–4) | uint8 class IDs |
+| Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual updates (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | uint8 (% / year / mask / RGB); served via `direct_http` (no STAC) |
+| GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 
 ---
@@ -719,6 +721,63 @@ for the underlying backscatter, with `JRC-GSW` for water, and with
 `("one_hot", (1, 2, 3, 4))` recipe declared on `band_meta`, OR use
 the raw integer class IDs as a target via `label_remap` (e.g.
 `{1: 1, 2: 1, 3: 0, 4: 0}` to collapse to a binary forest mask).
+
+---
+
+## Hansen Global Forest Change v1.11 (Hansen et al. 2013, UMD GLAD)
+
+**Mission name:** `Hansen-GFC`
+**Provider:** `direct_http` (no STAC). Anonymous Google Cloud Storage
+COGs at
+`https://storage.googleapis.com/earthenginepartners-hansen/GFC-2023-v1.11/`,
+one per (band, 10°×10° tile) pair. Tiles are named by their NW corner
+(e.g. `50N_090W` covers 40–50°N, 80–90°W).
+**Spatial resolution:** 30 m
+**Temporal:** v1.0 covered 2000–2012; v1.11 (the current default) covers
+2000–2023 with annual `lossyear` codes. UMD GLAD releases an updated
+version each year.
+**Native CRS:** EPSG:4326. The pipeline reprojects to a local UTM at
+fetch time.
+
+| Band | Description |
+|---|---|
+| `treecover2000` | uint8 % canopy cover in year 2000 (0–100) |
+| `lossyear`      | uint8 0–23, year of forest loss (0 = no loss, 1 = 2001, ..., 23 = 2023). |
+| `gain`          | uint8 0 or 1, gain detected 2000–2012 only. |
+| `datamask`      | uint8 0 = no-data, 1 = mapped land, 2 = permanent water. |
+| `first`, `last` | 4-band composite Landsat-7 imagery for 2000 and the most recent year (mainly diagnostic). |
+
+**Why this matters:** Hansen GFC is the canonical global
+forest-loss-by-year raster — heavily cited (Hansen et al. 2013,
+*Science* 342:850), widely used in deforestation studies. Pair with
+`ALOS-PALSAR` backscatter for a fuller forest-change feature stack;
+combine with `ESA-WorldCover` for the static land-cover label.
+
+**This is also the first mission served through the new `direct_http`
+provider class** — no STAC, no API keys, just direct anonymous HTTPS
+URLs. The per-mission tile-callback in `fetch/missions.py`
+(`_hansen_gfc_tile_callback`) is the pattern other non-STAC missions
+should follow (GEDI L4B, Lang 2023 canopy height, Tolan 2024 1-m CHM
+are natural next additions).
+
+---
+
+## GEDI L4B Gridded Aboveground Biomass Density v2.1 *(stub only)*
+
+**Mission name:** `GEDI-L4B`
+**Status:** Profile declared with `band_meta` + 4-band asset list, but
+the `providers:` dict is empty until NASA Earthdata Login is wired into
+the `direct_http` fetcher. ORNL DAAC hosts the four global COGs
+(`AGBD`, `SE`, `MODE`, `QF`) at
+`https://daac.ornl.gov/daacdata/cms/GEDI_L4B_Gridded_Biomass_V2_1/`
+but every request requires a Bearer token from the Earthdata Login
+service. This is a planned extension to the `_direct_fetch.py`
+helper (the `requires_auth` shape is already in the TileRef dict).
+
+**When implemented:** 1 km global biomass mosaic in EASE-Grid 2.0
+(EPSG:6933), Mg/ha. Pairs with `ALOS-PALSAR` (L-band SAR backscatter)
++ `Hansen-GFC` (forest-loss-by-year) to form a complete
+biomass-and-loss feature stack without any optical input.
 
 ---
 

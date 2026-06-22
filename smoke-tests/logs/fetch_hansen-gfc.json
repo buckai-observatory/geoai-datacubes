@@ -1,0 +1,47 @@
+{
+  "test": "fetch_hansen-gfc",
+  "mission": "Hansen-GFC",
+  "started_at": "2026-06-22T08:30:42",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "treecover2000",
+    "lossyear",
+    "datamask"
+  ],
+  "time_range": [
+    "2023-01-01",
+    "2023-12-31"
+  ],
+  "resolution_m": 30,
+  "save_folder": "/tmp/geoai_smoke/Hansen-GFC",
+  "elapsed_sec": 17.1,
+  "bands_returned": [
+    "treecover2000",
+    "lossyear",
+    "datamask"
+  ],
+  "scene": "Hansen-GFC_v1.11_2023_direct_http",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke/Hansen-GFC/Hansen-GFC_v1.11_2023_direct_http/Hansen-GFC_full_size.tiff",
+    "shape": [
+      86,
+      59,
+      3
+    ],
+    "bands": [
+      "treecover2000",
+      "lossyear",
+      "datamask"
+    ],
+    "crs": "EPSG:32617",
+    "nan_fraction_centre_window": 0.0,
+    "size_bytes": 8992
+  },
+  "finished_at": "2026-06-22T08:30:59"
+}

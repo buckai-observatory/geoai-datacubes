@@ -54,6 +54,7 @@ TESTS=(
     smoke-tests/fetch_planetscope-8b.sh
     smoke-tests/fetch_alos-palsar.sh
     smoke-tests/fetch_alos-fnf.sh
+    smoke-tests/fetch_hansen-gfc.sh
     smoke-tests/fetch_sentinel-5p.sh
 )
 

@@ -765,6 +765,76 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # Hansen Global Forest Change v1.11 (Hansen et al. 2013, annual
+    # updates by UMD GLAD; hosted on Google Cloud Storage as anonymous
+    # COGs). 30 m global tree-cover baseline + annual forest-loss /
+    # tree-gain rasters from Landsat. *No STAC*, no auth -- the URLs
+    # are predictable per 10 deg x 10 deg tile, NW-corner anchor.
+    #
+    # This is the first mission wired through the new ``direct_http``
+    # provider class (see fetch._direct_fetch._fetch_via_direct_http).
+    # The per-mission tile-callback below (``_hansen_gfc_tile_callback``)
+    # enumerates 10x10 deg tiles intersecting the AOI and constructs
+    # GCS URLs for the requested bands.
+    #
+    # The 30 m resolution + global 2000-present coverage make this the
+    # canonical input for deforestation work; pair with ALOS-PALSAR for
+    # the SAR side and ESA-WorldCover for the static LULC label.
+    # ============================================================
+    "Hansen-GFC": {
+        "default_bands": ["treecover2000", "lossyear", "datamask"],
+        "extra_bands":   ["gain", "first", "last"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,   # one release per year (we ship v1.11 = 2023)
+        "band_meta": {
+            "treecover2000": {"kind": "index",       "norm": ("divide", 100.0)},
+            "lossyear":      {"kind": "categorical", "norm": ("passthrough",)},
+            "gain":          {"kind": "categorical", "norm": ("passthrough",)},
+            "datamask":      {"kind": "qa",          "norm": ("passthrough",)},
+            "first":         {"kind": "spectral",    "norm": ("linear", 0, 255)},
+            "last":          {"kind": "spectral",    "norm": ("linear", 0, 255)},
+        },
+        "providers": {
+            "direct_http": {
+                "release_tag":   "v1.11_2023",
+                # The tile_callback is wired up below the dict, after
+                # the helpers are imported.
+                "tile_callback": None,
+            },
+        },
+    },
+
+    # ============================================================
+    # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
+    # STUB ONLY -- ORNL hosts the four global COGs (mean, SE, mode, QF)
+    # at https://daac.ornl.gov/daacdata/cms/GEDI_L4B_Gridded_Biomass_V2_1/
+    # but requires NASA Earthdata Login (.netrc auth). The direct_http
+    # provider supports anonymous fetches today; Earthdata-Login flow is
+    # a follow-up.
+    #
+    # When wired up, this will be the canonical raster biomass mission
+    # in the pipeline -- 1 km global, EASE-Grid 2.0 (EPSG:6933), Mg/ha.
+    # ============================================================
+    "GEDI-L4B": {
+        "default_bands": ["AGBD"],
+        "extra_bands":   ["SE", "MODE", "QF"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "_needs_earthdata_login": True,
+        "band_meta": {
+            "AGBD": {"kind": "index", "norm": ("linear", 0, 500)},   # Mg/ha
+            "SE":   {"kind": "index", "norm": ("linear", 0, 200)},
+            "MODE": {"kind": "categorical", "norm": ("passthrough",)},
+            "QF":   {"kind": "qa",          "norm": ("passthrough",)},
+        },
+        "providers": {},   # intentionally empty until Earthdata auth lands
+    },
+
+    # ============================================================
     # Sentinel-5P TROPOMI atmospheric chemistry -- STUB ONLY.
     #
     # PC collection: "sentinel-5p-l2-netcdf". Gas products (NO2, CO, SO2,
@@ -825,6 +895,52 @@ MISSION_PROFILES = {
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)
 MISSION_PROFILES["Landsat-8"] = MISSION_PROFILES["Landsat"]
 MISSION_PROFILES["Landsat-9"] = MISSION_PROFILES["Landsat"]
+
+
+# ============================================================
+# Tile-callback definitions for direct_http missions.
+#
+# Each callback returns a list of TileRef dicts (see
+# fetch._direct_fetch module docstring). They live here next to the
+# mission profile so the per-mission URL / tile-grid logic is in one
+# place; the actual fetch + mosaic loop is shared in _direct_fetch.
+# ============================================================
+
+def _hansen_gfc_tile_callback(roi, bands, time_range):
+    """Hansen GFC v1.11: anonymous Google Cloud Storage COGs at the URL
+    pattern
+
+        https://storage.googleapis.com/earthenginepartners-hansen/
+            GFC-2023-v1.11/Hansen_GFC-2023-v1.11_<BAND>_<TILE>.tif
+
+    where TILE is the NW-corner 10x10deg label like ``50N_090W`` and
+    BAND is one of treecover2000 / lossyear / gain / datamask / first
+    / last. We enumerate every tile intersecting the AOI and one URL
+    per (band, tile) pair.
+    """
+    from ._direct_fetch import (
+        _enumerate_tiles_10deg, _hansen_tile_name, _tile_bbox_10deg,
+    )
+    base = ("https://storage.googleapis.com/earthenginepartners-hansen/"
+            "GFC-2023-v1.11/Hansen_GFC-2023-v1.11")
+    tile_refs = []
+    for (lat_n, lon_w) in _enumerate_tiles_10deg(roi):
+        name = _hansen_tile_name(lat_n, lon_w)
+        bb   = _tile_bbox_10deg(lat_n, lon_w)
+        for band in bands:
+            tile_refs.append({
+                "band":         band,
+                "url":          f"{base}_{band}_{name}.tif",
+                "tile_bbox_ll": bb,
+                "tile_name":    name,
+                "auth":         None,
+            })
+    return tile_refs
+
+
+MISSION_PROFILES["Hansen-GFC"]["providers"]["direct_http"]["tile_callback"] = (
+    _hansen_gfc_tile_callback
+)
 
 
 def get_profile(mission):

@@ -65,6 +65,7 @@ PROVIDER_AUTO = {
     "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
+    "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -150,6 +151,12 @@ def fetch_sentinel_data(
             max_cloud_coverage=max_cloud_coverage,
         )
 
+    if provider == "direct_http":
+        return fetch_direct_http(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
@@ -162,7 +169,29 @@ def fetch_sentinel_data(
 
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
-        f"'planetary_computer', 'planet', or 'sentinelhub'."
+        f"'planetary_computer', 'planet', 'direct_http', or 'sentinelhub'."
+    )
+
+
+def fetch_direct_http(mission, bands, time_range, roi,
+                       resolution=10, save_folder="data"):
+    """Direct-HTTP / S3 tile-indexed fetcher for missions outside STAC.
+
+    Hansen GFC (Google Cloud Storage), Lang 2023 (ETH), Tolan 2024 (AWS
+    Open Data), GEDI L4B (ORNL DAAC) -- none of these live in STAC, but
+    they all serve COGs at predictable per-tile URLs. The per-mission
+    tile-discovery logic lives in ``missions.py`` next to the profile;
+    this function just runs the resulting tile list through the
+    shared mosaic-and-reproject pipeline.
+    """
+    from ._direct_fetch import _fetch_via_direct_http
+    cfg = get_provider_config(mission, "direct_http")
+    return _fetch_via_direct_http(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        tile_callback=cfg["tile_callback"],
+        band_meta=get_profile(mission).get("band_meta"),
+        release_tag=cfg.get("release_tag"),
     )
 
 
