@@ -1,11 +1,15 @@
 # Data layers reference
 
-The `geoai-datacubes` pipeline supports **fifteen** satellite or ancillary
-missions (plus a documented Sentinel-5P TROPOMI stub); each exposes a set
-of named bands that the user can pick freely from a `BANDS_<mission>`
-configuration list. This document is the canonical reference for what
-each band is, at what resolution, in what value range, and how it tends
-to be normalised for machine learning.
+The `geoai-datacubes` pipeline supports **twenty-six** satellite or
+ancillary missions (fifteen direct-observation + eight derived working
+today, plus three documented stubs — Sentinel-5P TROPOMI, GEDI L4B
+biomass, GEBCO bathymetry). `Landsat`, `Landsat-8`, and `Landsat-9` are
+aliases of the same Landsat 8/9 Collection 2 Level 2 profile and are
+counted once. Each mission exposes a set of named bands that the user
+can pick freely from a `BANDS_<mission>` configuration list. This
+document is the canonical reference for what each band is, at what
+resolution, in what value range, and how it tends to be normalised for
+machine learning.
 
 It is written to be useful both as a teaching reference (what does
 `Sentinel-2_B11` actually measure?) and as a practical look-up (what scale
@@ -31,8 +35,10 @@ pipeline:
    strategy table).
 2. ML-ready normalisation (`apply_band_norm`, `get_band_norm`) — each band
    declares a normalisation **recipe** so a multi-mission cube can be
-   converted to model-ready floats with a single sweep, without the caller
-   needing to know each band's native value range.
+   converted to model-ready floats with a single sweep. The mission's
+   documented default recipe is applied automatically and the recipe being
+   applied is fully visible in the call — users can inspect `band_meta`
+   or override per-band recipes at call time.
 
 The taxonomy of kinds:
 
@@ -314,6 +320,40 @@ cities (Columbus sits at ~250 m, Cleveland's Lake Erie shore at
 - `DEM_gradient_mag` = magnitude of the spatial gradient. Encodes
   flat-vs-sloped without referring to absolute elevation. The water
   classification notebook in this repo demonstrates both.
+
+---
+
+## Copernicus DEM (GLO-90)
+
+**Mission name:** `Copernicus-DEM-90`
+**Source:** Same upstream as `Copernicus-DEM` (TanDEM-X / DLR, processed
+by ESA) but at the coarser 90 m posting that ESA also publishes as a
+companion product.
+**Provider:** Microsoft Planetary Computer, collection `cop-dem-glo-90`.
+**Spatial resolution:** ~90 m (3 arc-second).
+**Temporal coverage:** static, same TanDEM-X 2010–2015 acquisition window
+as GLO-30.
+
+| Band | Description |
+|---|---|
+| DEM | Elevation in metres above the EGM2008 geoid |
+
+**Value range:** typically −400 m to +9000 m, same physical range as
+GLO-30.
+
+**Normalisation for ML:** identical to GLO-30 — `("mean_subtract", 1000.0)`
+in `band_meta` removes the per-AOI mean and divides by 1 km. Use
+`apply_band_norm` to get the same `[0, 1]`-ish working range that
+GLO-30 produces.
+
+**When to prefer GLO-90 over GLO-30:** GLO-30 is the default for any
+land-surface task that benefits from sub-100 m terrain detail. GLO-90
+becomes the better choice for (a) continental- or global-scale
+hydrology where the GLO-30 cost / time budget is prohibitive,
+(b) cases where the downstream model is built at ~100 m or coarser and
+the GLO-30 oversampling wastes I/O, and (c) ocean / coastal tasks where
+GLO-30 has known artefacts from interferometric SAR over water and the
+smoother GLO-90 is preferred.
 
 ---
 
@@ -767,6 +807,126 @@ the raw integer class IDs as a target via `label_remap` (e.g.
 
 ---
 
+## USDA Cropland Data Layer (CDL)
+
+**Mission name:** `USDA-CDL`
+**Provider:** Microsoft Planetary Computer, collection `usda-cdl`.
+**Spatial resolution:** 30 m.
+**Temporal:** annual mosaic, 2008–2021 currently indexed on PC. Later
+years are released by USDA each January but not yet ingested.
+**Coverage:** conterminous US only.
+**Native CRS:** Albers Equal Area (EPSG:5070).
+
+| Band | Description |
+|---|---|
+| cropland   | Primary crop-class raster (~100 integer class IDs) |
+| confidence | Per-pixel classification confidence (0–100) |
+| cultivated | 1 = cultivated, 2 = non-cultivated |
+| corn       | Per-pixel corn-frequency layer (0–255) |
+| wheat      | Per-pixel wheat-frequency layer (0–255) |
+| cotton     | Per-pixel cotton-frequency layer (0–255) |
+| soybeans   | Per-pixel soybeans-frequency layer (0–255) |
+
+**Value range:** `cropland` and `cultivated` are categorical integers
+(no-data = 0). `confidence` is 0–100. The four crop-frequency layers
+are 0–255 uint8.
+
+**Normalisation for ML:**
+- `cropland`: do **not** normalise — the ~100 class IDs are categorical.
+  The `band_meta` recipe is `("passthrough",)`; users typically pass
+  `label_remap={class_id: 1}` to collapse to a binary "is this crop"
+  target.
+- `cultivated`: `("one_hot", (1, 2))` two-class one-hot.
+- `confidence`: `("divide", 100.0)` → `[0, 1]`.
+- `corn` / `wheat` / `cotton` / `soybeans`: `("divide", 255.0)` → `[0, 1]`.
+
+**Why this matters:** CDL is the canonical US crop-type label, derived
+by USDA from Landsat plus ancillary data via ML each season. Pair with
+Sentinel-2 or HLS time series as the input and CDL as the target for
+crop-classification work, or with LCMAP-CONUS for a coarser-class US
+LULC label that runs further back in time.
+
+---
+
+## LCMAP CONUS v1.3 (USGS — NLCD substitute)
+
+**Mission name:** `LCMAP-CONUS`
+**Provider:** Microsoft Planetary Computer, collection
+`usgs-lcmap-conus-v13`.
+**Spatial resolution:** 30 m.
+**Temporal:** annual, 1985–2021.
+**Coverage:** conterminous US only.
+**Native CRS:** Albers Equal Area (EPSG:5070).
+**Why this exists in the pipeline:** the canonical US LULC dataset is
+NLCD (Multi-Resolution Land Characteristics, MRLC). MRLC does not
+publish anonymously listable buckets, has no PC mirror, and would need
+a separate scraper. LCMAP's land-cover classes are simpler (8 classes
+vs NLCD's 16) but the annual cadence is denser than NLCD's ~5-year
+release cycle, so LCMAP is used here as the US LULC substitute until
+an NLCD adapter is added.
+
+| Band | Description |
+|---|---|
+| lcpri   | Primary land-cover class (1–8) |
+| lcsec   | Secondary land-cover class (1–8) |
+| lcpconf | Per-pixel confidence for `lcpri` (0–100) |
+| lcsconf | Per-pixel confidence for `lcsec` (0–100) |
+| lcachg  | Annual change flag (boolean) |
+
+**Class IDs (lcpri / lcsec):**
+1 = Developed, 2 = Cropland, 3 = Grass / Shrub, 4 = Tree Cover,
+5 = Water, 6 = Wetlands, 7 = Ice / Snow, 8 = Barren.
+
+**Normalisation for ML:**
+- `lcpri` / `lcsec`: `("one_hot", (1, 2, 3, 4, 5, 6, 7, 8))` declared
+  on `band_meta`.
+- `lcpconf` / `lcsconf`: `("divide", 100.0)` → `[0, 1]`.
+- `lcachg`: `("passthrough",)` — boolean QA, do not normalise.
+
+**Why this matters:** LCMAP is the longest annual US LULC raster
+(1985–2021, 37 years) — useful for long-baseline land-change studies
+where ESA-WorldCover's 2020/2021-only coverage is insufficient. Pair
+with Hansen-GFC `lossyear` for the forest-loss side of the same
+question.
+
+---
+
+## IO + Esri Annual LULC v2 (Impact Observatory + Esri)
+
+**Mission name:** `IO-LULC`
+**Provider:** Microsoft Planetary Computer, collection
+`io-lulc-annual-v02`.
+**Spatial resolution:** 10 m.
+**Temporal:** annual, 2017–2023.
+**Coverage:** global. Tiled on the Sentinel-2 MGRS grid (one COG per
+MGRS tile per year, single-asset).
+**Licence:** CC-BY-4.0; cite Karra et al. 2021 + Impact Observatory + Esri.
+
+| Band | Description |
+|---|---|
+| LULC | Integer class ID (categorical) |
+
+**Class IDs:**
+1 = Water, 2 = Trees, 4 = Flooded vegetation, 5 = Crops,
+7 = Built area, 8 = Bare ground, 9 = Snow / ice, 10 = Clouds,
+11 = Rangeland. (Classes 3 and 6 are intentionally not used in v02
+— they were collapsed into 11 / 2 respectively. No-data = 0.)
+
+**Normalisation for ML:** declared as `("one_hot", (1, 2, 4, 5, 7, 8,
+9, 10, 11))` on `band_meta` — pass `apply_band_norm` to get a 9-channel
+one-hot tensor at training time. As a target, the same `label_remap`
+pattern used for ESA-WorldCover works (e.g. `{1: 1}` for water).
+
+**Why this matters:** the only annual global 10 m LULC dataset in the
+pipeline. ESA-WorldCover is 10 m but only two snapshots (2020 / 2021);
+IO-LULC offers an annual time series at the same resolution, making it
+the natural choice for global LULC-change work. The class schema is
+coarser than ESA-WorldCover's 11 classes; use ESA-WorldCover when you
+need the finer wetland / mangrove / lichen distinctions, IO-LULC when
+you need the annual cadence.
+
+---
+
 ## Hansen Global Forest Change v1.11 (Hansen et al. 2013, UMD GLAD)
 
 **Mission name:** `Hansen-GFC`
@@ -805,6 +965,47 @@ are natural next additions).
 
 ---
 
+## Chloris Aboveground Biomass
+
+**Mission name:** `Chloris-Biomass`
+**Provider:** Microsoft Planetary Computer, collection `chloris-biomass`.
+**Spatial resolution:** ~4.6 km (15-arcmin) — coarse compared to the
+other forest / biomass products in this document.
+**Temporal:** annual mosaic, 2003–2019.
+**Coverage:** global.
+**Licence:** **CC-BY-NC-SA** — non-commercial use only. Acknowledge
+this in any redistribution; do not include in commercial products.
+
+| Band | Description |
+|---|---|
+| biomass           | Aboveground biomass, Mg/ha |
+| biomass_change    | Inter-annual biomass change, Mg/ha (signed) |
+| biomass_wm        | Biomass on a Web Mercator grid (display-grade) |
+| biomass_change_wm | Biomass change on a Web Mercator grid |
+
+**Value range:** `biomass` and `biomass_wm` are 0 to a few hundred Mg/ha
+in most biomes; tropical forest can exceed 500 Mg/ha. `biomass_change`
+and `biomass_change_wm` are signed and typically fall in
+`[-100, +100]` Mg/ha per year, with extremes from deforestation /
+afforestation events.
+
+**Normalisation for ML:**
+- `biomass` / `biomass_wm`: `("divide", 500.0)` → `[0, 1]` working range
+  for most biomes. Override via `apply_band_norm(..., override=...)`
+  with a larger denominator for high-biomass tropical AOIs.
+- `biomass_change` / `biomass_change_wm`: `("linear", -100, 100)` → maps
+  `[-100, +100]` Mg/ha to `[0, 1]`, centred on 0.5 = no change.
+
+**Why this matters:** Chloris is the canonical anonymous-access global
+biomass dataset usable today — GEDI L4B (the 1 km Earthdata-Login
+product) is the higher-resolution successor but is still stubbed below.
+Pair with `ALOS-PALSAR` L-band SAR backscatter as a finer-resolution
+biomass proxy when you need spatial detail, or use Chloris on its own
+for continental-scale biomass-change studies where the 4.6 km posting
+is acceptable.
+
+---
+
 ## GEDI L4B Gridded Aboveground Biomass Density v2.1 *(stub only)*
 
 **Mission name:** `GEDI-L4B`
@@ -821,6 +1022,37 @@ helper (the `requires_auth` shape is already in the TileRef dict).
 (EPSG:6933), Mg/ha. Pairs with `ALOS-PALSAR` (L-band SAR backscatter)
 + `Hansen-GFC` (forest-loss-by-year) to form a complete
 biomass-and-loss feature stack without any optical input.
+
+---
+
+## GEBCO 2024 Global Bathymetry *(stub only)*
+
+**Mission name:** `GEBCO`
+**Status:** Profile declared with `band_meta` for `elevation` + `tid`,
+but the `providers:` dict is empty. The canonical anonymous-access
+source is BODC at
+`https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/zip/`,
+distributed as a ~4 GB zipped GeoTIFF rather than a `/vsicurl/`-streamable
+COG. Wiring this in requires a download-and-cache extension to the
+`direct_http` fetcher; the NetCDF distribution (7.5 GB) is blocked by
+the same NetCDF reader gap that holds back Sentinel-5P.
+**Spatial resolution (when implemented):** ~463 m at the equator
+(15 arc-second).
+**Temporal:** static; one release every few years (2024 release current).
+**Coverage:** global, including ocean bathymetry.
+
+| Band | Description |
+|---|---|
+| elevation | Elevation + bathymetry, metres (positive above geoid, negative below) |
+| tid       | Type-identifier flag (per-pixel source provenance) |
+
+**Value range (when implemented):** `elevation` ranges roughly
+`[-11000, +9000]` m. `tid` is a small set of integer source codes.
+
+**When implemented:** the standard global bathymetry input for coastal
+and ocean studies, plus a global DEM where Copernicus DEM GLO-30 has
+gaps (open ocean). Naturally pairs with Sentinel-2 / Landsat optical
+over coastal AOIs for shallow-water bathymetry retrievals.
 
 ---
 
@@ -857,7 +1089,8 @@ work over major metros.
 | Sentinel-1 RTC | `10 * log10(x + 1e-6)`, then z-score against the training distribution |
 | Landsat C2 L2 (reflectance bands) | `x * 0.0000275 - 0.2`, then `clip(0, 1)` |
 | Landsat C2 L2 (B10 thermal) | `x * 0.00341802 + 149.0` (Kelvin); subtract 273.15 to centre on 0 °C |
-| Copernicus DEM | per-AOI mean-subtract; optionally add gradient magnitude as a second channel |
+| Copernicus DEM (GLO-30) | per-AOI mean-subtract; optionally add gradient magnitude as a second channel |
+| Copernicus DEM (GLO-90) | per-AOI mean-subtract (same `("mean_subtract", 1000.0)` recipe as GLO-30) |
 | ESA WorldCover | do not normalise; use as label or as embedded categorical input |
 | PlanetScope 4-band / 8-band | `x / 10000.0` then `clip(0, 1)` |
 | NAIP | `x / 255.0` (standard 8-bit RGB+NIR) |
@@ -868,6 +1101,11 @@ work over major metros.
 | 3DEP | per-AOI mean-subtract; optionally add gradient magnitude as a second channel (same recipe as Copernicus DEM) |
 | ALOS-PALSAR (HH / HV) | DN → dB via `10*log10(DN²) − 83.0`, then map `[-30, 0]` dB to `[0, 1]`. The `("palsar_db", -83.0)` recipe in `band_meta` does this in one call. |
 | ALOS-FNF | do not normalise; use as a categorical label / mask via `label_remap` |
+| USDA-CDL (`cropland`) | do not normalise — `passthrough` raw class IDs; use `label_remap={class_id: 1}` for binary targets. `confidence` divides by 100; per-crop frequency layers divide by 255. |
+| LCMAP-CONUS | `lcpri` / `lcsec`: `("one_hot", (1, …, 8))`; `lcpconf` / `lcsconf` divide by 100; `lcachg` passthrough |
+| IO-LULC | `("one_hot", (1, 2, 4, 5, 7, 8, 9, 10, 11))`; same as ESA-WorldCover, use as label or embedded categorical |
+| Chloris-Biomass | `biomass` / `biomass_wm`: `("divide", 500.0)`; `biomass_change` / `..._wm`: `("linear", -100, 100)` |
+| Hansen-GFC | `treecover2000`: divide by 100; `lossyear` / `gain` / `datamask`: passthrough (categorical / QA); `first` / `last`: `("linear", 0, 255)` |
 
 For tree-based models (Random Forest, XGBoost) the normalisation
 question is mostly moot — they are invariant to monotonic per-feature
@@ -885,10 +1123,12 @@ work for each category is linked.
 ### Second-tier free public rasters (planned)
 
 VIIRS, GOES-R ABI, CHIRPS, ERA5 / ERA5-Land, ESA CCI Land Cover,
-JAXA ALOS PALSAR, MERIT DEM / MERIT Hydro, PACE OCI, Dynamic World —
-all free, all gridded, all integrable with the existing STAC + COG
-pipeline. They open up time-series climate, atmospheric chemistry,
-forest-biomass, and near-real-time land-cover workflows. Tracked in
+MERIT DEM / MERIT Hydro, PACE OCI, Dynamic World — all free, all
+gridded, all integrable with the existing STAC + COG pipeline. They
+open up time-series climate, atmospheric chemistry, and near-real-time
+land-cover workflows on top of the forest / biomass missions already
+wired in (`ALOS-PALSAR`, `ALOS-FNF`, `Hansen-GFC`, `Chloris-Biomass`).
+Tracked in
 [Issue #7](https://github.com/buckai-observatory/geoai-datacubes/issues/7).
 
 ### Raster-shaped LIDAR / altimetry products (planned)

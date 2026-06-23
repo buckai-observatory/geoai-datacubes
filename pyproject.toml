@@ -101,6 +101,11 @@ geoai = [
     # Lower bound chosen to keep the Python-3.9 floor open; on 3.10+
     # pip resolves to a much newer geoai-py (0.4x+) automatically.
     "geoai-py>=0.5",
+    # geoai.segment_water needs OmniWaterMask. geoai-py itself only
+    # imports it lazily (and lists it under its own [extra] section),
+    # so we pull it in here to keep the integration notebook
+    # (03_with_opengeos_geoai.ipynb) runnable out of the box.
+    "omniwatermask>=0.4",
 ]
 
 # Notebook-side extras: nicer figures, interactive widgets, vector

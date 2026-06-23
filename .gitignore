@@ -38,7 +38,12 @@ data/
 notebooks/_outputs/
 notebooks/_ml_outputs/
 notebooks/_outputs_obj/
+notebooks/_outputs_nb03/
+notebooks/_outputs_nb03_train/
 notebooks/logs/
+
+# Misc local caches.
+cache/
 
 # SLURM template logs (logs/ folder created by the *.sbatch templates at submit time).
 slurm_examples/logs/

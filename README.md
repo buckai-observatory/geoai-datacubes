@@ -169,43 +169,86 @@ If you already have conda installed and prefer not to switch, substitute `conda`
 
 The package ships with a `pyproject.toml` that declares the **core data
 pipeline** as required and bundles everything else into named **optional-
-dependency extras** so you only pull in what you actually need:
+dependency extras**. Every dependency including `geoai-py` is on
+conda-forge, so the recommended path is a **pure-mamba install** from
+conda-forge with a single `pip install -e .` at the end for the local
+repo itself (which is not on conda-forge yet).
+
+This avoids the libLerc / GDAL loader-chain breakage that pure-pip
+environments occasionally hit on macOS, and gives you conda-forge's
+CUDA-tested PyTorch builds on Linux clusters.
+
+#### Recommended: all from conda-forge, plus `pip install -e .` for this repo
+
+The single command below builds the full `geoai-cubes` environment used
+by all notebooks in this repo:
 
 ```bash
-# Core only: data acquisition + multi-mission fusion + tiling + LazyTileDataset.
-pip install -e .
+mamba create -y -n geoai-cubes -c conda-forge \
+    python=3.11 \
+    geoai-py leafmap torchgeo omniwatermask \
+    rasterio gdal pyproj shapely \
+    pystac pystac-client planetary-computer \
+    "pytorch>=2.0" "torchvision>=0.15" \
+    zarr lmdb scikit-image pillow \
+    matplotlib numpy pandas tqdm requests \
+    scikit-learn xgboost ultralytics transformers \
+    jupyterlab ipywidgets seaborn geopandas contextily
 
-# + ML / DL stack used by the bundled notebooks (scikit-learn, XGBoost,
-#   Ultralytics YOLO, transformers, huggingface_hub):
-pip install -e ".[ml]"
+mamba activate geoai-cubes
+pip install -e .                  # geoai-datacubes itself (not on conda-forge yet)
 
-# + opengeos/geoai integration for downstream modelling (Wu 2026, JOSS
-#   11(118):9605 — 20+ foundation-model wrappers, pretrained models,
-#   SAM, training utilities, QGIS plugin):
-pip install -e ".[geoai]"
+bash smoke-tests/check_env.sh     # verify
+```
 
-# + notebook-friendly extras (jupyterlab, ipywidgets, seaborn, geopandas,
-#   contextily for basemaps):
-pip install -e ".[notebooks]"
+This single env is enough for every notebook in the repo:
 
-# + commercial providers (Planet Orders API, Sentinel Hub) — only when
-#   you have credentials and intend to use them:
-pip install -e ".[planet]"
+* `00_geoai_datacubes_tour.ipynb` — multi-mission tour
+* `01_classification.ipynb` — RF / XGBoost / U-Net water classification
+* `02_building_detection.ipynb` — YOLOv8 + OWLv2 + HF YOLO building detection
+* `03_with_opengeos_geoai.ipynb` — the two-package interop demo
 
-# Everything in one go:
+#### Slimmer installs (only the deps you'll actually use)
+
+If you don't want the full ML / DL / notebook stack, drop the
+corresponding packages from the `mamba create` line. The four named
+slices in `pyproject.toml` are documented as `pip install -e ".[<slice>]"`
+recipes for users who already have a working conda env and just want to
+add the missing pieces:
+
+```bash
+pip install -e ".[ml]"            # + scikit-learn, XGBoost, Ultralytics YOLO, transformers
+pip install -e ".[geoai]"         # + opengeos/geoai (Wu 2026, JOSS 11(118):9605)
+pip install -e ".[notebooks]"     # + jupyterlab, ipywidgets, seaborn, geopandas, contextily
+pip install -e ".[planet]"        # + Planet Orders + Sentinel Hub (commercial providers)
+pip install -e ".[all]"           # everything above
+```
+
+The corresponding conda-forge names are: `geoai-py leafmap torchgeo
+omniwatermask` for `[geoai]`; `scikit-learn xgboost ultralytics
+transformers huggingface_hub` for `[ml]`; `jupyterlab ipywidgets seaborn
+geopandas contextily` for `[notebooks]`; `python-dotenv sentinelhub`
+for `[planet]`. The `pip` recipes are convenient when you already have
+a working conda env, and pin slightly faster on a few fast-moving ML
+packages (ultralytics, transformers).
+
+#### Pip-only fallback (when conda / mamba isn't available)
+
+```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
 ```
 
-Use the **`[geoai]`** extra to combine `geoai-datacubes` (data-prep
-front-end) with `geoai-py` (modelling back-end) in the same
-environment. See `notebooks/03_with_opengeos_geoai.ipynb` for the
-integration pattern.
+This works in clean virtual environments but can fail mid-stream if a
+wheel-less GDAL stack can't compile from source (notably on macOS
+without Xcode CLT, or on minimal Linux images). When it does, fall
+back to the mamba path above — it's also faster on a cold cache.
 
 `pip install -e .` is the editable / developer install. If you just
 want to use the package without modifying it, drop the `-e`. The flat
 `requirements.txt` file is preserved for tooling that doesn't read
-`pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh` import
-check).
+`pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh --pip`
+import check).
 
 ### 4. Choose what to download
 

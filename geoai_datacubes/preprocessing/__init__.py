@@ -43,6 +43,7 @@ from .band_ops import (
 )
 from .export_zarr import export_to_zarr
 from .export_lmdb import export_to_lmdb
+from .band_select import select_bands, write_label_uint8, BAND_PRESETS
 
 __all__ = [
     "fuse_response_tiffs",
@@ -65,4 +66,7 @@ __all__ = [
     "BAND_KIND_PATTERNS",
     "DEFAULT_KIND_NAN_STRATEGY",
     "DEFAULT_KIND_NORM",
+    "select_bands",
+    "write_label_uint8",
+    "BAND_PRESETS",
 ]

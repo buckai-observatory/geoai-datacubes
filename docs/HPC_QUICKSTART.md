@@ -70,7 +70,8 @@ mamba activate geoai
 # chain breakage that pure-pip installs occasionally hit on macOS), then
 # the rest of the project via the pyproject extras.
 mamba install -y -c conda-forge \
-    rasterio gdal pyproj pystac pystac-client planetary-computer \
+    rasterio gdal pyproj shapely \
+    pystac pystac-client planetary-computer \
     "pytorch>=2.0" "torchvision>=0.15" zarr lmdb scikit-image pillow \
     matplotlib numpy pandas tqdm requests
 
