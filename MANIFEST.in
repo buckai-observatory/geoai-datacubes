@@ -1,0 +1,15 @@
+# Source distribution (sdist) trimming. setuptools_scm starts from
+# `git ls-files` so anything tracked by git is in the sdist by default;
+# this file removes the large pedagogical / CI artefacts we don't want
+# on PyPI. The full notebooks + smoke tests remain available on GitHub.
+
+prune notebooks
+prune smoke-tests
+prune slurm_examples
+prune .github
+prune cache
+prune data
+prune modules
+exclude .gitattributes
+exclude .gitignore
+exclude .env.example
