@@ -243,6 +243,32 @@ for `[planet]`. The `pip` recipes are convenient when you already have
 a working conda env, and pin slightly faster on a few fast-moving ML
 packages (ultralytics, transformers).
 
+#### Docker (zero-install, full stack + JupyterLab)
+
+A pre-built container with the complete `geoai-cubes` stack, the four
+notebooks, and JupyterLab is published on GitHub Container Registry on
+every tagged release. The shortest path from "I want to try this" to
+"running notebook 03 in my browser":
+
+```bash
+docker run -p 127.0.0.1:8888:8888 \
+    ghcr.io/buckai-observatory/geoai-datacubes:latest
+```
+
+The container prints a JupyterLab URL with a one-time token; copy it
+into your browser. To mount a local folder for persistent outputs:
+
+```bash
+docker run -p 127.0.0.1:8888:8888 \
+    -v "$PWD/work:/home/mambauser/work" \
+    ghcr.io/buckai-observatory/geoai-datacubes:latest
+```
+
+Tags follow the PyPI version (`:0.1.0`, `:0.1`, `:latest`). On academic
+HPC clusters with Apptainer / Singularity, the image can be pulled
+directly: `apptainer pull docker://ghcr.io/buckai-observatory/geoai-datacubes:latest`.
+See the [`Dockerfile`](Dockerfile) for the exact build recipe.
+
 #### Pip-only fallback (when conda / mamba isn't available)
 
 ```bash

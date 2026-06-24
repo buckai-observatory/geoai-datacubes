@@ -1,0 +1,97 @@
+name: docker
+
+# Triggers:
+#   - any pushed git tag starting with `v` (e.g. v0.1.0) -> tagged release
+#   - manual run from the Actions UI (`workflow_dispatch`) -> useful for
+#     testing the Dockerfile without cutting a release. Manual runs push
+#     `:dev` to ghcr.io.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Concurrency: don't queue parallel image builds against the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    name: Build & push to GHCR
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write       # required to push to ghcr.io/<org>/<repo>
+
+    steps:
+      - name: Checkout (full history for setuptools_scm)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free up disk on the runner
+        # Docker images for the geoai-cubes stack are ~4 GB; the default
+        # GitHub-hosted runner has ~14 GB available after the preinstalled
+        # tooling. Clearing the swap files + a few large pre-installed
+        # SDKs gives us comfortable headroom.
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags + labels from the ref
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # On tag pushes -> :0.1.0 + :0.1 + :latest
+          # On workflow_dispatch -> :dev
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=dev,enable=${{ github.event_name == 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.title=geoai-datacubes
+            org.opencontainers.image.description=AI-ready multi-mission Earth-observation data cubes (pipeline + four pedagogical notebooks + JupyterLab)
+            org.opencontainers.image.licenses=MIT
+
+      - name: Compute geoai-datacubes pip version
+        id: pkgver
+        # Strips the leading "v" so the pip install in the Dockerfile gets
+        # the bare PEP-440 version. workflow_dispatch -> empty string,
+        # which the Dockerfile interprets as "install latest from PyPI".
+        run: |
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            echo "version=${REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GEOAI_DATACUBES_VERSION=${{ steps.pkgver.outputs.version }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: false        # smaller manifests; nothing in our build needs SLSA provenance yet

@@ -1,0 +1,44 @@
+# Keep the Docker build context lean -- everything below would either
+# fail (.git on Colab clones), bloat the image (notebook outputs, model
+# weights), or be wrong inside the container (cached fetches keyed to a
+# different filesystem).
+
+# Git internals
+.git
+.gitattributes
+.gitignore
+
+# Python build artefacts
+__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+
+# Notebook scratch outputs
+notebooks/_outputs
+notebooks/_outputs_obj
+notebooks/_outputs_nb03
+notebooks/_outputs_nb03_train
+notebooks/_ml_outputs
+notebooks/.ipynb_checkpoints
+
+# Locally-downloaded YOLO weights (notebooks re-fetch on first use)
+notebooks/yolov8n.pt
+notebooks/yolov8s.pt
+notebooks/yolov8m.pt
+
+# Local-only files
+.env
+.env.example
+cache
+data
+modules
+docs/HPC_RUNBOOK.md
+smoke-tests/logs
+
+# CI configs aren't useful inside the runtime
+.github
+
+# OS
+.DS_Store
