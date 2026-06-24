@@ -15,7 +15,7 @@
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top (water, tree cover, cropland, built-up, …). Threshold tuning on val, a conditional spectral-index baseline (NDWI for water, NDVI for vegetation), and an unsupervised KMeans bonus. **Cached weights for the default water target ship in the repo** so a fresh Colab launch lands in ~5 minutes instead of ~30; other classes train from scratch in their full budget.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> Also Colab-ready: a YOLO building-detection demo on NAIP ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three.
+> Also Colab-ready: a YOLO building-detection demo on NAIP ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) and an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for all four.
 >
 > *Tip: GitHub's HTML sanitizer strips `target="_blank"` from links, so the badges above will navigate in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab and keep this page where it is.*
 
@@ -561,7 +561,7 @@ All pipeline modules live under the `geoai_datacubes/` Python package — organi
 
 ## Try the notebooks
 
-The repo ships with **three complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
+The repo ships with **four complementary notebooks** in `notebooks/`. See the [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
 
 ### 1. The grand tour (start here if you are new)
 
@@ -598,6 +598,17 @@ The first **object-detection** notebook in the series — switches the modelling
 
 ```bash
 jupyter notebook notebooks/02_building_detection.ipynb
+```
+
+### 4. Integration with `opengeos/geoai` (segmentation hand-off)
+
+[`notebooks/03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+A worked example of composing `geoai-datacubes` (data-prep front-end) with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling back-end). Builds fused multi-mission cubes for three Ohio cities (Cleveland → lake, Cincinnati → wide river, Columbus → narrow rivers) and hands them off to `geoai-py` in two patterns: (1) **`geoai.segment_water`** on a NAIP scene — one-call pretrained inference using OmniWaterMask + OSM; and (2) **custom training** via `select_bands` + `geoai.train_segmentation_landcover` + `geoai.semantic_segmentation` on a 3-band NDWI subset. Trains on Cleveland + Cincinnati and **holds Columbus out entirely as an unseen test region** — in-distribution F1 reaches ~0.95 while out-of-distribution F1 on Columbus collapses to ~0.05. **The honesty about generalisation is deliberate**: the integration works cleanly in both directions, and the OOD failure is the normal remote-sensing-ML reality of training on a handful of AOIs. The new `select_bands` helper + `BAND_PRESETS` (`ndwi` / `nbr` / `ndsi` / `rgb_nir` / `rgb_dem` / `rgb_sar_vv` / `ndwi_sar_vv` / …) handles the channel-count and `nodata=nan → uint8` mismatches that otherwise block `geoai-py`'s loaders on multi-mission cubes.
+
+```bash
+jupyter notebook notebooks/03_with_opengeos_geoai.ipynb
 ```
 
 ---

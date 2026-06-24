@@ -7,7 +7,7 @@ without anything pre-existing on your machine.
 
 *Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
 
-## The three notebooks
+## The four notebooks
 
 ### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
@@ -113,6 +113,57 @@ Cross-city split mirrors notebook 01: Columbus → train,
 Cincinnati → val, Cleveland → test. Runs end-to-end in
 ~15–30 minutes on a laptop / Colab CPU, including the NAIP
 fetches and the YOLO training run.
+
+### 4. Integration with `opengeos/geoai` — `03_with_opengeos_geoai.ipynb`
+
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+A worked example of composing `geoai-datacubes` (data-prep front-end)
+with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling
+back-end). Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM
++ NAIP + ESA-WorldCover for **Cleveland (lake), Cincinnati (wide
+river), and Columbus (narrow rivers)** and hands them off to `geoai-py`
+via two patterns:
+
+- **§2 Pretrained inference** — `geoai.segment_water` on the Cleveland
+  NAIP scene. One function call, no training, OmniWaterMask + OSM
+  overlay; reproduces the kind of water mask notebook 01's hand-rolled
+  RF / XGBoost / U-Net pipeline produces, in one line.
+- **§3 Custom training** — fused cube → `select_bands` (new helper
+  in our `preprocessing` module) → `geoai.train_segmentation_landcover`
+  with focal loss + class weights → `geoai.semantic_segmentation`.
+  Trains on Cleveland + Cincinnati (horizontal-stripe split) and
+  **holds Columbus out entirely as an unseen test region** — the
+  experimental design from notebook 01's cross-city comparison applied
+  to the integrated stack.
+
+Key design choices:
+
+- **The `select_bands` helper + `BAND_PRESETS` dict** (`ndwi`, `nbr`,
+  `ndsi`, `rgb_nir`, `rgb_dem`, `rgb_sar_vv`, `ndwi_sar_vv`, `naip`)
+  resolve two `geoai-py` integration pinch points: its PIL-based
+  loaders only accept 1/3/4-channel inputs, and `semantic_segmentation`
+  rejects cubes with `nodata=nan` after the uint8 cast. The helper
+  writes a clean 3- or 4-band uint8 GeoTIFF using each band's
+  documented `band_meta` normalisation recipe.
+- **Honest cross-AOI reporting.** In-distribution F1 reaches ~0.95;
+  out-of-distribution F1 on Columbus collapses to ~0.05 — the standard
+  remote-sensing-ML failure mode of training on a handful of AOIs.
+  The closing markdown explains the four levers that actually close
+  the gap (more diverse training cities, augmentation, heavier
+  pretrained backbones like OmniWaterMask, multispectral foundation
+  models like Prithvi-EO-2.0).
+
+Results are rendered as a pandas DataFrame with an `RdYlGn` background
+gradient on the F1 / IoU / precision / recall columns, an expandable
+metric primer (TP / FP / FN / TN / precision / recall / F1 / IoU /
+accuracy) for readers landing in this notebook directly, and per-city
+prediction-vs-truth panels.
+
+Cold-start runtime on Colab is ~25–35 minutes total (~3 min Colab
+bootstrap, ~5–7 min for the 15 STAC fetches across 3 cities, ~3 min
+for `segment_water` on the Cleveland NAIP, ~20 min for the training,
+~1 min for inference + plots). Warm re-runs are near-instant.
 
 ## Other files in this folder
 
