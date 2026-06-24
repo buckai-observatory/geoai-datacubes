@@ -1,0 +1,10 @@
+# Tell GitHub's Linguist that the notebooks are documentation, not source.
+#
+# Why: notebooks are byte-heavy because each rendered output (matplotlib
+# figures, training-log text dumps, prediction overlays) is embedded as
+# base64 inside the .ipynb JSON. Counted by raw bytes, our 5 notebooks
+# (~31 MB total) drown out the Python sources (~400 KB) and make GitHub's
+# language bar show 98% "Jupyter Notebook" -- not representative of the
+# actual codebase. `linguist-documentation` excludes them from the language
+# stats while keeping them in the repo and still rendered inline by GitHub.
+notebooks/*.ipynb linguist-documentation
