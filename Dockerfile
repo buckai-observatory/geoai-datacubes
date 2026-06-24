@@ -22,7 +22,7 @@
 #     docker run -p 127.0.0.1:8888:8888 -v "$PWD/outputs:/home/mambauser/work" \
 #         ghcr.io/buckai-observatory/geoai-datacubes:latest
 
-ARG MAMBA_BASE=mambaorg/micromamba:2.0-noble
+ARG MAMBA_BASE=mambaorg/micromamba:2-ubuntu22.04
 FROM ${MAMBA_BASE}
 
 ARG GEOAI_DATACUBES_VERSION=""
