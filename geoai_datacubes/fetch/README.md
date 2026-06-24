@@ -1,7 +1,12 @@
 # `geoai_datacubes.fetch` — data acquisition
 
 Downloads raw imagery and ancillary layers (DEM, land cover, water
-extent) from 15 public missions plus commercial PlanetScope.
+extent, biomass, forest cover) from 26 public missions plus commercial
+PlanetScope. The registry covers 16 direct-observation missions (15
+working + 1 stub Sentinel-5P) and 10 derived products (8 working +
+2 stubs GEDI-L4B and GEBCO); see
+[`docs/data_layers.md`](../../docs/data_layers.md) for the authoritative
+per-mission reference.
 
 ## Public API
 
@@ -22,6 +27,11 @@ from geoai_datacubes.fetch import (
     fetch_sentinelhub,
     fetch_planet,
 )
+# A fifth provider class, "direct_http", serves non-STAC missions
+# (e.g. Hansen GFC's anonymous Google Cloud Storage COGs). It is routed
+# through fetch_sentinel_data(..., provider="direct_http") rather than
+# called as a top-level entry point; see MISSION_PROFILES["Hansen-GFC"]
+# for the reference implementation.
 ```
 
 ## Files
@@ -74,17 +84,24 @@ Each entry in `MISSION_PROFILES` has this shape:
 ```
 
 Variations across missions:
-- **Static missions** (Copernicus DEM, ESA WorldCover, JRC-GSW, 3DEP)
-  set `"static": True` to skip date filtering and trigger the
-  cross-tile static-mosaic path.
+- **Static missions** (Copernicus DEM GLO-30 / GLO-90, ESA WorldCover,
+  JRC-GSW, 3DEP, ALOS-PALSAR, ALOS-FNF, USDA-CDL, LCMAP-CONUS, IO-LULC,
+  Chloris-Biomass, Hansen-GFC) set `"static": True` to skip date
+  filtering and trigger the cross-tile static-mosaic path.
 - **Multi-band-per-asset COGs** (NAIP) use `(asset_key, band_index)`
   tuples in `asset_map` instead of plain strings. The dispatcher
   resolves both transparently via `_resolve_band_mapping`.
-- **NetCDF-only missions** (Sentinel-5P) sit as profile stubs without a
-  `PROVIDER_AUTO` entry — they're discoverable via `MISSION_PROFILES`
-  but raise a clear error if you try to fetch them, because the
-  rasterio + `/vsicurl/` reader doesn't speak NetCDF. See the stub's
-  docstring for the planned xarray-based reader path.
+- **Non-STAC missions** (Hansen-GFC today; GEDI-L4B and GEBCO as
+  documented stubs) use the `direct_http` provider class: a
+  per-mission `tile_callback` declared on the profile turns an AOI
+  bbox into a list of `(URL, band)` tuples and the generic fetcher
+  reads them via `/vsicurl/` just like any STAC-served COG.
+- **NetCDF-only missions** (Sentinel-5P; GEBCO's NetCDF distribution)
+  sit as profile stubs without a `PROVIDER_AUTO` entry — they're
+  discoverable via `MISSION_PROFILES` but raise a clear error if you
+  try to fetch them, because the rasterio + `/vsicurl/` reader doesn't
+  speak NetCDF. See the stub's docstring for the planned xarray-based
+  reader path.
 
 ## Adding a new STAC-served mission
 

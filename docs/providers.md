@@ -144,6 +144,34 @@ repo because of that.
 
 ---
 
+## `direct_http` (no STAC, anonymous HTTPS)
+
+**What it is.** A small in-tree provider for missions that are *not* in
+any STAC catalogue but expose anonymous HTTPS COG URLs directly --
+Hansen Global Forest Change on Google Cloud Storage is the reference
+case, with planned next additions for GEDI L4B, Lang 2023 canopy height,
+and Tolan 2024 1-m CHM. The pipeline calls a per-mission tile-callback
+(declared in `MISSION_PROFILES[<mission>]["providers"]["direct_http"]`)
+that turns an AOI bbox into a list of `(URL, band)` tuples; the generic
+fetcher then `/vsicurl/`-reads, reprojects, and mosaics them like any
+other STAC-served mission.
+
+**Where it wins.** Datasets the broader STAC ecosystem hasn't indexed
+yet -- Hansen GFC is widely cited but has never had a public STAC
+endpoint; bundling it as a `direct_http` mission lets users pull
+forest-loss-by-year rasters into a fused multi-mission cube with the
+same `fetch_sentinel_data` API as Sentinel-2 or Landsat.
+
+**The catch.** No catalogue search -- each mission's tile-callback has
+to know the dataset's URL scheme by hand. Acceptable when the
+dataset's tile layout is simple (e.g. Hansen GFC's 10° × 10° NW-corner
+naming); awkward when it isn't. Auth-gated direct downloads (NASA
+Earthdata Login for GEDI L4B) need a Bearer-token extension that is
+declared in the profile (`requires_auth` shape) but not yet wired
+through.
+
+---
+
 ## Direct AWS access (anonymous boto3, no Earth Search)
 
 **What it is.** Skip Earth Search's STAC layer entirely and use a

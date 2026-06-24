@@ -9,11 +9,18 @@
 ## Code contributions
 
 - **Moortgat, Joachim** ([@jmoortgat](https://github.com/jmoortgat)) —
-  multi-provider STAC integration; multi-mission fusion; smear-protected
-  reprojection; `LazyTileDataset` and on-the-fly tile sampling;
-  Sentinel-1 polygon-aware mosaicking; cloud masking and NaN-handling
-  pipelines; PlanetScope provider; pedagogical tour notebooks
-  (data acquisition and water-classification ML/DL).
+  multi-provider STAC integration (Earth Search, Planetary Computer,
+  Planet, Sentinel Hub, `direct_http`); multi-mission fusion;
+  smear-protected reprojection; `LazyTileDataset` and on-the-fly tile
+  sampling; Sentinel-1 polygon-aware mosaicking; cloud masking and
+  NaN-handling pipelines; PlanetScope provider; declarative `band_meta`
+  taxonomy and per-band normalisation recipes; mission inventory
+  expansion (ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass,
+  Hansen-GFC, MODIS, HLS, JRC-GSW, 3DEP, GLO-90, plus stubs);
+  `select_bands` / `BAND_PRESETS` hand-off helper; the four
+  pedagogical notebooks (data-pipeline tour, LULC classification,
+  YOLO building detection on NAIP, `opengeos/geoai` integration); HPC
+  quickstart and SLURM-or-bash smoke-test suite.
 
 - **Jain, Bhavika** ([@bhavika1512](https://github.com/bhavika1512)) —
   initial Sentinel-1 and Sentinel-2 acquisition pipeline; tiling and

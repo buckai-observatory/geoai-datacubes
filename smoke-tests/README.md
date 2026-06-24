@@ -1,9 +1,10 @@
 # `smoke-tests/`
 
 End-to-end smoke tests that exercise the public surface of
-`geoai-datacubes`: one fetch test per mission (15 of the 18 catalogued
-missions are runnable today; the rest are documented skips), plus
-pipeline tests for `tile_geotiff(nan_handling="auto")`.
+`geoai-datacubes`: one fetch test per mission (23 fetch scripts today,
+covering the 23 user-facing working missions out of the 26 catalogued;
+Sentinel-5P, GEDI-L4B, and GEBCO are stubs without runnable tests),
+plus pipeline tests for `tile_geotiff(nan_handling="auto")`.
 
 ## What's here
 
@@ -23,6 +24,14 @@ pipeline tests for `tile_geotiff(nan_handling="auto")`.
 | `fetch_hls-l30.sh`           | HLS Landsat leg                                     | yes |
 | `fetch_jrc-gsw.sh`           | JRC Global Surface Water (static)                   | yes |
 | `fetch_3dep.sh`              | USGS 3DEP DEM (US-only, static)                     | yes |
+| `fetch_copernicus-dem-90.sh` | Copernicus GLO-90 DEM (static)                      | yes |
+| `fetch_alos-palsar.sh`       | ALOS PALSAR L-band SAR annual mosaic                | yes |
+| `fetch_alos-fnf.sh`          | ALOS Forest / Non-Forest annual mosaic              | yes |
+| `fetch_usda-cdl.sh`          | USDA Cropland Data Layer (US-only)                  | yes |
+| `fetch_lcmap-conus.sh`       | LCMAP CONUS annual LULC (US-only)                   | yes |
+| `fetch_io-lulc.sh`           | IO + Esri annual LULC (global)                      | yes |
+| `fetch_chloris-biomass.sh`   | Chloris aboveground biomass (global, CC-BY-NC-SA)   | yes |
+| `fetch_hansen-gfc.sh`        | Hansen Global Forest Change v1.11 (`direct_http`)   | yes |
 | `fetch_planetscope-4b.sh`    | PlanetScope 4-band — **skipped without `PL_API_KEY`** | yes |
 | `fetch_planetscope-8b.sh`    | PlanetScope 8-band — **skipped without `PL_API_KEY`** | yes |
 | `fetch_sentinel-5p.sh`       | Sentinel-5P TROPOMI — **always skipped** (NetCDF stub) | n/a |

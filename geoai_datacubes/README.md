@@ -8,8 +8,8 @@ this file is the developer-facing overview of the package layout.
 
 | Subpackage | Purpose | Key public API |
 |---|---|---|
-| [`fetch/`](fetch/) | Download raw imagery + ancillary layers from 15 public missions plus commercial PlanetScope. | `resolve_aoi`, `fetch_sentinel_data`, `MISSION_PROFILES`, `get_profile` |
-| [`preprocessing/`](preprocessing/) | Turn raw fetched layers into AI-ready cubes (multi-mission fusion, tiling, Zarr/LMDB export, on-the-fly PyTorch sampling). | `fuse_response_tiffs`, `tile_geotiff`, `LazyTileDataset`, `geotiff_to_zarr`, `normalize_band`, `compute_ndvi`, `cloud_mask` |
+| [`fetch/`](fetch/) | Download raw imagery + ancillary layers from 26 public missions plus commercial PlanetScope. | `resolve_aoi`, `fetch_sentinel_data`, `MISSION_PROFILES`, `get_profile` |
+| [`preprocessing/`](preprocessing/) | Turn raw fetched layers into AI-ready cubes (multi-mission fusion, tiling, Zarr/LMDB export, on-the-fly PyTorch sampling, band-subset hand-off to PIL-based loaders). | `fuse_response_tiffs`, `tile_geotiff`, `LazyTileDataset`, `geotiff_to_zarr`, `normalize_band`, `compute_ndvi`, `cloud_mask`, `select_bands`, `write_label_uint8`, `BAND_PRESETS` |
 | [`ml_dl/`](ml_dl/) | Downstream ML / DL helpers built on top of the cubes (object detection today; classification / segmentation / super-resolution to follow). | `polygons_to_yolo_tiles`, `train_yolo_detector`, `validate_yolo_model`, `box_iou`, `YOLOBuildingDetector` |
 
 See each subfolder's `README.md` for the per-subpackage detail —
@@ -74,6 +74,13 @@ following the existing per-provider pattern, and dispatch from
 each provider into its own file — the dispatcher's shared mosaic / NaN
 / cloud logic is the lion's share of the file and benefits from
 proximity to the provider wrappers.
+
+For *non-STAC* HTTPS-served missions (Hansen GFC's anonymous Google
+Cloud Storage COGs, GEDI L4B, etc.) the `direct_http` provider class
+is the right fit — declare a `tile_callback` on the mission profile
+that turns an AOI bbox into `(URL, band)` tuples and the generic
+fetcher reads them via `/vsicurl/` like any other COG. The Hansen GFC
+profile is the reference implementation.
 
 ## Versioning
 

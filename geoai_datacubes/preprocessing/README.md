@@ -16,6 +16,9 @@ from geoai_datacubes.preprocessing import (
     normalize_band,         # per-band min/max -> [0, 1]
     compute_ndvi,           # standard (NIR - RED) / (NIR + RED) with eps
     cloud_mask,             # decode SCL / BQA / QA_PIXEL into boolean mask
+    select_bands,           # fused cube -> clean N-band uint8 GeoTIFF (PIL-loader-friendly)
+    write_label_uint8,      # companion: write a uint8 label raster from a fused-cube label band
+    BAND_PRESETS,           # named 3- and 4-band combos: ndwi / nbr / ndsi / rgb_nir / rgb_dem / rgb_sar_vv / ndwi_sar_vv / ndwi_sar_dual / naip
 )
 ```
 
@@ -29,6 +32,7 @@ from geoai_datacubes.preprocessing import (
 | `band_ops.py` | Three small functions used by both `main.py` and tutorial notebook 00: `normalize_band`, `compute_ndvi`, `cloud_mask` |
 | `export_zarr.py` | `geotiff_to_zarr(...)` — chunk-friendly Zarr conversion (recommended for cluster training where COG reads over networked filesystems are slow) |
 | `export_lmdb.py` | LMDB serialization for projects that prefer key-value storage |
+| `band_select.py` | `select_bands(...)` + `write_label_uint8(...)` + `BAND_PRESETS` — subset a fused cube to a clean 3- or 4-band uint8 GeoTIFF using each band's documented `band_meta` normalisation recipe. Bridges the channel-count and `nodata=nan → uint8` mismatches that block PIL-based loaders (`opengeos/geoai` integration; see notebook 03). |
 | `visualize_cloud_mask.py` | Debug helper that overlays the cloud mask on the imagery so you can sanity-check the masking visually |
 
 ## The fused-cube format contract

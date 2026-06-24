@@ -55,26 +55,34 @@ The BuckAI Observatory's mission is to provide **easy-to-use AI tools and tutori
 
 - **Fetches satellite imagery** for any region of interest and date range
   from four interchangeable providers — three of them with no credentials
-  needed. The default `PROVIDER = "auto"` routes each mission to its best
-  free host (Element 84 Earth Search for Sentinel-2 and Copernicus DEM;
-  Microsoft Planetary Computer for Sentinel-1 RTC, Landsat, ESA
-  WorldCover, NAIP, and the newer MODIS / HLS / JRC-GSW / 3DEP
-  additions). Optional commercial PlanetScope is supported through the
-  Planet Orders API. The classical Sentinel Hub Process API path remains
-  available for advanced use.
-- **Fifteen missions** are first-class. The widely-used core: Sentinel-2
-  L2A and L1C, Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM,
-  ESA WorldCover, PlanetScope 4-band and 8-band SuperDove, and NAIP
-  (sub-metre US aerial imagery). The recent additions broaden the
-  package into long-archive time-series, hydrology, and US-specific
-  high-resolution terrain: MODIS Surface Reflectance and Land Surface
-  Temperature (24-year archive at 500 m / 1 km), HLS Harmonized
-  Landsat-Sentinel (30 m pre-harmonised optical), JRC Global Surface
-  Water (30 m static water occurrence), and 3DEP (LIDAR-derived US
-  DEM at 10 m). A documented Sentinel-5P TROPOMI stub covers
-  atmospheric chemistry pending NetCDF reader support. Per-mission
-  band tables, value ranges, and ML normalisation recipes are in
-  [`docs/data_layers.md`](docs/data_layers.md).
+  needed — plus a fifth `direct_http` path for missions outside any STAC
+  catalogue (e.g. Hansen GFC on Google Cloud Storage). The default
+  `PROVIDER = "auto"` routes each mission to its best free host (Element
+  84 Earth Search for Sentinel-2 and Copernicus DEM; Microsoft Planetary
+  Computer for Sentinel-1 RTC, Landsat, ESA WorldCover, NAIP, and the
+  newer MODIS / HLS / JRC-GSW / 3DEP / ALOS / USDA-CDL / LCMAP / IO-LULC /
+  Chloris-Biomass additions). Optional commercial PlanetScope is
+  supported through the Planet Orders API. The classical Sentinel Hub
+  Process API path remains available for advanced use.
+- **Twenty-six missions** are first-class — 16 direct-observation
+  (15 working + 1 stub Sentinel-5P) plus 10 derived products (8 working +
+  2 stubs GEDI-L4B and GEBCO). The widely-used core: Sentinel-2
+  L2A and L1C, Sentinel-1 RTC (SAR), Landsat 8 / 9 C2 L2, Copernicus DEM
+  (GLO-30 and GLO-90), ESA WorldCover, PlanetScope 4-band and 8-band
+  SuperDove, and NAIP (sub-metre US aerial imagery). Long-archive
+  time-series, hydrology, and US-specific high-resolution terrain:
+  MODIS Surface Reflectance and Land Surface Temperature (24-year
+  archive at 500 m / 1 km), HLS Harmonized Landsat-Sentinel (30 m
+  pre-harmonised optical), JRC Global Surface Water (30 m static water
+  occurrence), and 3DEP (LIDAR-derived US DEM at 10 m). Forest /
+  biomass / LULC additions: ALOS PALSAR L-band SAR, ALOS Forest /
+  Non-Forest, Hansen Global Forest Change, USDA Cropland Data Layer,
+  LCMAP CONUS, Impact Observatory annual LULC, and Chloris Aboveground
+  Biomass. A documented Sentinel-5P TROPOMI stub covers atmospheric
+  chemistry pending NetCDF reader support; GEDI-L4B and GEBCO are
+  documented stubs awaiting their respective auth / NetCDF reader
+  paths. Per-mission band tables, value ranges, and ML normalisation
+  recipes are in [`docs/data_layers.md`](docs/data_layers.md).
 - **User-selectable band lists per mission** — each fetch takes a
   `BANDS_<mission>` list, so you ask for exactly the channels your model
   needs (e.g. visible RGB + NIR for true-colour previews, or just B04 + B08
@@ -345,7 +353,7 @@ The pipeline will find the least-cloudy scene, download it, mask clouds, compute
 
 ## Data providers — when to use which
 
-The pipeline supports **fifteen missions** end-to-end. The full per-mission reference (bands, native resolutions, value ranges, normalisation recipes, tile-seam caveats) lives in [`docs/data_layers.md`](docs/data_layers.md); this section covers a widely-used subset and the **four interchangeable providers** that serve them. The default is `"auto"`, which routes each mission to the best free option. (The table below is the *capability* matrix; for a *throughput* discussion — which provider wins for a Colab demo vs which one wins for a continental-scale workflow — see [`docs/providers.md`](docs/providers.md).)
+The pipeline supports **twenty-six missions** end-to-end. The full per-mission reference (bands, native resolutions, value ranges, normalisation recipes, tile-seam caveats) lives in [`docs/data_layers.md`](docs/data_layers.md); this section covers a widely-used subset and the **four interchangeable providers** that serve them, plus a fifth `direct_http` path for missions that don't live in any STAC catalogue (e.g. Hansen GFC). The default is `"auto"`, which routes each mission to the best free option. (The table below is the *capability* matrix; for a *throughput* discussion — which provider wins for a Colab demo vs which one wins for a continental-scale workflow — see [`docs/providers.md`](docs/providers.md).)
 
 | | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
 |---|---|---|---|---|
@@ -360,13 +368,21 @@ The pipeline supports **fifteen missions** end-to-end. The full per-mission refe
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
 | **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, and every newer addition below | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
 
-**Newer additions** broadening the package — all served by Microsoft Planetary Computer, no alternative provider yet:
+**Newer additions** broadening the package — served by Microsoft Planetary Computer (with one `direct_http` exception, called out below), no alternative provider yet:
 
 - `MODIS_SR` and `MODIS_LST` — 500 m / 1 km daily-equivalent, 24-year archive; the workhorse for time-series, phenology, climate baselines.
 - `HLS_S30` and `HLS_L30` — 30 m pre-harmonised Landsat + Sentinel-2, so you don't have to harmonise yourself.
 - `JRC-GSW` — 30 m static global surface water (occurrence, seasonality, extent, transitions).
 - `3DEP` — 10 m (or 30 m) LIDAR-derived US DEM; the US-specific complement to Copernicus DEM.
+- `Copernicus-DEM-90` — 90 m global DEM; the coarser companion to GLO-30, useful for continental-scale workflows or coastal AOIs where GLO-30 has interferometric artefacts.
+- `ALOS-PALSAR` and `ALOS-FNF` — 25 m annual L-band SAR backscatter and a derived forest / non-forest mask; the standard inputs for forest-biomass studies.
+- `USDA-CDL` — 30 m annual US cropland classification (~100 crop classes).
+- `LCMAP-CONUS` — 30 m annual US LULC (1985–2021), the longest US LULC time series in the registry.
+- `IO-LULC` — 10 m annual global LULC (2017–2023; Impact Observatory + Esri).
+- `Chloris-Biomass` — ~4.6 km annual global aboveground biomass (CC-BY-NC-SA).
+- `Hansen-GFC` — 30 m annual forest-change raster (2000–2023); the first mission served through the `direct_http` provider (anonymous Google Cloud Storage COGs, no STAC).
 - `Sentinel-5P` — atmospheric chemistry (NO2, CO, SO2, CH4, O3, HCHO, …); **stub** only, pending NetCDF reader support.
+- `GEDI-L4B` and `GEBCO` — documented stubs; GEDI needs NASA Earthdata Login wiring, GEBCO needs a download-and-cache extension to the `direct_http` fetcher.
 
 See [`docs/data_layers.md`](docs/data_layers.md) for the full bands and normalisation recipes for these.
 
@@ -376,13 +392,16 @@ See [`docs/data_layers.md`](docs/data_layers.md) for the full bands and normalis
 |---|---|---|
 | `Sentinel-2` / `Sentinel-2-L1C` | `earthsearch` | Faster — no per-asset SAS sign step |
 | `Sentinel-1` | `planetary_computer` | Gives you the analysis-ready RTC product |
-| `Landsat` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
+| `Landsat` / `Landsat-8` / `Landsat-9` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
 | `Copernicus-DEM` | `earthsearch` | Both work; ES skips the sign step |
+| `Copernicus-DEM-90` | `planetary_computer` | PC-only |
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
 | `MODIS_SR` / `MODIS_LST` / `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
+| `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
+| `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in explicitly with `PROVIDER="planet"` and a key in `.env` |
-| `Sentinel-5P` | not routed (stubbed) | NetCDF / HDF5 assets — needs an `xarray`-based reader path before the dispatcher can wire it up |
+| `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Sentinel-5P needs an xarray-based NetCDF reader; GEDI-L4B needs NASA Earthdata Login auth; GEBCO needs a download-and-cache extension to the `direct_http` fetcher |
 
 The output `<Mission>_full_size.tiff` is functionally identical regardless of provider; the rest of the pipeline (cloud masking, NDVI, tiling, export) doesn't care which one was used.
 
@@ -519,8 +538,8 @@ These are the main knobs you can turn (set in `geoai_datacubes/main.py`).
 
 | Parameter | What it controls | Example |
 |---|---|---|
-| `PROVIDER` | Where to fetch the imagery from | `"auto"` (default), `"earthsearch"`, `"planetary_computer"`, `"planet"` (commercial), or `"sentinelhub"` |
-| `MISSION` | Which satellite to use | `"Sentinel-2"`, `"Sentinel-2-L1C"`, `"Sentinel-1"`, `"Landsat"`, `"Copernicus-DEM"`, `"ESA-WorldCover"`, `"PlanetScope-4b"`, or `"PlanetScope-8b"` |
+| `PROVIDER` | Where to fetch the imagery from | `"auto"` (default), `"earthsearch"`, `"planetary_computer"`, `"planet"` (commercial), `"sentinelhub"`, or `"direct_http"` (non-STAC HTTPS COGs) |
+| `MISSION` | Which satellite to use | Any of the 26 user-facing missions in `MISSION_PROFILES` — Sentinel-2 / Sentinel-2-L1C / Sentinel-1 / Landsat / Copernicus-DEM / Copernicus-DEM-90 / ESA-WorldCover / NAIP / PlanetScope-4b / PlanetScope-8b / MODIS_SR / MODIS_LST / HLS_S30 / HLS_L30 / JRC-GSW / 3DEP / ALOS-PALSAR / ALOS-FNF / USDA-CDL / LCMAP-CONUS / IO-LULC / Chloris-Biomass / Hansen-GFC. Sentinel-5P / GEDI-L4B / GEBCO are documented stubs. See [`docs/data_layers.md`](docs/data_layers.md). |
 | `AOI` | Area of interest, in any of four formats (see [Defining the AOI](#defining-the-aoi)). Resolved to `ROI` via `resolve_aoi()`. | `{"bbox": [-83.077, 39.964, -82.983, 40.036]}` (default: OSU, Columbus OH) |
 | `ROI` | The resolved bounding box `[lon_min, lat_min, lon_max, lat_max]` in WGS84 — populated automatically from `AOI` | `[-83.077, 39.964, -82.983, 40.036]` |
 | `TIME_RANGE` | Date window to search within `(start, end)` | `("2024-06-15", "2024-06-20")` |
@@ -642,7 +661,7 @@ geoai-datacubes/
  ├── main.py                         # CLI entry: edit USER INPUT, then `python -m geoai_datacubes.main`
  ├── fetch/                          # data acquisition
  │ ├── aoi.py                        # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
- │ ├── missions.py                   # the 15-mission registry (MISSION_PROFILES)
+ │ ├── missions.py                   # the 26-mission registry (MISSION_PROFILES)
  │ ├── fetch_data.py                 # generic STAC dispatcher + SH + Planet drivers
  │ ├── config.py                     # SH OAuth env helper
  │ ├── parallel_fetch.py             # ThreadPoolExecutor wrapper

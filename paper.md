@@ -32,7 +32,7 @@ bibliography: paper.bib
 Earth-observation imagery into AI-ready data cubes for machine-learning and
 deep-learning workflows. From a single configuration block — a region of
 interest, a time window, a set of bands — it fetches, co-registers, fuses, and
-tiles imagery from **23 missions** spanning direct sensor observations
+tiles imagery from **26 missions** spanning direct sensor observations
 (Sentinel-2 L1C and L2A, Sentinel-1 RTC, Landsat 8/9 Collection-2 Level-2,
 NAIP, PlanetScope 4-band and 8-band, MODIS surface reflectance and land-surface
 temperature, HLS Harmonized Landsat–Sentinel, ALOS PALSAR L-band SAR,
@@ -71,15 +71,18 @@ pixels; per-pixel cloud masking via Sentinel-2 SCL, Landsat BQA, HLS Fmask, or
 PlanetScope UDM2 bit-decoded layers; four spatially-aware train / validation /
 test split strategies (random, block, stripes, region-based) that the user can
 swap with a single argument; and persistent metadata embedded in every output
-tile. Three extensively documented Jupyter notebooks ship with the repository:
+tile. Four extensively documented Jupyter notebooks ship with the repository:
 a *grand tour* of every mission and data-pipeline feature, an *LULC
 classification* notebook that trains and compares four standard models
 (logistic regression, random forest, XGBoost, and a lightweight U-Net)
-end-to-end on a fused cube with a persisted per-class leaderboard CSV, and a
+end-to-end on a fused cube with a persisted per-class leaderboard CSV, a
 *building-detection* notebook that fine-tunes YOLOv8 on NAIP + Microsoft US
 Building Footprints and compares it to two pretrained alternatives (OWLv2
-zero-shot and a community-trained YOLO from Hugging Face). All three notebooks
-are self-bootstrapping on Google Colab. A `smoke-tests/` folder ships
+zero-shot and a community-trained YOLO from Hugging Face), and an
+*integration* notebook that composes `geoai-datacubes` with the `opengeos/geoai`
+modelling library [@wu2026geoai] across a multi-AOI Cleveland / Cincinnati /
+Columbus experiment with in-distribution and held-out-city evaluations. All
+four notebooks are self-bootstrapping on Google Colab. A `smoke-tests/` folder ships
 SLURM-or-bash scripts for every mission and a quickstart for running the
 pipeline on a SLURM cluster (Unity, OSC) — each script is a valid SBATCH job
 *and* a valid `bash` invocation.
@@ -185,7 +188,7 @@ normalisation, and no spatially-aware splits.
 `geoai-datacubes` is a *data-engineering-depth* package and fills that gap
 by design. We do not provide foundation-model wrappers or a model registry;
 instead, we focus on the upstream pieces a researcher must get right
-*before* a model can be trained: 23 missions in a unified registry, four
+*before* a model can be trained: 26 missions in a unified registry, four
 provider classes plus a non-STAC `direct_http` path, declarative per-band
 metadata, multi-mission fusion onto a common grid, spatially-aware
 train / validation / test splits, automatic NaN / cloud / QA handling per
@@ -194,10 +197,18 @@ multi-band COG with mission-prefixed band descriptions — exactly the
 input that `geoai`'s downstream training utilities and TerraTorch
 foundation-model loaders expect, so the two packages chain naturally: this
 package answers *how do I get a multi-mission AOI ready for training?*,
-and `geoai` answers *which model do I train on it, and how?*. The two
-share `torchgeo`-style raster datasets as the lingua franca, target
-overlapping audiences, and we recommend using them together rather than
-in competition.
+and `geoai` answers *which model do I train on it, and how?*. A bundled
+`select_bands` helper + `BAND_PRESETS` dict bridges the most common
+hand-off pitfalls — `geoai-py`'s PIL-based loaders reject ≥5-channel
+inputs and `semantic_segmentation` rejects `nodata=nan` cubes after the
+uint8 cast — by writing a clean 3- or 4-band uint8 GeoTIFF using each
+band's documented `band_meta` normalisation recipe. Notebook 03 in
+this repository demonstrates the end-to-end hand-off across a
+multi-AOI Cleveland / Cincinnati / Columbus experiment, with honest
+reporting of in-distribution F1 ≈ 0.95 and held-out-city F1 ≈ 0.05.
+The two packages share `torchgeo`-style raster datasets as the lingua
+franca, target overlapping audiences, and we recommend using them
+together rather than in competition.
 
 ## Other related tooling
 
@@ -210,7 +221,7 @@ split, or HPC-integration concerns that `geoai-datacubes` exists to solve.
 
 # Software features
 
-- **23 missions** spanning direct sensor observations (Sentinel-2 L2A and L1C,
+- **26 missions** spanning direct sensor observations (Sentinel-2 L2A and L1C,
   Sentinel-1 RTC, Landsat 8/9 C2 L2, NAIP, PlanetScope 4-band and 8-band,
   MODIS surface reflectance and land-surface temperature, HLS Harmonized
   Landsat–Sentinel, ALOS PALSAR L-band SAR, Copernicus DEM at 30 m and 90 m,

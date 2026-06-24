@@ -26,14 +26,33 @@ Joachim Moortgat.
   additions:
   - STAC-based no-credentials providers (Element 84 Earth Search,
     Microsoft Planetary Computer, Planet);
-  - Copernicus DEM and ESA WorldCover mission profiles;
+  - Copernicus DEM (GLO-30 and GLO-90) and ESA WorldCover mission profiles;
   - Smear-protected reprojection;
   - Polygon-aware Sentinel-1 same-day mosaicking;
   - Four spatially-aware train / val / test split strategies;
   - On-the-fly `LazyTileDataset` for PyTorch;
   - PlanetScope (4-band and 8-band) provider with Orders API and UDM2;
-  - Two pedagogical tour notebooks (data acquisition and ML/DL training);
-  - Per-class LULC benchmark suite.
+  - Mission inventory expanded to 26 user-facing missions (16
+    direct-observation + 10 derived), including ALOS-PALSAR, ALOS-FNF,
+    Hansen-GFC, USDA-CDL, LCMAP-CONUS, IO-LULC, Chloris-Biomass, MODIS_SR /
+    MODIS_LST, HLS_S30 / HLS_L30, JRC-GSW, 3DEP, and documented stubs for
+    Sentinel-5P, GEDI-L4B, and GEBCO;
+  - A fifth provider class — `direct_http` — for non-STAC missions such
+    as Hansen GFC's anonymous Google Cloud Storage COGs;
+  - Declarative per-band `band_meta` taxonomy (`kind` + normalisation
+    recipe) driving `nan_handling="auto"` and ML-ready normalisation;
+  - `pyproject.toml` with optional-dependency extras (`[ml]`, `[geoai]`,
+    `[notebooks]`, `[planet]`, `[dev]`, `[all]`) and a recommended
+    pure-mamba install path;
+  - `select_bands` / `write_label_uint8` / `BAND_PRESETS` helper for
+    clean hand-off to `opengeos/geoai` and other PIL-based loaders;
+  - Four pedagogical Colab-ready notebooks: the data-pipeline grand
+    tour, the LULC classification end-to-end, a YOLO building-detection
+    demo on NAIP, and an `opengeos/geoai` integration notebook with a
+    multi-AOI held-out-city experiment;
+  - Per-class LULC benchmark suite;
+  - HPC quickstart and SLURM-or-bash smoke tests for every working
+    mission.
 
 ## Acknowledgement of earlier contributors
 
