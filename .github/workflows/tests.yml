@@ -1,0 +1,55 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel an in-progress run on a branch when a newer commit lands on the
+# same branch -- spares CI minutes on quick-succession pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # setuptools_scm needs the full history (or at least the latest
+          # tag) to derive the version. shallow=0 gives it everything.
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install the package + test deps
+        # `pip install -e .[dev]` brings in pytest + ruff + pre-commit on
+        # top of the core dependencies (numpy, rasterio, pystac, ...).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run the test suite
+        run: pytest -v --color=yes
+
+      - name: Lint with ruff (advisory only)
+        # Ruff config lives in pyproject.toml. We run it but don't fail
+        # the build on lint -- that keeps CI focused on correctness while
+        # the codebase ages into the rule set.
+        run: |
+          ruff check geoai_datacubes tests || true
+          ruff format --check geoai_datacubes tests || true

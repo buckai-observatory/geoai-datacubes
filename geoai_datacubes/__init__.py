@@ -19,4 +19,18 @@ See ``docs/data_layers.md`` for the per-mission bands / value-ranges /
 normalisation reference.
 """
 
-__version__ = "0.1.0"
+# Version is driven by setuptools_scm at build/install time. The
+# `_version.py` file is auto-generated on every editable / wheel install
+# (see pyproject.toml -> [tool.setuptools_scm]); the importlib.metadata
+# branch covers wheel installs that don't ship the helper module.
+try:
+    from ._version import version as __version__  # type: ignore[import-not-found]
+except ImportError:
+    try:
+        from importlib.metadata import version as _pkg_version, PackageNotFoundError
+        try:
+            __version__ = _pkg_version("geoai-datacubes")
+        except PackageNotFoundError:
+            __version__ = "0.0.0+unknown"
+    except ImportError:
+        __version__ = "0.0.0+unknown"

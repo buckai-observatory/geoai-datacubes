@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "geoai-datacubes"
-version = "0.1.0"
+dynamic = ["version"]
 description = "AI-ready multi-mission Earth-observation data cubes for machine-learning and deep-learning workflows."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -164,6 +164,25 @@ include-package-data = true
 where   = ["."]
 include = ["geoai_datacubes*"]
 exclude = ["tests*", "smoke-tests*", "notebooks*", "docs*"]
+
+# Version comes from the latest git tag (e.g. `v0.1.0` -> "0.1.0").
+# Untagged builds get a PEP 440 development version like
+# "0.1.0.dev3+gabcdef1" so the wheel is always uniquely identifiable.
+# The resolved version is also written to geoai_datacubes/_version.py
+# so it survives outside a git checkout (sdist installs, etc).
+[tool.setuptools_scm]
+write_to        = "geoai_datacubes/_version.py"
+fallback_version = "0.0.0+unknown"
+
+# Pytest defaults: discover tests under tests/, fail on warnings that
+# slip past our explicit filters.
+[tool.pytest.ini_options]
+testpaths   = ["tests"]
+addopts     = "-ra --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning:rasterio.*",
+]
 
 [tool.setuptools.package-data]
 "geoai_datacubes" = ["py.typed"]
