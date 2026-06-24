@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use geoai-datacubes in your research, please cite it using the metadata below."
+title: "geoai-datacubes: AI-ready multi-mission Earth-observation data cubes for machine-learning and deep-learning workflows"
+authors:
+  - family-names: Moortgat
+    given-names: Joachim
+    email: moortgat.1@osu.edu
+    affiliation: "The Ohio State University -- BuckAI Observatory"
+    orcid: "https://orcid.org/0000-0002-0259-3597"
+repository-code: "https://github.com/buckai-observatory/geoai-datacubes"
+url: "https://github.com/buckai-observatory/geoai-datacubes"
+license: MIT
+version: "0.1.0"
+date-released: "2026-06-24"
+# Concept DOI: always resolves to the latest version on Zenodo.
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20829119"
+    description: "Concept DOI (always-latest version)"
+  - type: doi
+    value: "10.5281/zenodo.20829120"
+    description: "Version DOI for v0.1.0"
+keywords:
+  - remote sensing
+  - earth observation
+  - satellite imagery
+  - data cubes
+  - machine learning
+  - geospatial
+  - STAC
+  - Sentinel
+  - Landsat
+  - NAIP
+  - MODIS
+  - ALOS PALSAR
+  - Copernicus DEM
+  - HLS
+  - PlanetScope
+abstract: >-
+  geoai-datacubes is an open-source Python pipeline that turns raw multi-mission
+  satellite imagery into AI-ready data cubes for machine-learning and
+  deep-learning workflows. From a single configuration block -- a region of
+  interest, a time window, a set of bands -- it fetches, co-registers, fuses,
+  and tiles imagery from 26 missions spanning direct sensor observations
+  (Sentinel-2 L1C and L2A, Sentinel-1 RTC, Landsat 8/9, NAIP, PlanetScope,
+  MODIS, HLS, ALOS PALSAR, Copernicus DEM, 3DEP, Sentinel-5P) and derived
+  products (ESA WorldCover, JRC-GSW, ALOS-FNF, Hansen-GFC, USDA-CDL, LCMAP,
+  IO-LULC, Chloris-Biomass, GEDI-L4B, GEBCO). It ships four interchangeable
+  data providers (Earth Search, Microsoft Planetary Computer, Sentinel Hub,
+  Planet Orders API) plus a non-STAC direct_http path for missions on
+  anonymous cloud storage, a declarative per-band normalisation taxonomy,
+  multi-mission fusion onto a common UTM grid, spatially-aware
+  train/val/test splits, four pedagogical Colab-ready notebooks, and an
+  85-test automated test suite running on GitHub Actions.

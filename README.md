@@ -6,6 +6,7 @@
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![tests](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/geoai-datacubes.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/geoai-datacubes/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg?style=flat-square)](#supported-platforms)
 [![Earth Observation](https://img.shields.io/badge/focus-Earth%20Observation-2E7D32.svg?style=flat-square)](https://buckai-observatory.org)
