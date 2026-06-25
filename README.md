@@ -683,7 +683,7 @@ geoai-datacubes/
 │   └── building_footprints_oh_3cities_5mi.gpkg  # for the building-detection notebook
 ├── slurm_examples/ # generic SBATCH templates for HPC clusters
 ├── paper.md # JOSS-format paper draft
-├── HISTORY.md # project timeline
+├── CHANGELOG.md # project timeline
 ├── CONTRIBUTORS.md # contributor list
 └── geoai_datacubes/                 # Python package
  ├── README.md                       # package overview + how to extend
@@ -749,7 +749,7 @@ This project was developed over approximately one year by
 **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**;
 **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou (Amy)**; and
 **Moortgat, Joachim** (principal investigator) at The Ohio State University. Initial prototyping began in August 2025 in a
-separate repository (see [`HISTORY.md`](HISTORY.md) for the full
+separate repository (see [`CHANGELOG.md`](CHANGELOG.md) for the full
 timeline) and the codebase moved to its current home at
 `github.com/buckai-observatory/geoai-datacubes` in December 2025.
 

@@ -189,7 +189,7 @@ the doc update for later:
 * the module-level README under the directory you modified
   (`geoai_datacubes/<subpkg>/README.md`)
 * `paper.md` if your change affects the JOSS-paper narrative
-* `HISTORY.md` for visible behaviour changes
+* `CHANGELOG.md` for visible behaviour changes
 
 `docs/HPC_RUNBOOK.md` is intentionally local-only and is excluded
 from git (see `.gitignore`); please don't push your local copy.
@@ -216,14 +216,13 @@ ships in the repo. When you edit one:
 
 ## 6. Code of conduct
 
-We follow the **Contributor Covenant v2.1**
-(<https://www.contributor-covenant.org/version/2/1/code_of_conduct/>).
-In one sentence: be respectful, assume good faith, and remember that
-this is an academic project run by humans with limited bandwidth.
+We follow the **Contributor Covenant v2.1**; see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+for the full text and the reporting / enforcement workflow. In one sentence:
+be respectful, assume good faith, and remember that this is an academic
+project run by humans with limited bandwidth.
 
-If you experience or witness behaviour that violates the Covenant,
-contact [moortgat.1@osu.edu](mailto:moortgat.1@osu.edu). Reports are
-handled confidentially.
+Violations or concerns: [moortgat.1@osu.edu](mailto:moortgat.1@osu.edu).
+Reports are handled confidentially.
 
 ---
 
