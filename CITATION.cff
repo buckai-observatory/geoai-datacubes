@@ -5,8 +5,20 @@ authors:
   - family-names: Moortgat
     given-names: Joachim
     email: moortgat.1@osu.edu
-    affiliation: "The Ohio State University -- BuckAI Observatory"
+    affiliation: "The Ohio State University -- School of Earth Sciences & BuckAI Observatory"
     orcid: "https://orcid.org/0000-0002-0259-3597"
+  - family-names: Jain
+    given-names: Bhavika
+    affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+  - family-names: Radhakrishnan
+    given-names: Aswathnarayan
+    affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+  - family-names: Chowdhury
+    given-names: Satyaki Roy
+    affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+  - family-names: Hsu
+    given-names: Hsiao Jou (Amy)
+    affiliation: "The Ohio State University -- School of Earth Sciences"
 repository-code: "https://github.com/buckai-observatory/geoai-datacubes"
 url: "https://github.com/buckai-observatory/geoai-datacubes"
 license: MIT

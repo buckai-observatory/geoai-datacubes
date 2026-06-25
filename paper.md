@@ -16,12 +16,23 @@ tags:
 authors:
   - name: Joachim Moortgat
     orcid: 0000-0002-0259-3597
+    corresponding: true
     affiliation: '1, 2'
+  - name: Bhavika Jain
+    affiliation: '3'
+  - name: Aswathnarayan Radhakrishnan
+    affiliation: '3'
+  - name: Satyaki Roy Chowdhury
+    affiliation: '3'
+  - name: Hsiao Jou (Amy) Hsu
+    affiliation: '1'
 affiliations:
   - name: 'School of Earth Sciences, The Ohio State University, Columbus, OH, USA'
     index: 1
   - name: 'BuckAI Observatory, College of Arts and Sciences, The Ohio State University, Columbus, OH, USA'
     index: 2
+  - name: 'Department of Computer Science and Engineering, The Ohio State University, Columbus, OH, USA'
+    index: 3
 date: 2026-06-25
 bibliography: paper.bib
 ---
@@ -140,15 +151,13 @@ multi-mission-fusion, spatially-aware-split, or HPC-integration concerns that
 
 This work was supported by The Ohio State University's BuckAI Observatory and
 School of Earth Sciences. The pipeline's foundational Sentinel-1 / Sentinel-2
-acquisition and tiling layer was prototyped by Bhavika Jain and
-Aswathnarayan Radhakrishnan (CSE, OSU) in August–October 2025; subsequent
-extensions and the present documentation are by the author. Code review and
-testing during 2026 were contributed by Satyaki Roy Chowdhury (CSE, OSU) and
-Hsiao Jou (Amy) Hsu (Earth Sciences, OSU). Open data are provided by ESA
-Copernicus, USGS, and the Copernicus DEM programme; cloud-hosted imagery by
-Element 84 and Microsoft Planetary Computer; commercial PlanetScope by Planet's
-Education and Research Program. Code development since May 2026 was
-substantially accelerated by Claude Code (Anthropic) under continuous human
-direction and review.
+acquisition and tiling layer was prototyped by Jain and Radhakrishnan in
+August–October 2025; the multi-mission expansion, ML/DL notebooks, and the
+present documentation are by Moortgat; review and testing during 2026 by
+Chowdhury and Hsu. Open data are provided by ESA Copernicus, USGS, and the
+Copernicus DEM programme; cloud-hosted imagery by Element 84 and Microsoft
+Planetary Computer; commercial PlanetScope by Planet's Education and Research
+Program. Code development since May 2026 was substantially accelerated by
+Claude Code (Anthropic) under continuous human direction and review.
 
 # References
