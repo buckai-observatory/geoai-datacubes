@@ -1,14 +1,65 @@
 # Provider trade-offs: convenience vs throughput at scale
 
-The top-level [README](../README.md#data-providers--when-to-use-which) has
-a capability matrix -- which provider serves which mission, which need
-credentials, which has server-side band math. This document covers the
-**other** axis users hit as soon as they go beyond a Colab demo:
-**throughput**. The same provider that wins for one AOI on a laptop can
-lose by an order of magnitude on a continent-scale workflow.
+The pipeline supports **26 missions** end-to-end across four
+interchangeable providers — three of them with no credentials needed —
+plus a fifth `direct_http` path for missions that don't live in any STAC
+catalogue (e.g. Hansen GFC). The default is `PROVIDER = "auto"`, which
+routes each mission to the best free option.
 
-Recommendations near the bottom; the reasoning lives in the per-provider
-sections.
+This document covers two axes: **(1) capability** — which provider
+serves which mission, which needs credentials, which has server-side
+band math — and **(2) throughput** — the same provider that wins for
+one AOI on a laptop can lose by an order of magnitude on a
+continent-scale workflow.
+
+---
+
+## Quick capability matrix
+
+| | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
+|---|---|---|---|---|
+| **Credentials** | None | None | `PL_API_KEY` in `.env` | Free Sentinel Hub OAuth in a `.env` |
+| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Planet Labs Data + Orders API | Sentinel Hub Process API |
+| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | — | ✅ |
+| **Sentinel-2 L1C** | ✅ | ✅ | — | (not wired) |
+| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | — | ✅ |
+| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | — | ✅ |
+| **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — |
+| **NAIP (1 m US aerial)** | — | ✅ | — | — |
+| **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
+
+**Newer additions** (MODIS, HLS, JRC-GSW, 3DEP, Copernicus-DEM-90,
+ALOS-PALSAR, ALOS-FNF, USDA-CDL, LCMAP-CONUS, IO-LULC, Chloris-Biomass)
+are all served by Microsoft Planetary Computer; `Hansen-GFC` is served
+by the `direct_http` provider (anonymous Google Cloud Storage COGs,
+no STAC). `Sentinel-5P`, `GEDI-L4B`, and `GEBCO` are documented stubs
+pending NetCDF reader or auth wiring; see [`data_layers.md`](data_layers.md)
+for the full bands and normalisation recipes.
+
+## `PROVIDER = "auto"` routing (the default)
+
+| Mission | Routed to | Why |
+|---|---|---|
+| `Sentinel-2` / `Sentinel-2-L1C` | `earthsearch` | Faster — no per-asset SAS sign step |
+| `Sentinel-1` | `planetary_computer` | Gives you the analysis-ready RTC product |
+| `Landsat` / `Landsat-8` / `Landsat-9` | `planetary_computer` | Avoids `usgs-landsat`'s requester-pays bucket |
+| `Copernicus-DEM` | `earthsearch` | Both work; ES skips the sign step |
+| `Copernicus-DEM-90` | `planetary_computer` | PC-only |
+| `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
+| `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
+| `MODIS_SR` / `MODIS_LST` / `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
+| `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
+| `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
+| `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
+| `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Pending NetCDF reader / Earthdata-Login / cache-download work |
+
+The output `<Mission>_full_size.tiff` is functionally identical
+regardless of provider; the rest of the pipeline (cloud masking, NDVI,
+tiling, export) doesn't care which one was used.
+
+Switching to a paid / advanced provider (Sentinel Hub or Planet) needs
+a one-time credential setup; see [`credentials.md`](credentials.md).
 
 ---
 
