@@ -568,7 +568,7 @@ def _resolve_region_specs(spec_dict):
         if isinstance(spec, (list, tuple)) and len(spec) == 4:
             out[name] = [float(v) for v in spec]
         elif isinstance(spec, dict):
-            from aoi import resolve_aoi
+            from ..fetch.aoi import resolve_aoi
             out[name] = resolve_aoi(spec)
         else:
             raise ValueError(
