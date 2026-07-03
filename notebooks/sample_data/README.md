@@ -9,7 +9,9 @@ sections below.
 ## `building_footprints_oh_3cities_5mi.gpkg`
 
 A geometry-only **GeoPackage** of building footprints consumed by
-[`notebooks/02_building_detection.ipynb`](../02_building_detection.ipynb).
+[`notebooks/02_building_detection.ipynb`](../02_building_detection.ipynb) —
+the in-development object-detection scaffold; see that notebook's top
+cell for its work-in-progress status.
 
 **Contents:** 83,459 building polygons in WGS84 (EPSG:4326), covering
 three 5-mi square AOIs centred on Columbus, Cincinnati, and Cleveland

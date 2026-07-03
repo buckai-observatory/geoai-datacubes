@@ -55,8 +55,8 @@ This single env is enough for every notebook in the repo:
 
 * `00_geoai_datacubes_tour.ipynb` — multi-mission tour
 * `01_classification.ipynb` — RF / XGBoost / U-Net water classification
-* `02_building_detection.ipynb` — YOLOv8 + OWLv2 + HF YOLO building detection
 * `03_with_opengeos_geoai.ipynb` — the two-package interop demo
+* `02_building_detection.ipynb` — YOLOv8 + OWLv2 + HF YOLO building detection *(in-development scaffold, not part of the reviewed release)*
 
 ### Slimmer installs (only the deps you'll actually use)
 

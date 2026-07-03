@@ -27,8 +27,8 @@ geoai-datacubes/
 │   ├── README.md                      # per-notebook walkthrough
 │   ├── 00_geoai_datacubes_tour.ipynb  # multi-mission tour (Colab-ready)
 │   ├── 01_classification.ipynb        # end-to-end ML/DL training (Colab-ready)
-│   ├── 02_building_detection.ipynb    # NAIP + YOLO building detection (Colab-ready)
 │   ├── 03_with_opengeos_geoai.ipynb   # geoai-py integration demo (Colab-ready)
+│   ├── 02_building_detection.ipynb    # NAIP + YOLO building detection (in-development scaffold)
 │   ├── benchmark_lulc_class.py        # per-class binary benchmark CLI
 │   ├── lulc_leaderboard.md            # per-class results table
 │   └── sample_data/                   # bundled inputs for the demo notebooks

@@ -198,8 +198,9 @@ from git (see `.gitignore`); please don't push your local copy.
 
 ## 5. Notebook contributions
 
-The four notebooks under `notebooks/` are pedagogical material that
-ships in the repo. When you edit one:
+The notebooks under `notebooks/` are pedagogical material that ships
+in the repo — three reviewed (00 / 01 / 03) plus one in-development
+scaffold (02, building detection). When you edit one:
 
 * Strip embedded outputs from very-large notebooks before committing
   (`jupyter nbconvert --clear-output --inplace <notebook>` or

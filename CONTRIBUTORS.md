@@ -17,10 +17,11 @@
   taxonomy and per-band normalisation recipes; mission inventory
   expansion (ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass,
   Hansen-GFC, MODIS, HLS, JRC-GSW, 3DEP, GLO-90, plus stubs);
-  `select_bands` / `BAND_PRESETS` hand-off helper; the four
+  `select_bands` / `BAND_PRESETS` hand-off helper; the three reviewed
   pedagogical notebooks (data-pipeline tour, LULC classification,
-  YOLO building detection on NAIP, `opengeos/geoai` integration); HPC
-  quickstart and SLURM-or-bash smoke-test suite.
+  `opengeos/geoai` integration) and an in-development
+  building-detection scaffold on NAIP; HPC quickstart and
+  SLURM-or-bash smoke-test suite.
 
 - **Jain, Bhavika** ([@bhavika1512](https://github.com/bhavika1512)) —
   initial Sentinel-1 and Sentinel-2 acquisition pipeline; tiling and
