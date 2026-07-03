@@ -40,7 +40,12 @@
   Earth Sciences, OSU. Code review and testing. Bathymetry domain
   collaborator (Hsu & Moortgat 2026, *Remote Sensing* 18:1768) whose
   work motivated some of the multi-mission fusion design choices in
-  the pipeline.
+  the pipeline. Filed issues proposing checkpoint/resume support for
+  large multi-temporal exports with STAC retry/backoff, sun/view
+  acquisition-geometry metadata (sun/view azimuth, sun elevation, view
+  incidence angle), configurable cloud-mask dilation for water-scene
+  SCL reliability, and polygon-based ROI/geometry masking with hole
+  support for non-rectangular AOIs (July 2026).
 
 ## AI-assisted development
 
