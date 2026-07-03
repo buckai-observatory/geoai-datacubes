@@ -26,7 +26,7 @@ runs, or one-off SLURM debugging.
 ## 1. Clone the repo
 
 ```bash
-ssh unity                                                # or your usual alias
+ssh <cluster>                                            # your usual SSH alias -- e.g. "unity" for OSU's Unity, "owens" for OSC
 cd $HOME                                                 # or wherever you keep code
 git clone https://github.com/buckai-observatory/geoai-datacubes.git
 cd geoai-datacubes
@@ -34,7 +34,7 @@ cd geoai-datacubes
 
 HTTPS clone needs no credentials (the repo is public). Use the
 `git@github.com:buckai-observatory/geoai-datacubes.git` SSH form only
-if you've registered a Unity-side public key with GitHub and plan to
+if you've registered a cluster-side public key with GitHub and plan to
 `git push` from the cluster — which you usually shouldn't. The cluster
 is for compute; the laptop is for commits.
 
@@ -72,8 +72,9 @@ OK / MISS per package and suggests a single `mamba install` line for
 whatever's missing.
 
 **GPU note.** For CUDA-enabled PyTorch, add `pytorch-cuda=<version>`
-to the `mamba install` line (e.g. `pytorch-cuda=12.1` on Unity). Some
-clusters additionally need `module load cuda/<version>` before Python
+to the `mamba install` line (e.g. `pytorch-cuda=12.1` — check what
+your cluster's `nvidia-smi` reports as the driver's CUDA version and
+pick a matching build). Some clusters additionally need `module load cuda/<version>` before Python
 sees the GPU — check with `nvidia-smi` inside an interactive job. If
 `torch.cuda.is_available()` reports False, the CUDA module is not
 loaded correctly.
@@ -259,7 +260,7 @@ blips, and eventual disconnects. The canonical setup:
 
 ```bash
 # from your laptop — mosh handles roaming / sleep / IP changes
-mosh user@unity.cluster.example.edu
+mosh user@<cluster>.example.edu
 
 # inside the mosh shell, get an interactive compute-node allocation
 srun --partition=interactive --time=12:00:00 \
@@ -300,19 +301,20 @@ the job is done:
 ```bash
 # From your laptop:
 rsync -avh --progress \
-    unity:$HOME/geoai-datacubes/data \
+    <cluster>:$HOME/geoai-datacubes/data \
     ./          # or wherever you want them locally
 
 # Or a specific subset (fused cubes only, skip the raw scene folders):
 rsync -avh --progress \
-    unity:$HOME/geoai-datacubes/fused \
+    <cluster>:$HOME/geoai-datacubes/fused \
     ./
 ```
 
-For very large runs, consider setting up an
-[OSU-side Globus endpoint](https://osu.globus.org/) — it's faster than
-`rsync` over ssh once the transfer sizes go north of a few tens of GB
-and it's resilient to network interruption.
+For very large runs, consider setting up a
+[Globus endpoint](https://www.globus.org/) — most academic HPC
+clusters have one (OSU-affiliated users: <https://osu.globus.org/>).
+It's faster than `rsync` over ssh once the transfer sizes go north of
+a few tens of GB and it's resilient to network interruption.
 
 ---
 
