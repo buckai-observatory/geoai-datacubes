@@ -5,6 +5,24 @@ School of Earth Sciences and the Department of Computer Science and
 Engineering at The Ohio State University, under the direction of
 Joachim Moortgat.
 
+## Released versions
+
+### `0.1.1` — in development
+
+- **Fix** (`tiler`, [#11](https://github.com/buckai-observatory/geoai-datacubes/pull/11), Aswathnarayan "Ash" Radhakrishnan): `_resolve_region_specs` was using a stale absolute import `from aoi import resolve_aoi`, a leftover from the pre-package flat layout. Any call to `split_regions` with an AOI dict (as opposed to a raw bbox list) crashed with `ModuleNotFoundError`. Fixed to `from ..fetch.aoi import resolve_aoi`; adds `tests/test_tiler_regions.py` regression coverage.
+- **Packaging** ([#12](https://github.com/buckai-observatory/geoai-datacubes/issues/12), pending PR): move `torch` and `torchvision` out of the core `dependencies` list and into the `[ml]` extra so the fetch-only install path stays lightweight. Adds friendly `ImportError` messages at the lazy-import sites.
+
+### `0.1.0` — 2026-06-24 — first PyPI release
+
+- Published to PyPI as `geoai-datacubes 0.1.0` via GitHub Actions Trusted Publishing (OIDC).
+- Archived at Zenodo under concept DOI `10.5281/zenodo.20829119` (version DOI for 0.1.0: `10.5281/zenodo.20829120`).
+- Docker image published to `ghcr.io/buckai-observatory/geoai-datacubes` with the full `geoai-cubes` conda-forge stack plus JupyterLab.
+- 26-mission catalogue: 16 direct-observation + 10 derived, spanning Sentinel-1 / 2, Landsat, NAIP, PlanetScope, MODIS, HLS, ALOS PALSAR / FNF, Copernicus DEM (GLO-30 + GLO-90), USGS 3DEP, ESA WorldCover, JRC-GSW, Hansen GFC (via new `direct_http` provider), USDA CDL, LCMAP CONUS, IO-LULC, and Chloris biomass.
+- Declarative per-band `band_meta` taxonomy driving `nan_handling="auto"` and ML-ready normalisation.
+- `select_bands` + `BAND_PRESETS` helper for clean hand-off to `opengeos/geoai` and other PIL-based loaders.
+- Four Colab-ready pedagogical notebooks: data-pipeline grand tour, LULC classification end-to-end, YOLO building detection on NAIP, and `opengeos/geoai` integration with multi-AOI held-out-city experiment.
+- 85-test pytest suite on Python 3.11 + 3.12 with GitHub Actions CI.
+
 ## Timeline
 
 - **August 2025**: Initial prototype development begun by **Bhavika Jain**
