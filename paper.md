@@ -66,24 +66,25 @@ every band on every mission carries a `kind` (`spectral`, `sar`, `elevation`,
 factors and offsets as declared defaults the user can inspect and override
 at the call site. The same taxonomy drives `nan_handling="auto"`, which
 dispatches per-kind fill strategies and drops tiles whose QA bands contain
-NaN. Four self-bootstrapping Colab notebooks ship with the repository: a
-*grand tour* of every mission, an *LULC classification* notebook that
-trains and compares logistic regression, random forest, XGBoost and a
-lightweight U-Net, a *building-detection* notebook that fine-tunes YOLOv8
-on NAIP, and an *integration* notebook that composes `geoai-datacubes`
-with the `opengeos/geoai` modelling library [@wu2026geoai] across a
-multi-AOI Cleveland / Cincinnati / Columbus experiment. A `smoke-tests/`
-folder ships SLURM-or-bash scripts for every mission.
+NaN. Three self-bootstrapping Colab notebooks ship with the repository as
+reviewed examples: a *grand tour* of every mission, an *LULC classification*
+notebook that trains and compares logistic regression, random forest,
+XGBoost and a lightweight U-Net, and an *integration* notebook that
+composes `geoai-datacubes` with the `opengeos/geoai` modelling library
+[@wu2026geoai] across a multi-AOI Cleveland / Cincinnati / Columbus
+experiment. A `smoke-tests/` folder ships SLURM-or-bash scripts for
+every mission.
 
 # Statement of need
 
-Machine-learning research on satellite imagery is bottlenecked by the data
-preparation pipeline, not by the models. A typical workflow stitches together
-vendor-specific SDKs, manually reprojects between coordinate systems,
-hand-rolls cloud masks per mission, decides where in the pipeline to drop or
-fill nodata, chooses per-band normalisation recipes that account for radically
-different value ranges, and writes thousands of tile files to disk before any
-model can be trained. Each step silently degrades the final model: nodata
+As foundation models and pretrained wrappers for Earth observation become one
+`pip install` away, the bottleneck for machine-learning research on satellite
+imagery is more often the data preparation pipeline than the model itself.
+A typical workflow stitches together vendor-specific SDKs, manually reprojects
+between coordinate systems, hand-rolls cloud masks per mission, decides where
+in the pipeline to drop or fill nodata, chooses per-band normalisation recipes
+that account for radically different value ranges, and writes thousands of
+tile files to disk before any model can be trained. Each step silently degrades the final model: nodata
 smeared across cloud boundaries produces systematic biases, integer QA bands
 resampled bilinearly become nonsense, raw DN values feeding CNNs that expect
 [0, 1] normalised input collapse training without an error message.

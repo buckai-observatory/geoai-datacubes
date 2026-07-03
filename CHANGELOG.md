@@ -20,7 +20,7 @@ Joachim Moortgat.
 - 26-mission catalogue: 16 direct-observation + 10 derived, spanning Sentinel-1 / 2, Landsat, NAIP, PlanetScope, MODIS, HLS, ALOS PALSAR / FNF, Copernicus DEM (GLO-30 + GLO-90), USGS 3DEP, ESA WorldCover, JRC-GSW, Hansen GFC (via new `direct_http` provider), USDA CDL, LCMAP CONUS, IO-LULC, and Chloris biomass.
 - Declarative per-band `band_meta` taxonomy driving `nan_handling="auto"` and ML-ready normalisation.
 - `select_bands` + `BAND_PRESETS` helper for clean hand-off to `opengeos/geoai` and other PIL-based loaders.
-- Four Colab-ready pedagogical notebooks: data-pipeline grand tour, LULC classification end-to-end, YOLO building detection on NAIP, and `opengeos/geoai` integration with multi-AOI held-out-city experiment.
+- Three reviewed, Colab-ready pedagogical notebooks (data-pipeline grand tour, LULC classification end-to-end, `opengeos/geoai` integration with multi-AOI held-out-city experiment) plus a fourth in-development scaffold (YOLO building detection on NAIP) kept in the repo but not part of the reviewed release.
 - 85-test pytest suite on Python 3.11 + 3.12 with GitHub Actions CI.
 
 ## Timeline

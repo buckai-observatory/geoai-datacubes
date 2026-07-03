@@ -17,7 +17,7 @@
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> Also Colab-ready: a YOLO building-detection demo on NAIP ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) and an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for all four.
+> Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three. A fourth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
 
 ---
 
@@ -69,7 +69,7 @@ For Docker, pip-only, slimmer installs via `[ml]` / `[geoai]` / `[notebooks]` / 
 
 ## Try the notebooks
 
-The repo ships with **four complementary notebooks** in `notebooks/`. See [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
+The repo ships with **three complementary reviewed notebooks** in `notebooks/` plus one in-development scaffold. See [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
 
 ### 1. The grand tour (start here if you are new)
 
@@ -85,19 +85,19 @@ A pedagogical walkthrough of every feature on the *data* side of the pipeline �
 
 A complete machine-learning workflow that picks up where the tour leaves off. Fetches and fuses Sentinel-2 + Sentinel-1 + Copernicus DEM + ESA WorldCover for **Columbus, Cincinnati, and Cleveland**; trains and compares four standard classifiers (Logistic Regression, Random Forest, XGBoost, and a lightweight U-Net) on a binary target — the chosen ESA WorldCover class vs everything else. The class is a user input at the top, with a per-class quality table. Includes conditional NDWI / NDVI baselines, KMeans unsupervised bonus, multi-modal fusion comparison, threshold tuning on validation, and a collapsible binary-classification metrics explainer. **Cached weights for the default water target ship in the repo** so a fresh Colab launch lands in ~5 min instead of ~30.
 
-### 3. Building detection on NAIP (object detection / YOLO)
-
-[`notebooks/02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-
-The first **object-detection** notebook in the series — switches the modelling problem from per-pixel labelling to one bounding box per individual building. Uses NAIP 1 m aerial imagery and Microsoft US Building Footprints across three Ohio cities (Columbus → train, Cincinnati → val, Cleveland → test). Trains a tiny YOLOv8n detector on CPU and reports mAP@0.5, mAP@0.5–0.95, precision, recall. Includes a NAIP-vs-Sentinel-2 resolution sidebar that motivates the resolution-vs-object-scale trade-off.
-
-### 4. Integration with `opengeos/geoai` (segmentation hand-off)
+### 3. Integration with `opengeos/geoai` (segmentation hand-off)
 
 [`notebooks/03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)
 <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 A worked example of composing `geoai-datacubes` (data-prep front-end) with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling back-end). Builds fused multi-mission cubes for three Ohio cities and hands them off to `geoai-py` in two patterns: pretrained inference via `geoai.segment_water` on a NAIP scene, and custom training via `select_bands` + `geoai.train_segmentation_landcover` + `geoai.semantic_segmentation`. Trains on Cleveland + Cincinnati and **holds Columbus out entirely** — in-distribution F1 reaches ~0.95 while OOD F1 collapses to ~0.05, an honest illustration of the standard remote-sensing-ML reality of training on a handful of AOIs.
+
+### ⚠️ Work in progress: object detection on NAIP
+
+[`notebooks/02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+**In development — not part of the reviewed examples.** This notebook is a scaffold for the first object-detection workflow in the series: YOLOv8 fine-tuned on NAIP 1 m aerial imagery + Microsoft US Building Footprints, with OWLv2 zero-shot and a community-trained YOLO as pretrained baselines. The pipeline runs end-to-end but the trained detector does not converge reliably enough for us to include it as a reviewed example alongside notebooks 00 / 01 / 03. It is kept in the repo as a starting point for object-detection experimentation; contributions and issue reports are welcome.
 
 ---
 

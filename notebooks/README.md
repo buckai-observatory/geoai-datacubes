@@ -7,7 +7,13 @@ without anything pre-existing on your machine.
 
 *Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
 
-## The four notebooks
+## The notebooks
+
+Three of them are **reviewed, end-to-end tested examples** (`00`, `01`, `03`).
+A fourth (`02_building_detection.ipynb`) is bundled as an **in-development
+scaffold** for object detection on NAIP — kept in the repo but not part
+of the reviewed release. See the "Work in progress" section at the bottom
+for details on that one.
 
 ### 1. The grand tour — `00_geoai_datacubes_tour.ipynb`
 
@@ -79,42 +85,7 @@ different `CLASS_ID` at the top and the cells fall through to fresh
 training -- count on ~25-30 minutes for that path, dominated by the
 RandomForest fit and the six-RF fusion-comparison cell.
 
-### 3. Building detection on NAIP — `02_building_detection.ipynb`
-
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-
-The first **object-detection** notebook in the series, and the
-counterpoint to notebook 01's per-pixel segmentation framing.
-Trains a tiny **YOLOv8n** detector (~3.2 M parameters, DL) on
-NAIP 1 m aerial imagery (fetched through the new `NAIP` mission
-profile on Microsoft Planetary Computer) using the
-permissively-licensed Microsoft US Building Footprints dataset
-as ground truth.
-
-Key moves:
-
-- Streams the 180 MB Ohio footprints file line-by-line so the
-  full 5.5 M polygons never have to fit in memory.
-- Walks through the polygon → axis-aligned bbox → YOLO normalised
-  `(cls, cx, cy, w, h)` conversion, with a verification panel that
-  draws the converted labels back over the tiles.
-- **Resolution-comparison sidebar** showing the same neighbourhood
-  at 1 m (NAIP) vs 10 m (Sentinel-2), with the same building
-  outlined on both panels — the textbook case for why YOLO needs
-  a few-metres-or-finer GSD when the target objects are houses.
-- Trains for 60 epochs at `imgsz=512` / `batch=4` on CPU, reports
-  mAP@0.5, mAP@0.5:0.95, precision, recall on the held-out
-  Cleveland test split, and overlays predictions vs ground truth
-  with per-box IoU annotations.
-- A PlanetScope sidebar in prose only (no pixels in the rendered
-  output) because PlanetScope licensing forbids redistribution.
-
-Cross-city split mirrors notebook 01: Columbus → train,
-Cincinnati → val, Cleveland → test. Runs end-to-end in
-~15–30 minutes on a laptop / Colab CPU, including the NAIP
-fetches and the YOLO training run.
-
-### 4. Integration with `opengeos/geoai` — `03_with_opengeos_geoai.ipynb`
+### 3. Integration with `opengeos/geoai` — `03_with_opengeos_geoai.ipynb`
 
 <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
@@ -164,6 +135,44 @@ Cold-start runtime on Colab is ~25–35 minutes total (~3 min Colab
 bootstrap, ~5–7 min for the 15 STAC fetches across 3 cities, ~3 min
 for `segment_water` on the Cleveland NAIP, ~20 min for the training,
 ~1 min for inference + plots). Warm re-runs are near-instant.
+
+## Work in progress: object detection on NAIP — `02_building_detection.ipynb`
+
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+
+> ⚠️ **In development — not part of the reviewed examples.**
+
+Scaffold for the first object-detection workflow in the series.
+Fine-tunes a tiny **YOLOv8n** detector (~3.2 M parameters) on
+**NAIP 1 m aerial imagery** using the permissively-licensed
+**Microsoft US Building Footprints** dataset as ground truth, and
+compares it against two pretrained baselines (OWLv2 zero-shot and a
+community-trained YOLO from Hugging Face). Cross-city split mirrors
+notebook 01: Columbus → train, Cincinnati → val, Cleveland → test.
+
+The pipeline runs end-to-end but the trained detector **does not
+converge reliably enough** for us to include it as a reviewed example
+alongside notebooks 00 / 01 / 03. It is kept in the repo as a
+starting point for object-detection experimentation on cubes our
+package produces; contributions and issue reports are welcome. The
+scaffold covers, and is useful to look at even in its current
+state, the moves that any NAIP-scale object-detection workflow will
+need:
+
+- Streams the 180 MB Ohio footprints file line-by-line so the
+  full 5.5 M polygons never have to fit in memory.
+- Walks through the polygon → axis-aligned bbox → YOLO normalised
+  `(cls, cx, cy, w, h)` conversion, with a verification panel that
+  draws the converted labels back over the tiles.
+- **Resolution-comparison sidebar** showing the same neighbourhood
+  at 1 m (NAIP) vs 10 m (Sentinel-2) — the textbook case for why
+  YOLO needs a few-metres-or-finer GSD when the target objects are
+  houses.
+- A PlanetScope sidebar in prose only (no pixels in the rendered
+  output) because PlanetScope licensing forbids redistribution.
+
+For a reviewed, end-to-end-tested pipeline, see notebooks 00, 01, and
+03 above.
 
 ## Other files in this folder
 
