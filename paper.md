@@ -82,14 +82,12 @@ every mission.
 As foundation models and pretrained wrappers for Earth observation become one
 `pip install` away, the bottleneck for machine-learning research on satellite
 imagery is more often the data preparation pipeline than the model itself.
-A typical workflow stitches together vendor-specific SDKs, manually reprojects
-between coordinate systems, hand-rolls cloud masks per mission, decides where
-in the pipeline to drop or fill nodata, chooses per-band normalisation recipes
-that account for radically different value ranges, and writes thousands of
-tile files to disk before any model can be trained. Each step silently degrades the final model: nodata
-smeared across cloud boundaries produces systematic biases, integer QA bands
-resampled bilinearly become nonsense, raw DN values feeding CNNs that expect
-[0, 1] normalised input collapse training without an error message.
+A typical workflow stitches together vendor SDKs, manual reprojection between
+coordinate systems, per-mission cloud masks, ad-hoc nodata handling,
+band-specific normalisation, and thousands of tile files written to disk.
+Each step silently degrades the final model: cloud-smeared nodata biases
+predictions, integer QA bands resampled bilinearly become nonsense,
+un-normalised DN values collapse CNN training without an error message.
 
 `geoai-datacubes` consolidates these steps into a single configuration-driven
 pipeline. Three architectural decisions distinguish it from existing tooling:
@@ -117,29 +115,26 @@ postdocs entering Earth-observation ML, researchers running cross-modal
 experiments (optical + SAR + DEM + LULC labels), HPC users moving training jobs
 from laptop to cluster, and instructors teaching applied remote sensing.
 
+## Research applications
+
+The pipeline underpins ongoing research within the authors' group. Hsu and
+Moortgat use it to fuse Sentinel-2 reflectance with airborne-LIDAR bathymetry
+and benchmark classical machine learning against deep learning for
+transferable satellite-derived bathymetry [@hsu2026local]. A parallel
+interpretability line fine-tunes deep networks on Sentinel-2 cubes assembled
+by the same pipeline and probes how those networks weight individual bands
+when regressing water depth [@Chowdhury_2026_WACV; @chowdhury2026bands].
+
 ## Relationship to `geoai` (Wu, 2026)
 
-`geoai-datacubes` is deliberately complementary to the `geoai` package
-[@wu2026geoai], which provides foundation-model wrappers (Prithvi-EO-2.0, Clay,
-DOFA, SatMAE, DINOv3), pretrained task-specific models, Segment Anything
-wrappers, super-resolution, and a QGIS plugin. `geoai` is a
-*modelling-breadth* package; its open-access *GeoAI Book* devotes seven
-chapters to modelling and three to data, with the data chapter handling one
-raster mission at a time via `geoai.download_naip` and the generic
-`geoai.download_pc_stac_item` — no multi-mission fusion, no per-band
-normalisation, no spatially-aware splits.
-
-`geoai-datacubes` is a *data-engineering-depth* package and fills exactly
-that gap: 26 missions in a unified registry, four provider classes plus a
-`direct_http` path, declarative per-band metadata, multi-mission fusion,
-spatially-aware splits, automatic NaN / cloud / QA handling. The two
-packages chain naturally — this one answers *how do I get a multi-mission
-AOI ready for training?* and `geoai` answers *which model do I train on it,
-and how?* A bundled `select_bands` helper + `BAND_PRESETS` dict bridges the
-most common hand-off pitfalls so `geoai`'s loaders consume our cubes without
-modification. Notebook 03 demonstrates the end-to-end hand-off with honest
-reporting of in-distribution F1 ≈ 0.95 and held-out-city F1 ≈ 0.05. We
-recommend using the two together rather than in competition.
+`geoai-datacubes` is complementary to the modelling-breadth `geoai` package
+[@wu2026geoai], which wraps foundation and task-specific models but handles
+raster missions one at a time — no multi-mission fusion, per-band
+normalisation, or spatially-aware splits. Our library fills exactly that
+data-engineering gap, and a bundled `select_bands` helper plus `BAND_PRESETS`
+dict lets `geoai`'s loaders consume our cubes without modification; notebook
+03 demonstrates the end-to-end hand-off with honest in-distribution F1 ≈ 0.95
+and held-out-city F1 ≈ 0.05.
 
 ## Other related tooling
 
@@ -160,7 +155,9 @@ present documentation are by Moortgat; review and testing during 2026 by
 Chowdhury and Hsu. Open data are provided by ESA Copernicus, USGS, and the
 Copernicus DEM programme; cloud-hosted imagery by Element 84 and Microsoft
 Planetary Computer; commercial PlanetScope by Planet's Education and Research
-Program. Code development since May 2026 was substantially accelerated by
-Claude Code (Anthropic) under continuous human direction and review.
+Program. Code development since May 2026 was accelerated by Anthropic's Claude Code
+(Opus 4.5–4.7 / Sonnet 4.5–4.6 models), which assisted with code generation,
+refactoring, and drafting. All architectural decisions were made by the human
+authors, who reviewed and validated every AI-generated artefact before commit.
 
 # References
