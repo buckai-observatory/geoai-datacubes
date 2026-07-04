@@ -44,10 +44,11 @@ Earth-observation imagery into AI-ready data cubes for machine-learning and
 deep-learning workflows. From a single configuration block — a region of
 interest, a time window, a set of bands — it fetches, co-registers, fuses, and
 tiles imagery from **26 missions** spanning direct sensor observations
-(Sentinel-2 L1C and L2A, Sentinel-1 RTC, Landsat 8/9 C2 L2, NAIP, PlanetScope
-4-band and 8-band, MODIS reflectance and land-surface temperature, HLS,
-ALOS PALSAR, Copernicus DEM at 30 m and 90 m, USGS 3DEP) and derived products
-(ESA WorldCover, ALOS Forest / Non-Forest, USDA CDL, USGS LCMAP, Impact
+(Sentinel-2 L1C and L2A [@sentinel2], Sentinel-1 RTC [@sentinel1],
+Landsat 8/9 C2 L2 [@landsat], NAIP, PlanetScope 4-band and 8-band, MODIS
+reflectance and land-surface temperature, HLS, ALOS PALSAR, Copernicus DEM
+at 30 m and 90 m, USGS 3DEP) and derived products (ESA WorldCover
+[@esa_worldcover], ALOS Forest / Non-Forest, USDA CDL, USGS LCMAP, Impact
 Observatory annual LULC, JRC Global Surface Water, Hansen Global Forest Change,
 Chloris biomass). Per-mission details are in `docs/data_layers.md`. Four data
 providers are unified behind one dispatcher — Element 84 Earth Search, Microsoft
@@ -68,11 +69,12 @@ at the call site. The same taxonomy drives `nan_handling="auto"`, which
 dispatches per-kind fill strategies and drops tiles whose QA bands contain
 NaN. Three self-bootstrapping Colab notebooks ship with the repository as
 reviewed examples: a *grand tour* of every mission, an *LULC classification*
-notebook that trains and compares logistic regression, random forest,
-XGBoost and a lightweight U-Net, and an *integration* notebook that
-composes `geoai-datacubes` with the `opengeos/geoai` modelling library
-[@wu2026geoai] across a multi-AOI Cleveland / Cincinnati / Columbus
-experiment. A `smoke-tests/` folder ships SLURM-or-bash scripts for
+notebook that trains and compares logistic regression, random forest
+[@random_forest], XGBoost [@xgboost] and a lightweight U-Net [@unet]
+against a conditional NDWI [@ndwi] spectral-index baseline, and an
+*integration* notebook that composes `geoai-datacubes` with the
+`opengeos/geoai` modelling library [@wu2026geoai] across a multi-AOI
+Cleveland / Cincinnati / Columbus experiment. A `smoke-tests/` folder ships SLURM-or-bash scripts for
 every mission.
 
 # Statement of need
