@@ -36,7 +36,7 @@
   ([@satyakiroy10](https://github.com/satyakiroy10)) —
   CSE, OSU. Code review and testing of the existing PlanetScope pipeline, and currently working to integrate a preprocessing pipeline for spectral harmonization and mosaicking of multi-scene PlanetScope imagery (July 2026).
 
-- **Hsu, Hsiao Jou (Amy)**
+- **Hsu, Hsiao Jou**
   ([@Amy-Hsu](https://github.com/Amy-Hsu)) —
   Earth Sciences, OSU. Code review and testing. Bathymetry domain
   collaborator (Hsu & Moortgat 2026, *Remote Sensing* 18:1768) whose

@@ -24,7 +24,7 @@ authors:
     affiliation: '3'
   - name: Satyaki Roy Chowdhury
     affiliation: '3'
-  - name: Hsiao Jou (Amy) Hsu
+  - name: Hsiao Jou Hsu
     affiliation: '1'
 affiliations:
   - name: 'School of Earth Sciences, The Ohio State University, Columbus, OH, USA'
@@ -133,8 +133,8 @@ raster missions one at a time — no multi-mission fusion, per-band
 normalisation, or spatially-aware splits. Our library fills exactly that
 data-engineering gap, and a bundled `select_bands` helper plus `BAND_PRESETS`
 dict lets `geoai`'s loaders consume our cubes without modification; notebook
-03 demonstrates the end-to-end hand-off with honest in-distribution F1 ≈ 0.95
-and held-out-city F1 ≈ 0.05.
+03 demonstrates the end-to-end hand-off with honest in-distribution
+F1 $\approx 0.95$ and held-out-city F1 $\approx 0.05$.
 
 ## Other related tooling
 

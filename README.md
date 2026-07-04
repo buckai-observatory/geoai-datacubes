@@ -132,7 +132,7 @@ Built and maintained by the [**BuckAI Observatory**](https://buckai-observatory.
 - Website: <https://buckai-observatory.org>
 - More tools & tutorials: BuckAI Observatory [resources page](https://buckai-observatory.org/resources.html)
 
-This project was developed over approximately one year by **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**; **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou (Amy)**; and **Moortgat, Joachim** (principal investigator) at OSU. See [`CHANGELOG.md`](CHANGELOG.md) for the full timeline and [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of who contributed what. Code development since May 2026 was substantially accelerated by [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, used under continuous human direction and review.
+This project was developed over approximately one year by **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**; **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou**; and **Moortgat, Joachim** (principal investigator) at OSU. See [`CHANGELOG.md`](CHANGELOG.md) for the full timeline and [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of who contributed what. Code development since May 2026 was substantially accelerated by [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, used under continuous human direction and review.
 
 If you use `geoai-datacubes` in your research, please cite via the GitHub "Cite this repository" dropdown (sourced from [`CITATION.cff`](CITATION.cff)) or the JOSS paper draft at [`paper.md`](paper.md).
 
