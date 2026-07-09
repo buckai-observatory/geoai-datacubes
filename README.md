@@ -7,6 +7,7 @@
 [![tests](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/geoai-datacubes.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/geoai-datacubes/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
+[![status](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00/status.svg)](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00)
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
 
 > **New here?** Two ready-to-run paths get you started directly in Colab — no install, no credentials needed:
