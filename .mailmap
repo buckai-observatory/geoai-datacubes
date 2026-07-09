@@ -1,0 +1,22 @@
+# Canonical author identities for git log / git blame / GitHub Contributors
+# widget. See git-mailmap(5) for the format.
+#
+# The two "duplicate contributor" entries are the primary reason for this
+# file: Bhavika Jain and Joachim Moortgat each committed under two different
+# email addresses (a GitHub web-UI address and an institutional / HPC address);
+# without this file the JOSS repository-analysis report counts each of them
+# twice. The remaining lines just normalise the *display* name (e.g. commits
+# tagged "amyhsu0" appear as "Hsiao Jou Hsu" in git log, matching the paper).
+
+# --- Merge Joachim Moortgat's OSU + GitHub-web identities ---
+Joachim Moortgat <moortgat.1@osu.edu>
+Joachim Moortgat <moortgat.1@osu.edu> <58781942+jmoortgat@users.noreply.github.com>
+
+# --- Merge Bhavika Jain's HPC + GitHub-web identities ---
+Bhavika Jain <78252483+bhavika1512@users.noreply.github.com>
+Bhavika Jain <78252483+bhavika1512@users.noreply.github.com> <jain.894@unity-login1.asc.ohio-state.edu>
+
+# --- Normalise display names for single-identity contributors ---
+Aswathnarayan Radhakrishnan <aswathn1@gmail.com>
+Satyaki Roy Chowdhury <162932291+satyakiroy10@users.noreply.github.com>
+Hsiao Jou Hsu <154926724+amyhsu0@users.noreply.github.com>
