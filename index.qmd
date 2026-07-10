@@ -1,0 +1,156 @@
+---
+title: "geoai-datacubes"
+toc: false
+---
+
+```{=html}
+<style>
+#title-block-header { display: none; }
+</style>
+
+<div class="bah-hero" style="display:flex; align-items:center; gap:28px; padding:28px 0; border-bottom: 3px solid #ba0c2f; margin-bottom: 36px; flex-wrap:wrap;">
+<img src="site_images/BuckAI_logo_transp.png" alt="BuckAI Observatory Logo" height="115" style="flex-shrink:0;">
+<div style="flex:1; min-width:280px;">
+<div style="font-size:2.4rem; font-weight:700; line-height:1.1;">geoai-datacubes</div>
+<div style="font-size:1.05rem; opacity:0.75; margin-top:10px; line-height:1.45;">An open-source Python pipeline that turns raw multi-mission satellite imagery into AI-ready data cubes for machine-learning and deep-learning workflows. From one configuration block: fetch, co-register, fuse, tile — 26 missions, 4 providers, one common UTM grid.</div>
+</div>
+</div>
+```
+
+::: {.callout-tip icon=false}
+### Quickest possible start
+
+```bash
+pip install geoai-datacubes
+```
+
+Or open the [grand tour notebook](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb) in Colab — the first cell installs the package for you.
+:::
+
+## What this is
+
+`geoai-datacubes` is the [BuckAI Observatory](https://buckai-observatory.org)'s data-preparation front-end for Earth-observation machine learning. It unifies **26 satellite missions and derived products** behind a single configuration-driven pipeline: you specify a region, a time window, and a set of bands; it fetches the imagery from whichever provider is fastest, co-registers everything onto a common UTM grid, applies per-band normalisation from a declarative metadata registry, and hands you a multi-band GeoTIFF or Zarr cube that a PyTorch `Dataset` can stream training tiles from without ever materialising them to disk.
+
+The library exists because the bottleneck in most satellite-ML research isn't the model — it's the data-preparation pipeline. Foundation-model wrappers are one `pip install` away; a working multi-mission fetch + fusion + normalisation + spatially-aware-split pipeline is not.
+
+## Browse by topic
+
+::: {.grid}
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-rocket-takeoff"></i> &nbsp;Get started</h4>
+
+Install the package and run the pipeline against a default AOI in ten minutes.
+
+- [Install + first run](docs/install.md) — mamba is recommended; pip works too
+- [Credentials](docs/credentials.md) — Sentinel Hub + Planet Orders (optional; free providers cover most work)
+
+:::
+:::
+:::
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-globe"></i> &nbsp;Data providers &amp; missions</h4>
+
+Four providers unified behind one dispatcher, feeding 26 satellite missions and derived products.
+
+- [Providers](docs/providers.md) — Element 84, Planetary Computer, Planet, `direct_http`
+- [Data layers](docs/data_layers.md) — the 26-mission catalogue with band / range / normalisation reference
+- [Adding a mission](docs/adding_a_mission.md) — how to wire in a new one
+
+:::
+:::
+:::
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-cpu"></i> &nbsp;Core pipeline</h4>
+
+The architectural decisions that distinguish `geoai-datacubes` from generic raster tooling.
+
+- [Configuration](docs/configuration.md) — parameter tables and pipeline scripts
+- [Multi-mission fusion](docs/fusion.md) — common-UTM-grid co-registration with per-band-correct resampling
+
+:::
+:::
+:::
+
+:::
+
+::: {.grid}
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-journal-code"></i> &nbsp;Notebooks (Colab)</h4>
+
+Self-bootstrapping notebooks — the first cell installs everything, no local Python required.
+
+- [00 · Grand tour of every mission](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb)
+- [01 · LULC classification (RF, XGBoost, U-Net)](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb)
+- [03 · `opengeos/geoai` integration](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb)
+- [02 · Building detection *(in-development scaffold)*](https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb)
+
+:::
+:::
+:::
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-server"></i> &nbsp;HPC</h4>
+
+Running the pipeline on a SLURM cluster.
+
+- [HPC quickstart](docs/HPC_QUICKSTART.md) — clone, env, data acquisition at scale, training, interactive sessions with mosh + tmux + `salloc`
+
+:::
+:::
+:::
+
+::: {.g-col-12 .g-col-md-4}
+::: {.card .h-100 .shadow-sm}
+::: {.card-body}
+<h4 style="margin-top:0;"><i class="bi bi-folder2-open"></i> &nbsp;Project reference</h4>
+
+- [Project structure](docs/project_structure.md)
+- [Changelog](CHANGELOG.md)
+- [Contributors](CONTRIBUTORS.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+
+:::
+:::
+:::
+
+:::
+
+## Citing
+
+If you use `geoai-datacubes` in your research, please cite the archived software artifact:
+
+```bibtex
+@software{moortgat_geoai_datacubes_2026,
+  author       = {Moortgat, Joachim and Jain, Bhavika and Radhakrishnan, Aswathnarayan and Chowdhury, Satyaki Roy and Hsu, Hsiao Jou},
+  title        = {{geoai-datacubes}: AI-ready multi-mission satellite data cubes for {E}arth-observation machine learning},
+  year         = 2026,
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.20829119}
+}
+```
+
+A software paper is currently [under review](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00) at the *Journal of Open Source Software* — this page will link to the accepted paper once published.
+
+## About
+
+Built by the [BuckAI Observatory](https://buckai-observatory.org) at The Ohio State University. Companion resources:
+
+- 🖥️ [**BuckAI HPC Handbook**](https://buckai-observatory.org/buckai-hpc-handbook/) — using OSU's Unity cluster.
+- 📖 [**BuckAI Open-Source Handbook**](https://buckai-observatory.org/buckai-open-source-handbook/) — walk-through for taking research code to a citable, installable, peer-reviewed package.
+
+Suggestions, corrections, and pull requests are welcome — file an issue on [GitHub](https://github.com/buckai-observatory/geoai-datacubes/issues).

@@ -60,3 +60,11 @@ docs/HPC_RUNBOOK.md
 # and produced/uploaded by the publish workflow, so never committed.
 dist/
 build/
+
+# Quarto rendered site (built by .github/workflows/quarto-pages.yml
+# and deployed via actions/deploy-pages; never committed).
+_site/
+.quarto/
+
+/.quarto/
+**/*.quarto_ipynb

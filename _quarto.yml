@@ -1,0 +1,122 @@
+
+project:
+  type: website
+  output-dir: _site
+  render:
+    - "index.qmd"
+    - "docs/install.md"
+    - "docs/credentials.md"
+    - "docs/providers.md"
+    - "docs/data_layers.md"
+    - "docs/adding_a_mission.md"
+    - "docs/configuration.md"
+    - "docs/fusion.md"
+    - "docs/HPC_QUICKSTART.md"
+    - "docs/project_structure.md"
+    - "CHANGELOG.md"
+    - "CONTRIBUTING.md"
+    - "CONTRIBUTORS.md"
+    - "CODE_OF_CONDUCT.md"
+  post-render: scripts/quarto-cleanup.sh
+
+website:
+  title: "geoai-datacubes"
+  favicon: site_images/BuckAI_logo_transp.png
+  repo-url: https://github.com/buckai-observatory/geoai-datacubes
+  repo-actions: [source, edit, issue]
+
+  page-navigation: true
+
+  navbar:
+    background: light
+    left:
+      - href: index.qmd
+        text: Home
+      - text: Get started
+        menu:
+          - docs/install.md
+          - docs/credentials.md
+      - text: Providers &amp; missions
+        menu:
+          - docs/providers.md
+          - docs/data_layers.md
+          - docs/adding_a_mission.md
+      - text: Core pipeline
+        menu:
+          - docs/configuration.md
+          - docs/fusion.md
+      - text: HPC
+        menu:
+          - docs/HPC_QUICKSTART.md
+      - text: Project
+        menu:
+          - docs/project_structure.md
+          - CHANGELOG.md
+          - CONTRIBUTORS.md
+          - CONTRIBUTING.md
+          - CODE_OF_CONDUCT.md
+    right:
+      - icon: github
+        href: https://github.com/buckai-observatory/geoai-datacubes
+        aria-label: GitHub
+      - text: PyPI
+        href: https://pypi.org/project/geoai-datacubes/
+      - text: JOSS
+        href: https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00
+
+  sidebar:
+    style: docked
+    search: true
+    logo: site_images/BuckAI_logo_transp.png
+    contents:
+      - index.qmd
+      - section: "Get started"
+        icon: rocket-takeoff
+        contents:
+          - docs/install.md
+          - docs/credentials.md
+      - section: "Data providers &amp; missions"
+        icon: globe
+        contents:
+          - docs/providers.md
+          - docs/data_layers.md
+          - docs/adding_a_mission.md
+      - section: "Core pipeline"
+        icon: cpu
+        contents:
+          - docs/configuration.md
+          - docs/fusion.md
+      - section: "Notebooks (open in Colab)"
+        icon: journal-code
+        contents:
+          - text: "00 · Grand tour"
+            href: https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb
+          - text: "01 · LULC classification"
+            href: https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb
+          - text: "03 · opengeos/geoai integration"
+            href: https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb
+          - text: "02 · Building detection (WIP)"
+            href: https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/02_building_detection.ipynb
+      - section: "HPC"
+        icon: server
+        contents:
+          - docs/HPC_QUICKSTART.md
+      - section: "Project reference"
+        icon: folder2-open
+        contents:
+          - docs/project_structure.md
+          - CHANGELOG.md
+          - CONTRIBUTORS.md
+          - CONTRIBUTING.md
+          - CODE_OF_CONDUCT.md
+
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    toggle: true
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    css: site_styles.css

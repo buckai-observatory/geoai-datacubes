@@ -1,0 +1,38 @@
+
+/* OSU Scarlet & Gray */
+:root {
+  --osu-scarlet: #bb0000;
+  --osu-gray: #666666;
+}
+
+/* Highlight active sidebar item */
+.sidebar .nav-link.active {
+  background-color: var(--osu-scarlet) !important;
+  color: white !important;
+}
+
+/* Navbar branding color */
+.navbar {
+  background-color: var(--osu-scarlet) !important;
+}
+
+/* Landing-page section cards — subtle hover lift + scarlet accent */
+.card {
+  border-top: 3px solid var(--osu-scarlet);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+.card h4 i {
+  color: var(--osu-scarlet);
+}
+.card ul {
+  padding-left: 1.2rem;
+  margin-bottom: 0;
+}
+.card li {
+  margin-bottom: 0.4rem;
+  line-height: 1.4;
+}
