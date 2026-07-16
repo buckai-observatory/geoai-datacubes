@@ -10,15 +10,19 @@ authors:
   - family-names: Jain
     given-names: Bhavika
     affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+    orcid: "https://orcid.org/0009-0007-9606-2677"
   - family-names: Radhakrishnan
     given-names: Aswathnarayan
     affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+    orcid: "https://orcid.org/0009-0001-1577-1946"
   - family-names: Chowdhury
     given-names: Satyaki Roy
     affiliation: "The Ohio State University -- Department of Computer Science and Engineering"
+    orcid: "https://orcid.org/0009-0006-7035-3743"
   - family-names: Hsu
     given-names: Hsiao Jou
     affiliation: "The Ohio State University -- School of Earth Sciences"
+    orcid: "https://orcid.org/0009-0008-5863-3229"
 repository-code: "https://github.com/buckai-observatory/geoai-datacubes"
 url: "https://github.com/buckai-observatory/geoai-datacubes"
 license: MIT

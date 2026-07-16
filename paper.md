@@ -19,12 +19,16 @@ authors:
     corresponding: true
     affiliation: '1, 2'
   - name: Bhavika Jain
+    orcid: 0009-0007-9606-2677
     affiliation: '3'
   - name: Aswathnarayan Radhakrishnan
+    orcid: 0009-0001-1577-1946
     affiliation: '3'
   - name: Satyaki Roy Chowdhury
+    orcid: 0009-0006-7035-3743
     affiliation: '3'
   - name: Hsiao Jou Hsu
+    orcid: 0009-0008-5863-3229
     affiliation: '1'
 affiliations:
   - name: 'School of Earth Sciences, The Ohio State University, Columbus, OH, USA'
