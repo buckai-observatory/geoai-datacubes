@@ -113,6 +113,19 @@ def _ensure_ee_initialized(project: Optional[str] = None):
         or os.environ.get("GOOGLE_CLOUD_PROJECT")
     )
 
+    # Modern earthengine-api requires a project ID at Initialize() time for
+    # every auth mode (the empty-project shortcut only applies to certain
+    # service-account credentials). Fail early with an actionable message
+    # rather than letting the confusing "no project found" chain bubble up
+    # from deep inside the client.
+    if not project:
+        raise RuntimeError(
+            "Earth Engine requires a Google Cloud project ID with the EE API "
+            "enabled. Set the EARTHENGINE_PROJECT environment variable, or "
+            "pass a `project=` argument to the fetch call. Full first-time-"
+            "setup walkthrough: docs/providers/earth_engine.md#first-time-setup-on-a-laptop"
+        )
+
     token = os.environ.get("EARTHENGINE_TOKEN")
     key_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
@@ -128,13 +141,12 @@ def _ensure_ee_initialized(project: Optional[str] = None):
         creds = ee.ServiceAccountCredentials(email, key_file)
         ee.Initialize(credentials=creds, project=project)
     else:
-        # Prefer persisted user creds; if none exist, fall through to
-        # interactive Authenticate.
-        try:
-            ee.Initialize(project=project)
-        except Exception:
-            ee.Authenticate()
-            ee.Initialize(project=project)
+        # Persisted user creds — the interactive laptop path. Assumes the
+        # user ran ``python -c "import ee; ee.Authenticate()"`` at least
+        # once already. If the persisted-creds file is missing, EE raises
+        # a clear ``EEException: Credentials file not found`` — we let
+        # that bubble up so the fix (run Authenticate) is obvious.
+        ee.Initialize(project=project)
 
     _EE_INITIALIZED = True
     return ee
