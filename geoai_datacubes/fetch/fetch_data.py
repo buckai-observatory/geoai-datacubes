@@ -72,6 +72,7 @@ PROVIDER_AUTO = {
     "IO-LULC":        "planetary_computer", # annual global 10 m LULC
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
     "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
+    "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -238,6 +239,8 @@ def fetch_earth_engine(mission, bands, time_range, roi,
         band_meta=profile.get("band_meta"),
         filters=cfg.get("filters"),
         scale_factors=cfg.get("scale_factors"),
+        is_image=cfg.get("is_image", False),
+        unmask_value=cfg.get("unmask_value"),
         project=cfg.get("project"),
     )
 

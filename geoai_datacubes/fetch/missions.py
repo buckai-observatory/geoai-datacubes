@@ -1129,6 +1129,55 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # JRC Global Forest Cover 2020 v3 (European Commission Joint Research
+    # Centre; Bourgoin et al. 2026, PID data.europa.eu/89h/8c561543-...).
+    #
+    # This is the reference 2020-baseline forest-cover map that the EU
+    # commissioned to support the EU Deforestation Regulation (EUDR,
+    # EU/2023/1115). Global, 10 m, single-year snapshot as of 2020-12-31.
+    # Binary: value 1 = "forest" per the FAO-style definition (>= 0.5 ha,
+    # >= 5 m tall, >= 10% canopy) with agricultural plantations (oil palm,
+    # cocoa, coffee, rubber, soya, cattle) explicitly EXCLUDED -- that
+    # exclusion is what makes it EUDR-compliant, and is the key semantic
+    # difference from Hansen-GFC (which draws no plantation distinction).
+    #
+    # Wired through the earth_engine provider as a single-image dataset
+    # (JRC/GFC2020/V3 is an ee.Image, not an ImageCollection). Non-forest
+    # pixels are MASKED in the source; we unmask to 0 server-side to get
+    # a clean 0/1 binary raster ready for one_hot encoding.
+    #
+    # Logical band name is `LULC` for consistency with other categorical
+    # single-class rasters (ESA-WorldCover, IO-LULC, Dynamic-World) --
+    # semantically this is a forest presence/absence mask, not a full LULC
+    # classification, but the naming keeps preprocessing.fusion pick
+    # nearest-neighbour resampling out of the box via _NEAREST_BANDS.
+    #
+    # Licence: free to use without permission, license, or royalty payment;
+    # attribution recommended.
+    # ============================================================
+    "JRC-GFC2020": {
+        "default_bands": ["LULC"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,   # single 2020-12-31 snapshot; no temporal filter
+        "band_meta": {
+            # Binary forest / non-forest. one_hot over (0, 1).
+            "LULC": {"kind": "categorical", "norm": ("one_hot", (0, 1))},
+        },
+        "providers": {
+            "earth_engine": {
+                "collection":   "JRC/GFC2020/V3",
+                "is_image":     True,               # single ee.Image, not a Collection
+                "unmask_value": 0,                  # non-forest pixels are masked in source
+                "band_map":     {"LULC": "Map"},    # JRC's band name is 'Map'
+                # No reducer_groups needed for a single Image (no reduction).
+            },
+        },
+    },
+
+    # ============================================================
     # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
     # STUB ONLY -- ORNL hosts the four global COGs (mean, SE, mode, QF)
     # at https://daac.ornl.gov/daacdata/cms/GEDI_L4B_Gridded_Biomass_V2_1/

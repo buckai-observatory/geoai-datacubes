@@ -22,16 +22,22 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** One
-> additional derived product — **Dynamic World V1** (per-Sentinel-2-scene
-> 9-class LULC, Google + WRI, Brown et al. 2022) — is fetchable via the
-> new `earth_engine` provider. It is *not* part of the reviewed v0.1.0
-> release currently under JOSS review (openjournals/joss-reviews#11034).
-> The Dynamic-World entry is included in the derived-products quick
-> reference below and has its own full section further down, both tagged
-> "v0.2 preview". MODIS_SR and MODIS_LST also gain the `earth_engine`
-> provider on this branch, which resolves the historical sinusoidal
-> tile-seam issue ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Two
+> additional derived products are fetchable via the new `earth_engine`
+> provider and are *not* part of the reviewed v0.1.0 release currently
+> under JOSS review (openjournals/joss-reviews#11034):
+>
+> - **Dynamic World V1** (per-Sentinel-2-scene 9-class LULC, Google + WRI,
+>   Brown et al. 2022).
+> - **JRC GFC2020 V3** (10 m global forest-cover baseline for the EU
+>   Deforestation Regulation, EU Joint Research Centre, Bourgoin et al.
+>   2026).
+>
+> Both are included in the derived-products quick reference below and
+> have their own full sections further down, tagged "v0.2 preview".
+> MODIS_SR and MODIS_LST also gain the `earth_engine` provider on this
+> branch, which resolves the historical sinusoidal tile-seam issue
+> ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
 
 ---
 
@@ -161,6 +167,7 @@ product with documented per-class quality.
 | Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | served via `direct_http`; canonical forest-loss raster |
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
 | Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
+| JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
 | GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
 | GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
 
@@ -1011,6 +1018,51 @@ labels for uncertainty-aware training rather than a single hard class.
 Notebook 04 shows the end-to-end pipeline: Dynamic-World OR
 ESA-WorldCover as the label layer, fused with S2 + DEM, trained with
 XGBoost.
+
+---
+
+## JRC Global Forest Cover 2020 V3 *(v0.2 preview — this branch only)*
+
+**Mission name:** `JRC-GFC2020`
+**Provider:** Google Earth Engine, single image `JRC/GFC2020/V3`.
+**Spatial resolution:** 10 m.
+**Temporal:** single snapshot as of 2020-12-31 (no time series).
+**Coverage:** global.
+**Producer:** European Commission Joint Research Centre (JRC), Ispra.
+**Publication:** Bourgoin et al. 2026, PID
+[`data.europa.eu/89h/8c561543-31df-4e1b-9994-e529afecaf54`](https://data.europa.eu/89h/8c561543-31df-4e1b-9994-e529afecaf54).
+**Licence:** free to use without permission, license, or royalty payment;
+attribution recommended.
+
+| Band | Description |
+|---|---|
+| LULC | Binary forest mask (0 = non-forest, 1 = forest). Server-side unmask to 0 is applied so non-forest pixels are explicit rather than NaN. |
+
+**Class definition:** the raster stores value 1 for pixels meeting an
+FAO-style forest definition — *land spanning more than 0.5 hectares with
+trees higher than 5 metres and canopy cover more than 10 %* — **with
+agricultural plantations (oil palm, cocoa, coffee, rubber, soya, cattle)
+and urban / agricultural land use explicitly excluded**. That
+plantation exclusion is the crucial JRC-specific bit and the key
+difference from Hansen-GFC (which draws no plantation distinction).
+
+**Normalisation for ML:** declared as `("one_hot", (0, 1))`. Because
+the raster is binary, `apply_band_norm` produces a two-channel one-hot
+tensor; drop channel 0 if you want a single-band forest-presence mask.
+
+**Why this matters:** the reference forest-cover baseline the EU
+commissioned to support the EU Deforestation Regulation
+([EU/2023/1115](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R1115)),
+which prevents commodities (soy, palm oil, cocoa, coffee, rubber,
+cattle, timber) from being placed on the EU market if they are
+associated with deforestation after 2020-12-31. If you are studying
+supply-chain deforestation risk, land-use conversion, or plantation
+detection, this is the canonical "was this land forest at the cutoff
+date?" raster to pair with your temporal-observation source (Sentinel-2,
+Sentinel-1, Landsat) and with Hansen-GFC's `lossyear` band. Available
+today as `fetch_sentinel_data("JRC-GFC2020", bands=["LULC"], roi=...,
+resolution=..., save_folder=...)`; a labels-toggle integration for
+Notebook 04 is a natural next addition.
 
 ---
 

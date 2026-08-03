@@ -263,16 +263,41 @@ one behind an `export_bucket=` kwarg when a real workload calls for it.
 
 ## Currently wired missions
 
-| Mission key | EE collection | Temporal range | Resolution | Licence | Key band |
+| Mission key | EE collection / image | Temporal range | Resolution | Licence | Key band(s) |
 |---|---|---|---|---|---|
 | `Dynamic-World` | `GOOGLE/DYNAMICWORLD/V1` | 2015-06-27 → present | 10 m | CC-BY-4.0 | `LULC` (hard label) + 9 class probabilities |
+| `MODIS_SR` | `MODIS/061/MOD09A1` | 2000-02-24 → present, 8-day | 500 m | public domain | 7 spectral + QA/state/DOY |
+| `MODIS_LST` | `MODIS/061/MOD11A1` | 2000-02-24 → present, daily | 1000 m | public domain | day/night LST + QA + emissivity (server-side 0.02 → Kelvin scale) |
+| `JRC-GFC2020` | `JRC/GFC2020/V3` | static (2020-12-31) | 10 m | free, attribution recommended | `LULC` (binary forest = 1) |
 
-The 9 probability bands (`water`, `trees`, `grass`, `flooded_vegetation`,
-`crops`, `shrub_and_scrub`, `built`, `bare`, `snow_and_ice`) are
-time-averaged with `mean`; the hard `LULC` label band takes the `mode`
-across the time window. Time-averaged probabilities are the recommended
-input to downstream models; the mode label is convenient for
-visualisation and coarse train/test splits.
+**Dynamic-World** — the 9 probability bands (`water`, `trees`, `grass`,
+`flooded_vegetation`, `crops`, `shrub_and_scrub`, `built`, `bare`,
+`snow_and_ice`) are time-averaged with `mean`; the hard `LULC` label
+band takes the `mode` across the time window. Time-averaged
+probabilities are the recommended input to downstream models; the mode
+label is convenient for visualisation and coarse train/test splits.
+
+**MODIS_SR / MODIS_LST** — added on this branch to close
+[Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
+(sinusoidal tile-seam mosaicking). EE handles the cross-tile mosaic and
+reprojection into the requested CRS server-side, so an AOI straddling
+`h11v04 / h11v05` (e.g. any Columbus, OH bbox) returns a seamless
+UTM-native raster rather than the ~50% NaN the old single-tile PC
+fetcher produced. `MODIS_LST`'s LST bands are stored as raw uint16 with
+a 0.02 → Kelvin scale factor, applied server-side via the mission's
+`scale_factors` config so downstream `kelvin_to_celsius_norm` sees
+actual Kelvin values.
+
+**JRC-GFC2020** — a single-image dataset (not a collection), fetched
+via the provider's `is_image=True` path. Non-forest pixels are masked
+in the source; the provider applies `unmask_value=0` server-side to
+return a clean 0/1 binary raster. This is the reference forest-cover
+baseline the EU commissioned to support the EU Deforestation
+Regulation, with agricultural plantations (oil palm, cocoa, coffee,
+rubber, soya, cattle) explicitly excluded from the "forest" class —
+the key semantic difference from Hansen-GFC. See
+[`data_layers.md#jrc-global-forest-cover-2020-v3`](../data_layers.md)
+for the full context.
 
 ## Adding another EE mission
 

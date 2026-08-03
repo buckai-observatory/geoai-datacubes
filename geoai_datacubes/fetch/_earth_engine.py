@@ -409,6 +409,8 @@ def _fetch_via_earth_engine(
     band_meta: Optional[Dict[str, Dict]] = None,
     filters: Optional[List[Dict[str, Any]]] = None,
     scale_factors: Optional[Dict[str, float]] = None,
+    is_image: bool = False,
+    unmask_value: Optional[float] = None,
     project: Optional[str] = None,
     scene_tag: Optional[str] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
@@ -489,16 +491,29 @@ def _fetch_via_earth_engine(
     print(f"  bands  : {logical_bands}  -> {ee_bands}")
     print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
 
-    # Build the reduced image once (server-side).
-    ee_roi = ee.Geometry.Rectangle(list(roi), proj="EPSG:4326", geodesic=False)
-    coll = ee.ImageCollection(ee_collection).filterBounds(ee_roi)
-    if not static and time_range is not None:
-        coll = coll.filterDate(time_range[0], time_range[1])
-    for f in (filters or []):
-        coll = coll.filter(_build_filter(ee, f))
+    # Build the image to download once (server-side).
+    if is_image:
+        # Single-Image datasets (e.g. JRC/GFC2020/V3, a single global asset
+        # rather than a temporal collection). No filterBounds / filterDate /
+        # reducer_groups apply -- just select the requested bands.
+        image = ee.Image(ee_collection).select(list(ee_bands))
+    else:
+        ee_roi = ee.Geometry.Rectangle(list(roi), proj="EPSG:4326", geodesic=False)
+        coll = ee.ImageCollection(ee_collection).filterBounds(ee_roi)
+        if not static and time_range is not None:
+            coll = coll.filterDate(time_range[0], time_range[1])
+        for f in (filters or []):
+            coll = coll.filter(_build_filter(ee, f))
 
-    reducer_groups = reducer_groups or [{"bands": list(ee_bands), "reducer": "mean"}]
-    image = _build_reduced_image(ee, coll, ee_bands, reducer_groups)
+        reducer_groups = reducer_groups or [{"bands": list(ee_bands), "reducer": "mean"}]
+        image = _build_reduced_image(ee, coll, ee_bands, reducer_groups)
+
+    # Unmask server-side if requested. Datasets like JRC/GFC2020/V3 leave
+    # "non-forest" pixels masked rather than storing 0 for them; without
+    # this, our downloader gets NaN pixels that would need client-side
+    # handling. `unmask_value=0` gives a clean 0/1 binary raster.
+    if unmask_value is not None:
+        image = image.unmask(unmask_value)
 
     # Apply per-band scale factors AFTER reduction. This is safe for the
     # linear reducers we support (mean/median/mode/sum/min/max/first) --
