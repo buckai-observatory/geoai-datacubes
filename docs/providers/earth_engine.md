@@ -148,20 +148,39 @@ secret or Colab userdata slot, then in the job:
 
 ```bash
 export EARTHENGINE_TOKEN='{"refresh_token": "...", "client_id": "...", ...}'
+export EARTHENGINE_PROJECT=your-project-id
 ```
 
-On Colab, load it from a Colab secret rather than pasting it into a
-cell:
+Both variables are needed: `EARTHENGINE_TOKEN` proves who you are, and
+`EARTHENGINE_PROJECT` names the GCP project that owns the EE quota
+this request bills to.
+
+On Colab, the recommended setup is to store **both** as **userdata
+secrets** (click the key icon in the left sidebar, "+ Add new secret",
+then toggle "Notebook access" on for each notebook that needs them).
+The secrets persist across sessions and are visible to every notebook
+you grant access to — so you set them up once and never think about
+authentication again.
 
 ```python
 import os
 from google.colab import userdata
 
-os.environ["EARTHENGINE_TOKEN"] = userdata.get("EARTHENGINE_TOKEN")
+# Read both secrets and export them so the fetch provider finds them.
+for name in ("EARTHENGINE_TOKEN", "EARTHENGINE_PROJECT"):
+    val = userdata.get(name)
+    if val:
+        os.environ[name] = val
 ```
 
-The provider writes the blob to the location `ee.Initialize()` reads by
-default (`~/.config/earthengine/credentials`) and initialises normally.
+Notebook `04_earth_engine_dynamic_world.ipynb` does exactly this in
+its bootstrap cell — copy-paste that pattern into any new
+EE-touching notebook you build.
+
+The provider writes the token blob to the location `ee.Initialize()`
+reads by default (`~/.config/earthengine/credentials`), reads
+`EARTHENGINE_PROJECT` at Initialize time, and no browser step is ever
+needed.
 
 ### 2. `GOOGLE_APPLICATION_CREDENTIALS` (HPC / production)
 
