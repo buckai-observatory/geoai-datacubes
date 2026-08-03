@@ -71,6 +71,7 @@ pip install -e ".[ml]"            # + scikit-learn, XGBoost, Ultralytics YOLO, t
 pip install -e ".[geoai]"         # + opengeos/geoai (Wu 2026, JOSS 11(118):9605)
 pip install -e ".[notebooks]"     # + jupyterlab, ipywidgets, seaborn, geopandas, contextily
 pip install -e ".[planet]"        # + Planet Orders + Sentinel Hub (commercial providers)
+pip install -e ".[earthengine]"   # + Google Earth Engine provider (Dynamic World, ...)
 pip install -e ".[all]"           # everything above
 ```
 
@@ -78,9 +79,16 @@ The corresponding conda-forge names are: `geoai-py leafmap torchgeo
 omniwatermask` for `[geoai]`; `scikit-learn xgboost ultralytics
 transformers huggingface_hub` for `[ml]`; `jupyterlab ipywidgets seaborn
 geopandas contextily` for `[notebooks]`; `python-dotenv sentinelhub`
-for `[planet]`. The `pip` recipes are convenient when you already have
-a working conda env, and pin slightly faster on a few fast-moving ML
-packages (ultralytics, transformers).
+for `[planet]`; `earthengine-api` for `[earthengine]`. The `pip`
+recipes are convenient when you already have a working conda env, and
+pin slightly faster on a few fast-moving ML packages (ultralytics,
+transformers).
+
+For `[earthengine]` in particular, **mamba is strongly preferred over
+pip** — `earthengine-api` pulls in a Google auth stack that has
+shadowed pip-installed packages in this project's env before. See
+[`docs/providers/earth_engine.md`](providers/earth_engine.md) for the
+full auth setup and the three credential-selection modes.
 
 ### Docker (zero-install, full stack + JupyterLab)
 

@@ -21,6 +21,7 @@ _EXPECTED_MISSIONS = (
     "Hansen-GFC",
     "USDA-CDL", "LCMAP-CONUS", "IO-LULC",
     "Chloris-Biomass",
+    "Dynamic-World",
     "PlanetScope-4b", "PlanetScope-8b",
     "Sentinel-5P", "GEDI-L4B", "GEBCO",          # documented stubs
 )

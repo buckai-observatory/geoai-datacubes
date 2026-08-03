@@ -954,6 +954,82 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # Dynamic World V1 (Brown et al. 2022; Google + WRI). Per-Sentinel-2-scene
+    # 9-class LULC + per-class softmax probabilities at 10 m, updated every
+    # 2-5 days globally since 2015-06-27. First mission wired through the
+    # new ``earth_engine`` provider class -- the canonical distribution is
+    # Google Earth Engine (``GOOGLE/DYNAMICWORLD/V1``); there is no AWS or
+    # PC mirror.
+    #
+    # Nine class probability bands (float, softmax outputs in [0, 1]):
+    #   water, trees, grass, flooded_vegetation, crops,
+    #   shrub_and_scrub, built, bare, snow_and_ice
+    # Plus one hard-classified label band with integer class IDs 0..8 in
+    # the same class order. In EE this band is called ``label``; we surface
+    # it as ``LULC`` to match ESA-WorldCover / IO-LULC / LCMAP conventions
+    # and so ``preprocessing.fusion._NEAREST_BANDS`` picks nearest-neighbour
+    # resampling out of the box.
+    #
+    # Reducers:
+    #   * probability bands  --> ``mean`` across the time window (soft LULC)
+    #   * label band         --> ``mode``  (most-frequent hard class)
+    # Time-averaged probabilities are the recommended input to downstream
+    # models; the mode label band is convenient for visualisation and for
+    # coarse train/test splits.
+    #
+    # Licence CC-BY-4.0; cite Brown et al. 2022 (Sci Data 9:251).
+    # ============================================================
+    "Dynamic-World": {
+        "default_bands": ["LULC"],
+        "extra_bands":   ["water", "trees", "grass", "flooded_vegetation",
+                          "crops", "shrub_and_scrub", "built", "bare",
+                          "snow_and_ice"],
+        "cloud_filter":  False,   # DW is already per-scene cloud-conditioned server-side
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,   # per-Sentinel-2-scene collection
+        "band_meta": {
+            "water":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "trees":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "grass":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "flooded_vegetation": {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "crops":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "shrub_and_scrub":    {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "built":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "bare":               {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "snow_and_ice":       {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            # Integer class IDs 0..8; one_hot over that range.
+            "LULC":               {"kind": "categorical",
+                                   "norm": ("one_hot", (0, 1, 2, 3, 4, 5, 6, 7, 8))},
+        },
+        "providers": {
+            "earth_engine": {
+                "collection": "GOOGLE/DYNAMICWORLD/V1",
+                # logical band -> EE band name inside the collection
+                "band_map": {
+                    "water":              "water",
+                    "trees":              "trees",
+                    "grass":              "grass",
+                    "flooded_vegetation": "flooded_vegetation",
+                    "crops":              "crops",
+                    "shrub_and_scrub":    "shrub_and_scrub",
+                    "built":              "built",
+                    "bare":               "bare",
+                    "snow_and_ice":       "snow_and_ice",
+                    "LULC":               "label",
+                },
+                "reducer_groups": [
+                    {"bands": ["water", "trees", "grass", "flooded_vegetation",
+                               "crops", "shrub_and_scrub", "built", "bare",
+                               "snow_and_ice"],
+                     "reducer": "mean"},
+                    {"bands": ["label"], "reducer": "mode"},
+                ],
+            },
+        },
+    },
+
+    # ============================================================
     # Hansen Global Forest Change v1.11 (Hansen et al. 2013, annual
     # updates by UMD GLAD; hosted on Google Cloud Storage as anonymous
     # COGs). 30 m global tree-cover baseline + annual forest-loss /

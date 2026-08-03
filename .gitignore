@@ -44,6 +44,7 @@ notebooks/_ml_outputs/
 notebooks/_outputs_obj/
 notebooks/_outputs_nb03/
 notebooks/_outputs_nb03_train/
+notebooks/_outputs_nb04/
 notebooks/logs/
 
 # Misc local caches.

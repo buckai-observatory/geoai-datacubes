@@ -71,6 +71,7 @@ PROVIDER_AUTO = {
     "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)
     "IO-LULC":        "planetary_computer", # annual global 10 m LULC
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
+    "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -162,6 +163,12 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
         )
 
+    if provider == "earth_engine":
+        return fetch_earth_engine(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
@@ -174,7 +181,8 @@ def fetch_sentinel_data(
 
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
-        f"'planetary_computer', 'planet', 'direct_http', or 'sentinelhub'."
+        f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
+        f"or 'sentinelhub'."
     )
 
 
@@ -197,6 +205,39 @@ def fetch_direct_http(mission, bands, time_range, roi,
         tile_callback=cfg["tile_callback"],
         band_meta=get_profile(mission).get("band_meta"),
         release_tag=cfg.get("release_tag"),
+    )
+
+
+def fetch_earth_engine(mission, bands, time_range, roi,
+                       resolution=10, save_folder="data"):
+    """Google Earth Engine fetcher (see ``fetch._earth_engine``).
+
+    Reads the mission's ``earth_engine`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earth_engine``, which
+    reduces the collection server-side, downloads the payload (auto-tiling
+    for large AOIs), and writes the standard ``<Mission>_full_size.tiff`` +
+    ``userdata.json`` layout so fusion / tiling need no provider-specific
+    code.
+
+    Auth is env-driven; see the docstring of
+    ``_earth_engine._ensure_ee_initialized`` for the credential-selection
+    order.
+    """
+    from ._earth_engine import _fetch_via_earth_engine
+    cfg = get_provider_config(mission, "earth_engine")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earth_engine(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        ee_collection=cfg["collection"],
+        band_map=cfg["band_map"],
+        reducer_groups=cfg.get("reducer_groups"),
+        static=profile.get("static", False),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
+        project=cfg.get("project"),
     )
 
 

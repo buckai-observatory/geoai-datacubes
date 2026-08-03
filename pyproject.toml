@@ -133,6 +133,20 @@ planet = [
     "sentinelhub>=3.10",
 ]
 
+# Google Earth Engine provider (Dynamic World, MODIS in native sinusoidal,
+# the pre-2013 Landsat archive, Hansen GFC in canonical form, and hundreds
+# of derived layers whose only public home is EE). Requires a Google
+# account with Earth Engine access and one of: EARTHENGINE_TOKEN env var
+# (Colab/CI), GOOGLE_APPLICATION_CREDENTIALS service-account key (HPC),
+# or a persisted ~/.config/earthengine/credentials from ee.Authenticate().
+# See docs/providers/earth_engine.md.
+#
+#     pip install geoai-datacubes[earthengine]
+#
+earthengine = [
+    "earthengine-api>=0.1.400",
+]
+
 # Development tooling (formatter, linter, tests).
 #
 #     pip install geoai-datacubes[dev]
@@ -148,7 +162,7 @@ dev = [
 #     pip install geoai-datacubes[all]
 #
 all = [
-    "geoai-datacubes[ml,geoai,notebooks,planet]",
+    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine]",
 ]
 
 [project.urls]
