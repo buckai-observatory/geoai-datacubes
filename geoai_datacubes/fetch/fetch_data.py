@@ -57,8 +57,8 @@ PROVIDER_AUTO = {
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
     "NAIP":           "planetary_computer", # PC only; US aerial imagery
-    "MODIS_SR":       "planetary_computer", # PC only; surface reflectance 8-day
-    "MODIS_LST":      "planetary_computer", # PC only; daily land surface temperature
+    "MODIS_SR":       "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
+    "MODIS_LST":      "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
     "HLS_S30":        "planetary_computer", # PC only; harmonized S2 leg
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
@@ -237,6 +237,7 @@ def fetch_earth_engine(mission, bands, time_range, roi,
         static=profile.get("static", False),
         band_meta=profile.get("band_meta"),
         filters=cfg.get("filters"),
+        scale_factors=cfg.get("scale_factors"),
         project=cfg.get("project"),
     )
 

@@ -423,14 +423,16 @@ MISSION_PROFILES = {
     # period) and leave `properties.datetime` = None; the fetcher's date
     # helper falls back to start_datetime so this works transparently.
     #
-    # KNOWN LIMITATION (tile seams): each STAC item is a single sinusoidal
-    # tile (e.g. h11v04 covers the Great Lakes region; h11v05 covers most of
-    # the central US). An AOI that straddles a seam will see large NaN holes
-    # in the returned array because the single-scene fetcher reads only one
-    # tile per date. Cross-tile mosaicking (similar to JRC-GSW / 3DEP) is
-    # tracked as a follow-up Issue. As a guard, the fetcher emits a loud
-    # warning at runtime when the NaN fraction of the final array exceeds
-    # 25% so the failure mode is never silent.
+    # TILE-SEAM NOTE (Issue #10, fixed): each PC STAC item is a single
+    # sinusoidal tile (h11v04 covers the Great Lakes region; h11v05 covers
+    # most of the central US). The old PC-only path returned ~50% NaN for
+    # AOIs straddling a seam (e.g. Columbus at 40N crosses h11v04/h11v05).
+    # This is now handled by the earth_engine provider variant declared
+    # below -- EE mosaics tiles and reprojects out of sinusoidal into the
+    # requested CRS server-side, so the seam is invisible. PROVIDER_AUTO
+    # routes MODIS_SR to earth_engine by default; the planetary_computer
+    # entry stays for users who explicitly pass provider="planetary_computer"
+    # (and still triggers the >25% NaN warning as a safety guard).
     # ============================================================
     "MODIS_SR": {
         "default_bands": ["B01", "B02"],            # Red, NIR (MODIS convention)
@@ -468,6 +470,32 @@ MISSION_PROFILES = {
                     "DOY":   "sur_refl_day_of_year",
                 },
             },
+            # Google Earth Engine variant. Preferred over PC because EE
+            # handles the sinusoidal tile-seam problem transparently
+            # (server-side mosaic + reproject out of sinusoidal into the
+            # requested CRS). PROVIDER_AUTO routes MODIS_SR here by default.
+            "earth_engine": {
+                "collection": "MODIS/061/MOD09A1",
+                "band_map": {
+                    "B01":   "sur_refl_b01",
+                    "B02":   "sur_refl_b02",
+                    "B03":   "sur_refl_b03",
+                    "B04":   "sur_refl_b04",
+                    "B05":   "sur_refl_b05",
+                    "B06":   "sur_refl_b06",
+                    "B07":   "sur_refl_b07",
+                    "QC":    "QA",
+                    "STATE": "StateQA",
+                    "DOY":   "DayOfYear",
+                },
+                "reducer_groups": [
+                    {"bands": ["sur_refl_b01", "sur_refl_b02", "sur_refl_b03",
+                               "sur_refl_b04", "sur_refl_b05", "sur_refl_b06",
+                               "sur_refl_b07"],
+                     "reducer": "mean"},
+                    {"bands": ["QA", "StateQA", "DayOfYear"], "reducer": "mode"},
+                ],
+            },
         },
     },
 
@@ -476,8 +504,9 @@ MISSION_PROFILES = {
     # PC collection: "modis-11A1-061". Single-band COGs for LST_Day_1km,
     # LST_Night_1km, plus QC and view-angle sidecars.
     #
-    # Same sinusoidal tile-seam caveat as MODIS_SR -- see the note above
-    # for details and the runtime NaN warning the fetcher emits.
+    # Same sinusoidal tile-seam caveat as MODIS_SR -- Issue #10. Fixed
+    # for the default path by routing PROVIDER_AUTO to the earth_engine
+    # provider (see the entry below).
     # ============================================================
     "MODIS_LST": {
         "default_bands": ["LST_Day", "LST_Night"],
@@ -503,6 +532,34 @@ MISSION_PROFILES = {
                     "QC_Night":    "QC_Night",
                     "Emis_31":     "Emis_31",
                     "Emis_32":     "Emis_32",
+                },
+            },
+            # Google Earth Engine variant. LST_Day_1km / LST_Night_1km are
+            # stored as raw uint16 with an 0.02 scale factor that converts
+            # to Kelvin -- we apply that server-side via scale_factors so
+            # the downstream `kelvin_to_celsius_norm` recipe sees actual
+            # Kelvin values. Preferred over PC because EE handles the
+            # sinusoidal tile-seam problem (Issue #10).
+            "earth_engine": {
+                "collection": "MODIS/061/MOD11A1",
+                "band_map": {
+                    "LST_Day":    "LST_Day_1km",
+                    "LST_Night":  "LST_Night_1km",
+                    "QC_Day":     "QC_Day",
+                    "QC_Night":   "QC_Night",
+                    "Emis_31":    "Emis_31",
+                    "Emis_32":    "Emis_32",
+                },
+                "reducer_groups": [
+                    {"bands": ["LST_Day_1km", "LST_Night_1km",
+                               "Emis_31", "Emis_32"],
+                     "reducer": "mean"},
+                    {"bands": ["QC_Day", "QC_Night"], "reducer": "mode"},
+                ],
+                # Raw DN -> physical units. Keys are LOGICAL band names.
+                "scale_factors": {
+                    "LST_Day":   0.02,   # -> Kelvin
+                    "LST_Night": 0.02,   # -> Kelvin
                 },
             },
         },

@@ -389,6 +389,41 @@ def test_default_scene_tag_static():
 
 
 # ============================================================
+# 7b. MODIS via earth_engine (Issue #10 fix)
+# ============================================================
+
+@pytest.mark.parametrize("mission,collection", [
+    ("MODIS_SR",  "MODIS/061/MOD09A1"),
+    ("MODIS_LST", "MODIS/061/MOD11A1"),
+])
+def test_modis_has_earth_engine_provider(mission, collection):
+    from geoai_datacubes.fetch.missions import get_provider_config
+    cfg = get_provider_config(mission, "earth_engine")
+    assert cfg["collection"] == collection
+    assert isinstance(cfg["band_map"], dict) and cfg["band_map"]
+    assert isinstance(cfg["reducer_groups"], list) and cfg["reducer_groups"]
+
+
+def test_modis_lst_ee_has_kelvin_scale_factors():
+    # Raw MOD11A1 LST bands are uint16 with a 0.02 scale factor -> Kelvin;
+    # we apply that server-side so downstream `kelvin_to_celsius_norm`
+    # sees actual Kelvin values, not 15000-ish integers.
+    from geoai_datacubes.fetch.missions import get_provider_config
+    cfg = get_provider_config("MODIS_LST", "earth_engine")
+    sf = cfg["scale_factors"]
+    assert sf["LST_Day"]   == 0.02
+    assert sf["LST_Night"] == 0.02
+
+
+def test_provider_auto_routes_modis_to_earth_engine():
+    # Issue #10: PC single-tile fetch gave ~50% NaN on AOIs straddling
+    # h11v04/h11v05 (e.g. Columbus). Default routing goes to EE now.
+    from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
+    assert PROVIDER_AUTO["MODIS_SR"]  == "earth_engine"
+    assert PROVIDER_AUTO["MODIS_LST"] == "earth_engine"
+
+
+# ============================================================
 # 8. Live smoke test (gated)
 # ============================================================
 

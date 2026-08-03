@@ -408,6 +408,7 @@ def _fetch_via_earth_engine(
     static: bool = False,
     band_meta: Optional[Dict[str, Dict]] = None,
     filters: Optional[List[Dict[str, Any]]] = None,
+    scale_factors: Optional[Dict[str, float]] = None,
     project: Optional[str] = None,
     scene_tag: Optional[str] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
@@ -498,6 +499,21 @@ def _fetch_via_earth_engine(
 
     reducer_groups = reducer_groups or [{"bands": list(ee_bands), "reducer": "mean"}]
     image = _build_reduced_image(ee, coll, ee_bands, reducer_groups)
+
+    # Apply per-band scale factors AFTER reduction. This is safe for the
+    # linear reducers we support (mean/median/mode/sum/min/max/first) --
+    # all of them commute with scalar multiplication -- and one server-side
+    # multiply per band is cheaper than mapping the whole collection.
+    # Used by MODIS LST bands (raw uint16 -> Kelvin via 0.02 scale factor)
+    # and similar cases where the collection stores un-scaled integers.
+    if scale_factors:
+        for logical_b, factor in scale_factors.items():
+            ee_b = band_map.get(logical_b, logical_b)
+            if ee_b in ee_bands and factor != 1.0:
+                scaled = image.select(ee_b).multiply(factor).rename(ee_b)
+                image = image.addBands(scaled, None, True)
+        # Re-force band order after the addBands rewrites.
+        image = image.select(list(ee_bands))
 
     # Direct download or auto-tile.
     n_tiles = _pick_tile_grid(out_w, out_h, len(ee_bands))
