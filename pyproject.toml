@@ -147,6 +147,19 @@ earthengine = [
     "earthengine-api>=0.1.400",
 ]
 
+# NASA Earthdata provider (NISAR L-band SAR, GEDI biomass, SMAP soil
+# moisture, ICESat-2, and anything else hosted by a NASA DAAC behind
+# Earthdata Login). Requires a free Earthdata Login account
+# (https://urs.earthdata.nasa.gov/users/new) with the appropriate DAAC
+# apps approved -- see docs/providers/earthdata.md.
+#
+#     pip install geoai-datacubes[earthdata]
+#
+earthdata = [
+    "earthaccess>=0.11",
+    "h5py>=3.0",
+]
+
 # Development tooling (formatter, linter, tests).
 #
 #     pip install geoai-datacubes[dev]
@@ -162,7 +175,7 @@ dev = [
 #     pip install geoai-datacubes[all]
 #
 all = [
-    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine]",
+    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine,earthdata]",
 ]
 
 [project.urls]

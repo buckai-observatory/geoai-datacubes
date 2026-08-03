@@ -23,6 +23,7 @@ _EXPECTED_MISSIONS = (
     "Chloris-Biomass",
     "Dynamic-World",
     "JRC-GFC2020",
+    "NISAR-L",
     "PlanetScope-4b", "PlanetScope-8b",
     "Sentinel-5P", "GEDI-L4B", "GEBCO",          # documented stubs
 )

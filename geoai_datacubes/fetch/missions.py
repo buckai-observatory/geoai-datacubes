@@ -806,6 +806,61 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # NISAR L-band Geocoded Polarimetric Covariance (NASA / ISRO).
+    #
+    # Product: NISAR_L2_GCOV_PROVISIONAL_V1 (Alaska Satellite Facility DAAC).
+    # NISAR launched 2024 and its public L-band archive opened 2026-07-20;
+    # this is the first proper open archive of L-band SAR since ALOS PALSAR
+    # (2006-2011). Data is dual-frequency (L + S) but the S-band leg is
+    # ISRO-operated and currently email-request only via Bhoonidhi.
+    #
+    # Bands: covariance-matrix diagonal terms in whatever polarizations
+    # were acquired -- single-pol (HHHH), dual-pol (HHHH+HVHV or
+    # VVVV+VHVH), or full quad-pol (all four). The fetcher silently
+    # skips missing polarizations rather than raising, so ``bands=["HH","HV"]``
+    # on a single-pol HH scene returns HH-only + NaN for HV.
+    #
+    # Provider: earthdata (NASA CMR + ASF DAAC via earthaccess, requires
+    # an Earthdata Login and approved ASF DAAC application). See
+    # docs/providers/earthdata.md.
+    #
+    # Value range: sigma0 linear intensity (float32). Norm recipe:
+    # ("log_db", -30, 5) puts most agriculture / vegetation / ice in
+    # the [0, 1] band for CNN input; adjust for very dark (calm ocean)
+    # or very bright (urban) AOIs.
+    # ============================================================
+    "NISAR-L": {
+        "default_bands": ["HH", "HV"],
+        "extra_bands":   ["VH", "VV"],
+        "cloud_filter":  False,    # SAR sees through cloud
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "HH": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "HV": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "VH": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "VV": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "NISAR_L2_GCOV_PROVISIONAL_V1",
+                "reader":     "nisar_gcov_h5",
+                # Logical band -> covariance-matrix diagonal term in the
+                # HDF5 file. Off-diagonal complex terms (HHHV, HHVV, HVVV)
+                # are available in the source but not surfaced yet -- add
+                # here + in _read_nisar_gcov_h5_window if needed.
+                "band_map": {
+                    "HH": "HHHH",
+                    "HV": "HVHV",
+                    "VH": "VHVH",
+                    "VV": "VVVV",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
     # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
     # ALOS PALSAR mosaic by JAXA. Single classified band per tile;

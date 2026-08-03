@@ -1,0 +1,263 @@
+# NASA Earthdata provider
+
+## What it is
+
+Wraps NASA's [Earthdata](https://www.earthdata.nasa.gov/) discovery +
+download stack ([Common Metadata Repository](https://cmr.earthdata.nasa.gov/)
++ per-DAAC HTTPS or S3 endpoints, authenticated via
+[Earthdata Login](https://urs.earthdata.nasa.gov/)) as our seventh
+provider class, alongside the STAC providers (`earthsearch`,
+`planetary_computer`, `planet`, `sentinelhub`), `direct_http`, and
+`earth_engine`.
+
+Some of the most valuable Earth-observation datasets are only
+distributed through NASA DAACs behind Earthdata Login: **NISAR L-band
+SAR** (Alaska Satellite Facility, just went public 2026-07-20),
+**GEDI L4B biomass** (ORNL DAAC), **SMAP soil moisture** (NSIDC),
+**ICESat-2** (NSIDC), the **pre-2013 Landsat archive** in its
+authoritative form (LP DAAC), the full **MODIS** family in its native
+`.hdf` form (LP DAAC), and many others. This provider unlocks all of
+them behind a single auth path.
+
+The first mission wired through this provider is **NISAR-L**
+(`NISAR_L2_GCOV_PROVISIONAL_V1`) — L-band Geocoded Polarimetric
+Covariance, ~20 m native pixel spacing, dual-pol or single-pol
+depending on the observation mode. Currently the provisional public
+release covers acquisitions from **2026-06-17 onward**; the mission
+archive is growing daily and NASA has committed to publishing the
+first-year backlog by end of 2026.
+
+## Install
+
+`earthaccess` and `h5py` are both heavy dependency chains, which is why
+they live behind an optional extra. Users who never touch NASA-DAAC
+data never pay for either.
+
+**Recommended — mamba / conda:**
+
+```bash
+mamba install -n <your-env> -c conda-forge earthaccess h5py
+```
+
+**Or via pip:**
+
+```bash
+pip install geoai-datacubes[earthdata]
+```
+
+## First-time setup on a laptop
+
+Five steps, ~10 minutes end-to-end.
+
+1. **Create an Earthdata Login account** at
+   <https://urs.earthdata.nasa.gov/users/new>. Free, one-time.
+   Verify the email confirmation link.
+
+2. **Approve DAAC applications.** Sign in to
+   <https://urs.earthdata.nasa.gov/profile>, go to
+   **Applications → Authorized Apps**, and approve:
+
+   | DAAC application | Unlocks |
+   |---|---|
+   | **Alaska Satellite Facility Data Access** | NISAR + Sentinel-1 + ALOS PALSAR |
+   | **ORNL DAAC production website** | GEDI-L4B + other ORNL products |
+   | **NSIDC_DATAPOOL_OPS** (+ HTTPS_ALT + Cumulus Data + nsidc-daacdata) | SMAP, ICESat-2, IceBridge |
+   | **GES DISC** | Sentinel-5P TROPOMI, MERRA-2, GPM |
+   | **LP DAAC OPS** | MODIS in `.hdf`, Landsat archive, ASTER, VIIRS |
+
+   Skip anything labelled *Dashboard*, *Drive*, *OPeNDAP*, *Prototype*,
+   *Development*, or *(DEV/TEST)*.
+
+3. **Set up `~/.netrc`** for programmatic access. This is the standard
+   NASA-DAAC auth path — GDAL, rasterio, `earthaccess`, `wget`, `curl`,
+   `requests` etc. all read it automatically:
+
+   ```bash
+   touch ~/.netrc
+   chmod 600 ~/.netrc    # NASA tooling refuses if world-readable
+   cat >> ~/.netrc <<EOF
+   machine urs.earthdata.nasa.gov
+     login YOUR_EDL_USERNAME
+     password YOUR_EDL_PASSWORD
+   EOF
+   ```
+
+   Replace `YOUR_EDL_USERNAME` / `YOUR_EDL_PASSWORD` with what you set
+   in step 1. **Careful with heredocs**: if `EOF` ends up as a literal
+   line in the file (happens when the heredoc terminator is
+   mis-typed), NASA's netrc parser errors out with a cryptic *"bad
+   follower token 'EOF'"*.
+
+4. **Verify the setup** with a one-liner:
+
+   ```bash
+   python -c "
+   import earthaccess
+   auth = earthaccess.login(strategy='netrc')
+   print('authenticated:', auth.authenticated)
+   "
+   ```
+
+5. **Test a real search** against NISAR — since it's the first mission
+   we wired through this provider:
+
+   ```bash
+   python -c "
+   import earthaccess
+   earthaccess.login(strategy='netrc')
+   r = earthaccess.search_data(
+       short_name='NISAR_L2_GCOV_PROVISIONAL_V1',
+       bounding_box=(-122, 34, -117, 38),
+       temporal=('2026-06-17', '2026-08-05'),
+       count=3,
+   )
+   print(f'found {len(r)} NISAR granules')
+   "
+   ```
+
+   If that prints `found N NISAR granules` you're done.
+
+## Auth: three modes
+
+The `_ensure_earthdata_initialized` helper tries three strategies in
+priority order so notebooks, CI, HPC, Colab, and laptops all work with
+no code change:
+
+| Order | Env var / file | When to use |
+|---|---|---|
+| 1 | `EDL_USERNAME` + `EDL_PASSWORD` | Colab and CI (or any env with secret storage) |
+| 2 | `~/.netrc` (`machine urs.earthdata.nasa.gov`) | Interactive laptop |
+| 3 | Interactive `earthaccess.login()` prompt | Fallback |
+
+### Colab / CI path
+
+Set both env vars once as Colab **userdata secrets** (left sidebar →
+key icon → **+ Add new secret**) — `EDL_USERNAME` and `EDL_PASSWORD`.
+Toggle "Notebook access" on for each notebook that needs them. The
+bootstrap cell of notebook `05_nisar_helheim_datacube.ipynb` shows the
+pattern:
+
+```python
+import os
+from google.colab import userdata
+
+for name in ("EDL_USERNAME", "EDL_PASSWORD"):
+    val = userdata.get(name)
+    if val:
+        os.environ[name] = val
+```
+
+Once both env vars are set, `earthaccess.login(strategy="environment")`
+just works — no browser step needed.
+
+### HPC / production path
+
+Same as the laptop `~/.netrc` path. Copy your `~/.netrc` (mode 600)
+into the compute environment, or bake it into the container image
+under `$HOME/.netrc`. On shared-user systems you may want to use a
+service account with a dedicated EDL registration rather than a
+personal one.
+
+## Currently wired missions
+
+| Mission key | Product / short_name | DAAC | Temporal | Resolution | Bands |
+|---|---|---|---|---|---|
+| `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
+
+**NISAR-L notes:**
+
+- Bands are the diagonal elements of the polarimetric covariance
+  matrix, in linear sigma0 (float32). Suggested norm is `("log_db",
+  -30, 5)` (in `band_meta`).
+- Off-diagonal complex terms (`HHHV`, `HHVV`, `HVVV`) exist in the source
+  HDF5 but are not yet surfaced. Adding them is one entry in
+  `band_map` + a small extension of the reader in
+  `geoai_datacubes/fetch/_earthdata.py::_read_nisar_gcov_h5_window`.
+- Single-pol and dual-pol scenes are handled gracefully: requested
+  bands not present in a specific granule come back as NaN rather than
+  erroring.
+- Source CRS varies with latitude (typically **EPSG:3413** for
+  Greenland / Arctic, **EPSG:3031** for Antarctica, various **UTM**
+  zones for mid-latitudes). The provider reprojects to the AOI's local
+  UTM zone before writing the output GeoTIFF.
+- Each granule is **~700 MB - 1.2 GB**; the provider downloads once
+  and caches under `<save_folder>/.NISAR-L_cache/`. For time-series
+  work over a fixed AOI, the second and subsequent runs skip re-download.
+
+**Planned next missions on this provider:**
+
+- **GEDI-L4B** (`GEDI_L4B_Gridded_Biomass_V2_1`) — currently a
+  documented stub in `data_layers.md`. Will use the `"geotiff"` reader
+  path (already sketched in `_earthdata.py`).
+- **SMAP L3 soil moisture** — natural companion to NISAR L-band for
+  soil-moisture-under-vegetation work.
+- **ICESat-2 ATL06** — laser altimetry, natural companion to DEM
+  missions.
+
+## Quotas and cost
+
+Earthdata Login itself is free; there are no query quotas beyond the
+usual "please don't hammer us" fair use. Cloud-hosted products
+(increasingly common on the newer DAACs) also serve **temporary AWS
+credentials via the EDL bearer token** — this means an EC2 instance in
+the right region can `s3://`-read cloud-hosted granules with zero
+egress cost. Our provider today uses ordinary HTTPS downloads (which
+route through the DAAC's egress path); adding the S3-native
+fast-path is a straightforward `earthaccess.get_s3fs_session()`
+addition when the cloud-cost story becomes relevant.
+
+## Adding another Earthdata mission
+
+Recipe for a mission whose file format already has a reader in
+`_READERS` (currently: NISAR GCOV HDF5, plus a stubbed generic
+GeoTIFF path):
+
+1. Add a profile stanza to `MISSION_PROFILES` in
+   `geoai_datacubes/fetch/missions.py`:
+
+   ```python
+   "My-Mission": {
+       "default_bands": [...],
+       "band_meta":     {...},
+       "static":        True | False,
+       "providers": {
+           "earthdata": {
+               "short_name": "CMR_SHORT_NAME_V1",
+               "reader":     "nisar_gcov_h5",  # or "geotiff"
+               "band_map":   {"my_band": "src_band_name"},
+           },
+       },
+   },
+   ```
+
+2. Add `"My-Mission": "earthdata"` to `PROVIDER_AUTO` in
+   `geoai_datacubes/fetch/fetch_data.py`.
+
+3. Add the mission key to `_EXPECTED_MISSIONS` in
+   `tests/test_missions.py`.
+
+4. Add the mission's DAAC-application authorization to the checklist
+   in the [First-time setup](#first-time-setup-on-a-laptop) section
+   above.
+
+For a mission whose file format needs a **new reader** (e.g. NetCDF,
+some other HDF5 layout), add a reader function to
+`_earthdata._READERS`, then follow steps 1–4.
+
+## S-band NISAR (ISRO)
+
+The S-band leg of NISAR is operated by ISRO and served through the
+[Bhoonidhi portal](https://bhoonidhi.nrsc.gov.in/bhoonidhi/home.html).
+**Access is currently email-request only** — there is no automated
+API. If ISRO opens automated access, wiring it here would require a
+new provider class (Bhoonidhi is neither NASA CMR nor a standard STAC
+endpoint). Track for the future; for now, use L-band alone.
+
+## References
+
+- Earthdata Login user registration: <https://urs.earthdata.nasa.gov/users/new>
+- Earthdata Search UI: <https://search.earthdata.nasa.gov/>
+- ASF Vertex (NISAR + Sentinel-1 + ALOS): <https://search.asf.alaska.edu/>
+- `earthaccess` documentation: <https://earthaccess.readthedocs.io/>
+- NISAR mission overview: <https://nisar.jpl.nasa.gov/>
+- NISAR L-band data announcement: <https://www.earthdata.nasa.gov/data/alerts-outages/nisar-l-band-data-now-publicly-available>

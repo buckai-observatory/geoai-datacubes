@@ -22,21 +22,26 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Two
-> additional derived products are fetchable via the new `earth_engine`
-> provider and are *not* part of the reviewed v0.1.0 release currently
-> under JOSS review (openjournals/joss-reviews#11034):
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Three
+> additional missions are fetchable via two new provider classes and are
+> *not* part of the reviewed v0.1.0 release currently under JOSS review
+> (openjournals/joss-reviews#11034):
 >
 > - **Dynamic World V1** (per-Sentinel-2-scene 9-class LULC, Google + WRI,
->   Brown et al. 2022).
+>   Brown et al. 2022) — via new `earth_engine` provider.
 > - **JRC GFC2020 V3** (10 m global forest-cover baseline for the EU
 >   Deforestation Regulation, EU Joint Research Centre, Bourgoin et al.
->   2026).
+>   2026) — via `earth_engine` provider.
+> - **NISAR-L** (L-band SAR from NASA-ISRO NISAR mission, public archive
+>   opened 2026-07-20 — the first proper open L-band SAR archive since
+>   ALOS PALSAR-1) — via new `earthdata` provider, which authenticates
+>   through NASA Earthdata Login and unlocks the full NASA-DAAC catalogue
+>   (SMAP, ICESat-2, GEDI-L4B when unstubbed, etc.).
 >
-> Both are included in the derived-products quick reference below and
-> have their own full sections further down, tagged "v0.2 preview".
-> MODIS_SR and MODIS_LST also gain the `earth_engine` provider on this
-> branch, which resolves the historical sinusoidal tile-seam issue
+> All three are included in their respective quick-reference tables below
+> and have full sections further down, tagged "v0.2 preview". MODIS_SR
+> and MODIS_LST also gain the `earth_engine` provider on this branch,
+> which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
 
 ---
@@ -153,6 +158,7 @@ product with documented per-class quality.
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
+| NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
 
 ## Quick reference — derived products
 
@@ -277,6 +283,93 @@ the dB value by some constant works too.
 width. A single scene may not fully cover a user-set AOI; the pipeline
 mosaics same-day adjacent scenes automatically when a single scene
 covers less than 95 % of the AOI.
+
+---
+
+## NISAR L-band Geocoded Polarimetric Covariance *(v0.2 preview — this branch only)*
+
+**Mission name:** `NISAR-L`
+**Provider:** NASA Earthdata (`earthdata`) — Alaska Satellite Facility
+DAAC, via the `earthaccess` client. Requires a NASA Earthdata Login;
+see [`providers/earthdata.md`](providers/earthdata.md) for the auth
+walkthrough.
+**Product:** `NISAR_L2_GCOV_PROVISIONAL_V1` — L2 Geocoded Polarimetric
+Covariance. Level-2 means "already reprojected onto a geographic grid";
+Polarimetric Covariance means "each pixel is the covariance matrix
+of the received polarisation vectors", which for the diagonal terms
+reduces to backscatter intensities in each polarisation.
+**Spatial resolution:** ~20 m native (the pipeline fetches at the
+user-requested resolution and reprojects the granule into the AOI's
+local UTM zone).
+**Temporal:** since 2026-06-17. NISAR is in a 12-day polar-orbit repeat
+so a fixed AOI is re-observed roughly every 2-5 days at high latitudes
+and every ~6-12 days at the equator. Full mission archive (going back
+to first light in late 2024) is being backfilled through end of 2026.
+**Coverage:** global.
+**Producer:** NASA Jet Propulsion Laboratory (L-band leg) + Indian
+Space Research Organisation (S-band leg — email-request only via
+Bhoonidhi as of 2026-08).
+**Publication:** Rosen et al., in prep; mission overview at
+<https://nisar.jpl.nasa.gov/>.
+**Licence:** free and open (NASA data policy).
+
+| Band | Description |
+|---|---|
+| HH | Backscatter intensity, HH polarisation. Linear sigma0 (float32). |
+| HV | Backscatter intensity, HV polarisation. |
+| VH | Backscatter intensity, VH polarisation. |
+| VV | Backscatter intensity, VV polarisation. |
+
+**Polarisation availability:** each granule carries only the polarisations
+that were acquired -- single-pol (HH only), dual-pol (HH+HV or VV+VH),
+or full quad-pol (all four). Ask for whatever you want; the fetcher
+silently returns NaN for any polarisations not present in the specific
+granule rather than raising.
+
+**Value range:** linear sigma0 backscatter (float32). Typical values
+span roughly 0.01 to 5.0 depending on surface type: ~0.01-0.05 for
+calm ocean and smooth ice, 0.1-1.0 for vegetation and rough ice,
+1.0-10 for urban / rocky. Off-diagonal complex covariance terms
+(`HHHV`, `HHVV`, `HVVV`) are present in the source HDF5 but not
+surfaced yet; add them by extending the `band_map` in the mission
+profile and the reader in `_earthdata._read_nisar_gcov_h5_window`.
+
+**Normalisation for ML:** declared as `("log_db", -30.0, 5.0)` on
+`band_meta` for every polarisation -- takes 10·log10(sigma0), clips
+to the [-30, +5] dB range, and rescales to [0, 1]. Matches Sentinel-1
+and ALOS PALSAR handling so a fused L+C-band SAR stack has all
+channels on the same footing.
+
+**Source CRS:** varies with latitude. Polar-stereographic (EPSG:3413
+for the Arctic, 3031 for Antarctica) at high latitudes, various UTM
+zones at mid-latitudes. The provider reprojects into the AOI's local
+UTM zone before writing the output GeoTIFF, so downstream code sees
+the same CRS convention as every other SAR mission in the pipeline.
+
+**Granule size caveat:** each NISAR GCOV HDF5 is **~700 MB - 1.2 GB**.
+The provider downloads once and caches under
+`<save_folder>/.NISAR-L_cache/`, so time-series work over a fixed
+AOI reuses the file rather than re-downloading. First fetch over a
+new AOI will be slow.
+
+**Why this matters:** L-band SAR at 24 cm wavelength penetrates
+substantially further into dry snow, firn, soil, and forest canopy
+than Sentinel-1's C-band at 5.6 cm. This makes NISAR-L the modern
+successor to ALOS PALSAR-1 (2006-2011) for:
+
+- **Forest biomass** -- L-band interacts with tree trunks and large
+  branches rather than just the canopy surface, giving structure-based
+  biomass estimation rather than the spectral / canopy-cover proxies
+  optical or C-band can offer.
+- **Sub-canopy soil moisture** -- L-band sees the soil beneath
+  vegetation, letting you separate the canopy from the surface signal.
+- **Snow and firn** -- deeper penetration means better retrievals of
+  snow water equivalent and firn stratigraphy on ice sheets.
+- **Cross-frequency polarimetry** -- combining NISAR L-band with
+  Sentinel-1 C-band gives sensitivity to scatterers at two different
+  physical scales in one cube. Notebook
+  `05_nisar_helheim_datacube.ipynb` demonstrates this over Helheim
+  Glacier, southeast Greenland.
 
 ---
 

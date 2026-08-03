@@ -73,6 +73,7 @@ PROVIDER_AUTO = {
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
     "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
+    "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -170,6 +171,12 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
         )
 
+    if provider == "earthdata":
+        return fetch_earthdata(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
@@ -183,7 +190,7 @@ def fetch_sentinel_data(
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
         f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
-        f"or 'sentinelhub'."
+        f"'earthdata', or 'sentinelhub'."
     )
 
 
@@ -242,6 +249,36 @@ def fetch_earth_engine(mission, bands, time_range, roi,
         is_image=cfg.get("is_image", False),
         unmask_value=cfg.get("unmask_value"),
         project=cfg.get("project"),
+    )
+
+
+def fetch_earthdata(mission, bands, time_range, roi,
+                     resolution=30, save_folder="data"):
+    """NASA Earthdata / CMR fetcher (see ``fetch._earthdata``).
+
+    Reads the mission's ``earthdata`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earthdata``, which
+    authenticates via NASA Earthdata Login, searches CMR, downloads the
+    granule, extracts the AOI window with the per-product reader
+    (``nisar_gcov_h5``, ``geotiff``, ...), reprojects to local UTM, and
+    writes the standard ``<Mission>_full_size.tiff`` + ``userdata.json``
+    layout.
+
+    Auth is env-driven; see ``_earthdata._ensure_earthdata_initialized``.
+    """
+    from ._earthdata import _fetch_via_earthdata
+    cfg = get_provider_config(mission, "earthdata")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earthdata(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        short_name=cfg["short_name"],
+        band_map=cfg["band_map"],
+        reader=cfg.get("reader", "nisar_gcov_h5"),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
     )
 
 
