@@ -17,9 +17,21 @@ factor do I divide a Landsat C2 L2 surface-reflectance band by to get a
 real reflectance number?).
 
 The pipeline reads these from STAC providers (Earth Search, Microsoft
-Planetary Computer) or from the commercial Planet Orders API. The provider
-choice does not change the band names or properties documented here — only
-the host and the credentialing path.
+Planetary Computer), from **Google Earth Engine** (added on this
+branch as a v0.2 preview), or from the commercial Planet Orders API.
+The provider choice does not change the band names or properties
+documented here — only the host and the credentialing path.
+
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** One
+> additional derived product — **Dynamic World V1** (per-Sentinel-2-scene
+> 9-class LULC, Google + WRI, Brown et al. 2022) — is fetchable via the
+> new `earth_engine` provider. It is *not* part of the reviewed v0.1.0
+> release currently under JOSS review (openjournals/joss-reviews#11034).
+> The Dynamic-World entry is included in the derived-products quick
+> reference below and has its own full section further down, both tagged
+> "v0.2 preview". MODIS_SR and MODIS_LST also gain the `earth_engine`
+> provider on this branch, which resolves the historical sinusoidal
+> tile-seam issue ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
 
 ---
 
@@ -148,6 +160,7 @@ product with documented per-class quality.
 | JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | 6 layers | water occurrence / change / season / transitions |
 | Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | served via `direct_http`; canonical forest-loss raster |
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
+| Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
 | GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
 | GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
 
@@ -518,8 +531,16 @@ highest-quality observation from the underlying daily passes within
 an 8-day window. Effectively daily-cadence in input but stable
 8-day output. Archive runs from 2000 (Terra) and 2002 (Aqua) to
 present.
-**Provider:** Microsoft Planetary Computer, collection
-`modis-09A1-061`.
+**Providers:**
+* **Google Earth Engine** (`MODIS/061/MOD09A1`) — the default post-v0.2,
+  handles the sinusoidal cross-tile mosaic + reprojection to the
+  requested CRS server-side.
+* **Microsoft Planetary Computer** (`modis-09A1-061`) — the original
+  path, still available via explicit `provider="planetary_computer"`.
+  Returns data in native sinusoidal projection; PC has since gained
+  same-day multi-scene mosaicking so coverage is usually complete on
+  modern dates, but a client-side reprojection is still required to
+  fuse with S2 / DEM (both in UTM).
 
 | Band (pipeline) | Wavelength (nm) | Native resolution (m) | Description |
 |---|---|---|---|
@@ -540,14 +561,17 @@ corresponds to surface reflectance ρ = 0.50. Fill value is −28672.
 **Normalisation for ML:** `x * 0.0001` then `clip(0, 1)` — same
 shape as Sentinel-2 just with a smaller scale factor.
 
-**Known limitation — sinusoidal tile seams:** each STAC item is one
-MODIS sinusoidal tile. An AOI that straddles a seam (e.g. the
-Columbus OH 10-mile box crosses h11v04 / h11v05) will see large
-NaN holes in the returned array because the single-scene fetcher
-reads only one tile per date. The fetcher emits a loud runtime
-warning when the NaN fraction exceeds 25%. Cross-tile mosaicking
-(similar to the JRC-GSW / 3DEP path) is tracked in
-[GitHub Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10).
+**Cross-tile mosaic ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10), fixed via Earth Engine):**
+each PC STAC item is one MODIS sinusoidal tile, so an AOI that straddles
+a seam (e.g. Columbus, OH crosses h11v04 / h11v05 at 40°N) historically
+returned ~50% NaN. This is now handled two ways: (a) the PC fetcher
+itself gained same-day multi-scene mosaicking so coverage on modern
+dates is usually complete (still in native sinusoidal projection), and
+(b) the new Earth Engine provider mosaics tiles + reprojects out of
+sinusoidal server-side into the requested CRS, so the seam is invisible
+and no client-side reprojection is needed. `PROVIDER_AUTO` routes
+`MODIS_SR` to `earth_engine` by default. Notebook 04 includes a live
+side-by-side demo of both paths.
 
 **Why this matters for downstream tasks:** MODIS is the longest
 near-daily continuously-calibrated optical archive available — the
@@ -565,8 +589,15 @@ of these applications.
 **Temporal revisit:** daily — one MOD11A1 from Terra at ~10:30 LT
 and one MYD11A1 from Aqua at ~13:30 LT per day. Archive runs from
 2000 (Terra) / 2002 (Aqua) to present.
-**Provider:** Microsoft Planetary Computer, collection
-`modis-11A1-061`.
+**Providers:**
+* **Google Earth Engine** (`MODIS/061/MOD11A1`) — the default post-v0.2.
+  LST_Day and LST_Night are stored as raw uint16 with a 0.02 → Kelvin
+  scale factor; the EE provider applies that scale server-side (via
+  the mission's `scale_factors` config), so the downstream
+  `kelvin_to_celsius_norm` recipe sees actual Kelvin values.
+* **Microsoft Planetary Computer** (`modis-11A1-061`) — the original
+  path, still available via explicit `provider="planetary_computer"`.
+  Same tile-seam / sinusoidal caveats as MODIS_SR.
 
 | Band (pipeline) | Native resolution (m) | Description |
 |---|---|---|
@@ -584,7 +615,8 @@ corresponds to LST = 300 K = 26.85 °C. Fill value is 0.
 273.15 if you prefer °C; z-score against the training distribution
 for gradient-based models.
 
-**Same tile-seam caveat as `MODIS_SR`** — see above.
+**Same cross-tile mosaic story as `MODIS_SR`** — see the note in that
+section. `PROVIDER_AUTO` routes `MODIS_LST` to `earth_engine` too.
 
 **Why this matters for downstream tasks:** the canonical input for
 urban-heat-island work, evapotranspiration retrievals, drought
@@ -924,6 +956,61 @@ the natural choice for global LULC-change work. The class schema is
 coarser than ESA-WorldCover's 11 classes; use ESA-WorldCover when you
 need the finer wetland / mangrove / lichen distinctions, IO-LULC when
 you need the annual cadence.
+
+---
+
+## Dynamic World V1 *(v0.2 preview — this branch only)*
+
+**Mission name:** `Dynamic-World`
+**Provider:** Google Earth Engine, collection `GOOGLE/DYNAMICWORLD/V1`.
+**Spatial resolution:** 10 m (native — served on the Sentinel-2 grid).
+**Temporal:** per Sentinel-2 scene (every 2–5 days globally), 2015-06-27
+to present. In this pipeline, N scenes in the requested time window
+are reduced server-side to a single image (probability bands via
+`mean`, hard label via `mode`).
+**Coverage:** global.
+**Licence:** CC-BY-4.0; cite Brown et al. 2022 (*Sci Data* 9:251).
+
+| Band | Description |
+|---|---|
+| LULC | Integer hard class (0–8); surfaced as `LULC` so `preprocessing.fusion._NEAREST_BANDS` picks nearest-neighbour resampling out of the box. (The raw EE band is called `label`.) |
+| water | Softmax probability |
+| trees | Softmax probability |
+| grass | Softmax probability |
+| flooded_vegetation | Softmax probability |
+| crops | Softmax probability |
+| shrub_and_scrub | Softmax probability |
+| built | Softmax probability |
+| bare | Softmax probability |
+| snow_and_ice | Softmax probability |
+
+**Class IDs (for the hard `LULC` band):**
+0 = Water, 1 = Trees, 2 = Grass, 3 = Flooded vegetation, 4 = Crops,
+5 = Shrub & Scrub, 6 = Built, 7 = Bare, 8 = Snow & Ice.
+
+**Value range:** the nine probability bands are softmax outputs in
+`[0, 1]`; the hard `LULC` band is an integer class ID in `[0, 8]`.
+
+**Normalisation for ML:** probability bands use `('linear', 0.0, 1.0)`
+(a no-op scaling declared for consistency with other spectral-like
+inputs); the hard label uses `('one_hot', (0, 1, 2, 3, 4, 5, 6, 7, 8))`.
+
+**Setup requirements:** Earth Engine access + a Google Cloud project ID
+with the EE API enabled. Full walkthrough in
+[`docs/providers/earth_engine.md`](providers/earth_engine.md). Install
+via `mamba install -c conda-forge earthengine-api` (recommended) or the
+`[earthengine]` pip extra.
+
+**Why this matters:** the only *live* per-Sentinel-2-scene LULC in the
+pipeline. ESA-WorldCover is 10 m but static (2020 / 2021); IO-LULC is
+10 m annual; Dynamic World is 10 m **near-real-time** (updated every
+2–5 days). Best choice when you care about label recency — flood
+mapping, active construction detection, wildfire scar tracking,
+seasonal cropland monitoring — or when you want soft (probability)
+labels for uncertainty-aware training rather than a single hard class.
+Notebook 04 shows the end-to-end pipeline: Dynamic-World OR
+ESA-WorldCover as the label layer, fused with S2 + DEM, trained with
+XGBoost.
 
 ---
 
