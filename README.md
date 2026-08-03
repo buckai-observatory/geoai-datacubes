@@ -18,7 +18,11 @@
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three. A fourth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
+> - **Earth Engine + Dynamic World** (v0.2 preview — this branch only) — Colab-first onramp for the new `earth_engine` data provider. Fetches Google Dynamic World or ESA WorldCover as a LULC label layer, plus Sentinel-2 + Copernicus DEM; fuses them into a single UTM cube; trains XGBoost end-to-end.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+>   <!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+>
+> Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for the full set. A fifth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
 
 ---
 
@@ -92,6 +96,14 @@ A complete machine-learning workflow that picks up where the tour leaves off. Fe
 <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 A worked example of composing `geoai-datacubes` (data-prep front-end) with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling back-end). Builds fused multi-mission cubes for three Ohio cities and hands them off to `geoai-py` in two patterns: pretrained inference via `geoai.segment_water` on a NAIP scene, and custom training via `select_bands` + `geoai.train_segmentation_landcover` + `geoai.semantic_segmentation`. Trains on Cleveland + Cincinnati and **holds Columbus out entirely** — in-distribution F1 reaches ~0.95 while OOD F1 collapses to ~0.05, an honest illustration of the standard remote-sensing-ML reality of training on a handful of AOIs.
+
+### 4. Earth Engine + Dynamic World (v0.2 preview — this branch only)
+
+[`notebooks/04_earth_engine_dynamic_world.ipynb`](notebooks/04_earth_engine_dynamic_world.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+<!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+
+Colab-first onramp for the new `earth_engine` data provider added on this branch (not yet merged to `main` — targeted for **v0.2**). Fetches a per-Sentinel-2-scene 9-class LULC map from **Google Dynamic World** (Brown et al. 2022) via Earth Engine, *or* the static 2020/2021 **ESA WorldCover** mosaic at a one-line toggle, plus a **Sentinel-2** RGB+NIR scene and a **Copernicus DEM** tile over the same AOI. Fuses everything into a single multi-band data cube on a common UTM grid, then trains a lightweight **XGBoost** pixel classifier for a target class (default "built") with a 3-way spatial train / val / test column split and early stopping on the val strip. Includes a bonus section demonstrating the **MODIS cross-tile mosaic fix** ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)) — MODIS via Earth Engine returns seamless, UTM-native data in place of the old `planetary_computer` path that stayed in native sinusoidal projection. See [`docs/providers/earth_engine.md`](docs/providers/earth_engine.md) for the auth / project-ID / Colab-secrets setup walkthrough. Live progress on this branch: [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18).
 
 ### ⚠️ Work in progress: object detection on NAIP
 
