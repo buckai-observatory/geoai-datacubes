@@ -11,8 +11,10 @@ five previously wired provider classes (`earthsearch`,
 data that already exists as pre-baked raster assets. Some of the most
 useful Earth-observation layers do not sit in any of those homes; their
 canonical distribution is EE. The `earth_engine` provider class wraps EE
-as a sixth backend so those layers slot into `MISSION_PROFILES` with
-zero downstream changes.
+as the sixth backend so those layers slot into `MISSION_PROFILES` with
+zero downstream changes. (A seventh provider — `earthdata` for NASA
+DAACs behind Earthdata Login — lives alongside it on this branch;
+see [`earthdata.md`](earthdata.md).)
 
 The first mission wired through this provider is **Dynamic World V1**
 (Brown et al. 2022) — a per-Sentinel-2-scene 9-class LULC dataset with

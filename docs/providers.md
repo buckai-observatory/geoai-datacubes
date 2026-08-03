@@ -1,10 +1,13 @@
 # Provider trade-offs: convenience vs throughput at scale
 
-The pipeline supports **26 missions** end-to-end across four
-interchangeable providers — three of them with no credentials needed —
-plus a fifth `direct_http` path for missions that don't live in any STAC
-catalogue (e.g. Hansen GFC). The default is `PROVIDER = "auto"`, which
-routes each mission to the best free option.
+The pipeline supports **26 missions** end-to-end (v0.1.0 release; **29 with
+the three v0.2-preview additions on this branch**) across up to **seven
+interchangeable providers** — four STAC-based, one commercial, plus
+`direct_http` for non-STAC anonymous COGs, `earth_engine` for
+Google Earth Engine, and `earthdata` for anything hosted by a NASA
+DAAC behind Earthdata Login. Four of the seven need no credentials.
+The default `PROVIDER = "auto"` routes each mission to the best free
+option.
 
 This document covers two axes: **(1) capability** — which provider
 serves which mission, which needs credentials, which has server-side
@@ -12,30 +15,50 @@ band math — and **(2) throughput** — the same provider that wins for
 one AOI on a laptop can lose by an order of magnitude on a
 continent-scale workflow.
 
+> **v0.2-preview on this branch (`feature/earth-engine-provider`).** Two
+> new provider classes and three new missions land on this branch and
+> are documented here alongside the reviewed v0.1.0 providers. `main`
+> currently ships only the first five providers (STAC + direct_http).
+
 ---
 
 ## Quick capability matrix
 
-| | `PROVIDER = "earthsearch"` | `PROVIDER = "planetary_computer"` | `PROVIDER = "planet"` (commercial) | `PROVIDER = "sentinelhub"` (advanced) |
-|---|---|---|---|---|
-| **Credentials** | None | None | `PL_API_KEY` in `.env` | Free Sentinel Hub OAuth in a `.env` |
-| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Planet Labs Data + Orders API | Sentinel Hub Process API |
-| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | — | ✅ |
-| **Sentinel-2 L1C** | ✅ | ✅ | — | (not wired) |
-| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | — | ✅ |
-| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | — | ✅ |
-| **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — |
-| **NAIP (1 m US aerial)** | — | ✅ | — | — |
-| **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
-| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
+The four STAC-based providers plus `direct_http` (unchanged from
+v0.1.0):
 
-**Newer additions** (MODIS, HLS, JRC-GSW, 3DEP, Copernicus-DEM-90,
-ALOS-PALSAR, ALOS-FNF, USDA-CDL, LCMAP-CONUS, IO-LULC, Chloris-Biomass)
-are all served by Microsoft Planetary Computer; `Hansen-GFC` is served
-by the `direct_http` provider (anonymous Google Cloud Storage COGs,
-no STAC). `Sentinel-5P`, `GEDI-L4B`, and `GEBCO` are documented stubs
-pending NetCDF reader or auth wiring; see [`data_layers.md`](data_layers.md)
-for the full bands and normalisation recipes.
+| | `earthsearch` | `planetary_computer` | `planet` (commercial) | `sentinelhub` (advanced) | `direct_http` |
+|---|---|---|---|---|---|
+| **Credentials** | None | None | `PL_API_KEY` in `.env` | Free Sentinel Hub OAuth in a `.env` | None |
+| **Hosted by** | Element 84 (AWS Open Data) | Microsoft Planetary Computer (Azure) | Planet Labs Data + Orders API | Sentinel Hub Process API | Direct anonymous URLs (GCS, ETH, AWS Open Data) |
+| **Sentinel-2 L2A** | ✅ Fast (no sign step) | ✅ | — | ✅ | — |
+| **Sentinel-2 L1C** | ✅ | ✅ | — | (not wired) | — |
+| **Sentinel-1** | ⚠️ Raw GRD only — ground-range, no native CRS (unusable as-is) | ✅ **RTC** — terrain-corrected & georeferenced | — | ✅ | — |
+| **Landsat 8-9 C2 L2** | ⚠️ `usgs-landsat` bucket is requester-pays (anonymous reads fail) | ✅ Same data, served free | — | ✅ | — |
+| **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — | — |
+| **NAIP (1 m US aerial)** | — | ✅ | — | — | — |
+| **Hansen-GFC** | — | — | — | — | ✅ Only public path (anonymous GCS COGs) |
+| **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) | No |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs | Missions with no STAC / no auth (Hansen GFC and similar) |
+
+Plus two new provider classes on this branch (**v0.2 preview**):
+
+| | `earth_engine` | `earthdata` |
+|---|---|---|
+| **Credentials** | Google account + GCP project with EE API enabled | Free NASA Earthdata Login + DAAC-app authorization |
+| **Hosted by** | Google Earth Engine (server-side compute + reproject) | NASA CMR + per-DAAC HTTPS (ASF, ORNL, NSIDC, GES DISC, LP DAAC) |
+| **Dynamic World** | ✅ Only public host | — |
+| **JRC-GFC2020** | ✅ Only public host | — |
+| **MODIS_SR / MODIS_LST** | ✅ **Default on this branch** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — |
+| **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) |
+| **GEDI-L4B biomass** | — | ⏳ Stubbed; ready-to-unstub once first ORNL DAAC GeoTIFF reader lands |
+| **SMAP / ICESat-2 / VIIRS / Landsat archive** | — | ⏳ Same auth path; wire on demand |
+| **Server-side operations** | Full ImageCollection reductions, per-band scale factors, reprojection, temporal composites | Windowed reads into large HDF5 / GeoTIFF granules; download-and-cache |
+| **Best for** | Dynamic World, MODIS in a target CRS, JRC-GFC2020, and any of hundreds of other EE-native collections | NISAR L-band, GEDI biomass, SMAP soil moisture, ICESat-2, and anything else in the NASA DAAC catalogue |
+
+See [`providers/earth_engine.md`](providers/earth_engine.md) and
+[`providers/earthdata.md`](providers/earthdata.md) for the full auth
+walkthroughs.
 
 ## `PROVIDER = "auto"` routing (the default)
 
@@ -48,11 +71,15 @@ for the full bands and normalisation recipes.
 | `Copernicus-DEM-90` | `planetary_computer` | PC-only |
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
-| `MODIS_SR` / `MODIS_LST` / `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
+| `MODIS_SR` / `MODIS_LST` *(v0.2 preview)* | `earth_engine` | **Changed on branch**: EE handles sinusoidal tile-seam mosaic + reprojection server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). Old `planetary_computer` path still works via explicit `provider=` override. |
+| `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
 | `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
+| `Dynamic-World` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
+| `JRC-GFC2020` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
+| `NISAR-L` *(v0.2 preview)* | `earthdata` | ASF DAAC only; requires NASA Earthdata Login |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
-| `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Pending NetCDF reader / Earthdata-Login / cache-download work |
+| `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Sentinel-5P: NetCDF reader pending. GEDI-L4B: `earthdata` provider exists on branch but the ORNL-DAAC GeoTIFF reader stub in `_earthdata.py::_READERS["geotiff"]` needs finishing. GEBCO: cache-download work pending. |
 
 The output `<Mission>_full_size.tiff` is functionally identical
 regardless of provider; the rest of the pipeline (cloud masking, NDVI,
