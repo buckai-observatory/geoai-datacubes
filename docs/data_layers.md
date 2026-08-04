@@ -368,8 +368,10 @@ successor to ALOS PALSAR-1 (2006-2011) for:
 - **Cross-frequency polarimetry** -- combining NISAR L-band with
   Sentinel-1 C-band gives sensitivity to scatterers at two different
   physical scales in one cube. Notebook
-  `05_nisar_helheim_datacube.ipynb` demonstrates this over Helheim
-  Glacier, southeast Greenland.
+  `05_nisar_arctic_datacube.ipynb` demonstrates this over an Arctic
+  calving-glacier / ice-cap AOI (default: Penny Ice Cap, Baffin
+  Island — chosen because NISAR currently has confirmed dual-pol
+  coverage there).
 
 ---
 
@@ -1400,9 +1402,10 @@ fetcher logs+skips any missing tiles gracefully.
 `("mean_subtract", 1000.0)` matches Copernicus-DEM handling for ML
 consumption.
 
-**Notebook 05** now defaults `DEM_MISSION = "ArcticDEM"` (Helheim is
-at 66°N well inside the domain); flip to `"Copernicus-DEM"` if the
-AOI extends south of ~60°N or you want the global-consistent baseline.
+**Notebook 05** defaults `DEM_MISSION = "ArcticDEM"` (the notebook's
+default Arctic AOI is well inside the domain); flip to
+`"Copernicus-DEM"` if the target AOI extends south of ~60°N or you
+want the global-consistent baseline.
 
 ---
 

@@ -138,7 +138,7 @@ those specifically). Toggle "Notebook access" on for each notebook
 that needs them. Legacy `EDL_USERNAME` / `EDL_PASSWORD` names are also
 accepted and auto-remapped to the canonical names by our provider,
 for backward compat with earlier docs that promoted those. The
-bootstrap cell of notebook `05_nisar_helheim_datacube.ipynb` shows
+bootstrap cell of notebook `05_nisar_arctic_datacube.ipynb` shows
 the pattern:
 
 ```python
