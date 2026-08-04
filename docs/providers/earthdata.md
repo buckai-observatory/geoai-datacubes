@@ -77,12 +77,12 @@ Five steps, ~10 minutes end-to-end.
    chmod 600 ~/.netrc    # NASA tooling refuses if world-readable
    cat >> ~/.netrc <<EOF
    machine urs.earthdata.nasa.gov
-     login YOUR_EDL_USERNAME
-     password YOUR_EDL_PASSWORD
+     login YOUR_EARTHDATA_USERNAME
+     password YOUR_EARTHDATA_PASSWORD
    EOF
    ```
 
-   Replace `YOUR_EDL_USERNAME` / `YOUR_EDL_PASSWORD` with what you set
+   Replace `YOUR_EARTHDATA_USERNAME` / `YOUR_EARTHDATA_PASSWORD` with what you set
    in step 1. **Careful with heredocs**: if `EOF` ends up as a literal
    line in the file (happens when the heredoc terminator is
    mis-typed), NASA's netrc parser errors out with a cryptic *"bad
@@ -125,23 +125,27 @@ no code change:
 
 | Order | Env var / file | When to use |
 |---|---|---|
-| 1 | `EDL_USERNAME` + `EDL_PASSWORD` | Colab and CI (or any env with secret storage) |
+| 1 | `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` | Colab and CI (or any env with secret storage). These are the canonical names `earthaccess.login(strategy="environment")` reads; the older `EDL_USERNAME` / `EDL_PASSWORD` names are also accepted and auto-remapped to the canonical names by our provider. |
 | 2 | `~/.netrc` (`machine urs.earthdata.nasa.gov`) | Interactive laptop |
 | 3 | Interactive `earthaccess.login()` prompt | Fallback |
 
 ### Colab / CI path
 
 Set both env vars once as Colab **userdata secrets** (left sidebar →
-key icon → **+ Add new secret**) — `EDL_USERNAME` and `EDL_PASSWORD`.
-Toggle "Notebook access" on for each notebook that needs them. The
-bootstrap cell of notebook `05_nisar_helheim_datacube.ipynb` shows the
-pattern:
+key icon → **+ Add new secret**) — **`EARTHDATA_USERNAME`** and
+**`EARTHDATA_PASSWORD`** (those exact names — `earthaccess` reads
+those specifically). Toggle "Notebook access" on for each notebook
+that needs them. Legacy `EDL_USERNAME` / `EDL_PASSWORD` names are also
+accepted and auto-remapped to the canonical names by our provider,
+for backward compat with earlier docs that promoted those. The
+bootstrap cell of notebook `05_nisar_helheim_datacube.ipynb` shows
+the pattern:
 
 ```python
 import os
 from google.colab import userdata
 
-for name in ("EDL_USERNAME", "EDL_PASSWORD"):
+for name in ("EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
     val = userdata.get(name)
     if val:
         os.environ[name] = val

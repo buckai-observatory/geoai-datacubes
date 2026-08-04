@@ -102,7 +102,15 @@ def _ensure_earthdata_initialized():
         return earthaccess
 
     # Strategy 1: environment variables (Colab / CI-friendly).
-    if os.environ.get("EDL_USERNAME") and os.environ.get("EDL_PASSWORD"):
+    # earthaccess's strategy="environment" reads EARTHDATA_USERNAME +
+    # EARTHDATA_PASSWORD (its canonical names). We also accept the older
+    # EDL_USERNAME + EDL_PASSWORD names as fallback -- some earlier docs
+    # of ours mistakenly promoted those, and re-mapping is cheap.
+    username = os.environ.get("EARTHDATA_USERNAME") or os.environ.get("EDL_USERNAME")
+    password = os.environ.get("EARTHDATA_PASSWORD") or os.environ.get("EDL_PASSWORD")
+    if username and password:
+        os.environ["EARTHDATA_USERNAME"] = username
+        os.environ["EARTHDATA_PASSWORD"] = password
         try:
             auth = earthaccess.login(strategy="environment", persist=False)
             if getattr(auth, "authenticated", False):
