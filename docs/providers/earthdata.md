@@ -164,9 +164,10 @@ personal one.
 
 ## Currently wired missions
 
-| Mission key | Product / short_name | DAAC | Temporal | Resolution | Bands |
-|---|---|---|---|---|---|
-| `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
+| Mission key | Product / short_name | Data model | DAAC | Temporal | Resolution | Bands |
+|---|---|---|---|---|---|---|
+| `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | raster (single granule) | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
+| `ICESat-2-ATL06` | `ATL06` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 40 m along-track segments (rasterized at user resolution) | `h_li` (land-ice height, m WGS84) |
 
 **NISAR-L notes:**
 
@@ -188,15 +189,52 @@ personal one.
   and caches under `<save_folder>/.NISAR-L_cache/`. For time-series
   work over a fixed AOI, the second and subsequent runs skip re-download.
 
+**ICESat-2 ATL06 notes** — the **first track mission** wired through
+this provider. Distributed as one HDF5 per ~2000 km sub-orbit; a full
+AOI + time-range fetch aggregates every intersecting granule into:
+
+1. A **single gridded raster** (`ICESat-2-ATL06_full_size.tiff`, one band
+   per requested product band, default reducer `mean`). Drops straight
+   into the fusion pipeline.
+2. A **loss-less per-observation Parquet sidecar**
+   (`h_li_observations.parquet`, one row per original 40 m segment
+   across all 6 beams and all granules in the window). Columns:
+   `latitude`, `longitude`, `value`, `datetime`, `beam_id`,
+   `granule_id`, `quality_flag`. WGS84 coordinates -- the raster is
+   already reprojected, but the Parquet keeps the raw points so users
+   can re-project + re-bin onto any grid without re-downloading.
+
+Downstream filter / re-rasterize is `geoai_datacubes.tracks.PointObservations`:
+
+```python
+from geoai_datacubes.tracks import PointObservations
+obs = (PointObservations
+       .from_parquet("data/ICESat-2-ATL06_.../h_li_observations.parquet")
+       .filter(time_range=("2023-06-01","2023-08-31"),
+               quality="good",
+               beams=["gt1l","gt2l","gt3l"]))
+arr, transform, crs = obs.rasterize(
+    reference_raster="data/Sentinel-2_.../Sentinel-2_full_size.tiff",
+    reducer="median",
+    min_obs=3,
+)
+```
+
+Reducers: `mean`, `median`, `robust_mean` (5-95 percentile trim),
+`count`, `latest`. Grid can be `(bbox, resolution_m, target_crs)`,
+`reference_raster=<path>` (snap to an existing GeoTIFF), or `None`
+(auto-UTM). See `docs/data_layers.md` for the full track-missions story.
+
 **Planned next missions on this provider:**
 
-- **GEDI-L4B** (`GEDI_L4B_Gridded_Biomass_V2_1`) — currently a
-  documented stub in `data_layers.md`. Will use the `"geotiff"` reader
-  path (already sketched in `_earthdata.py`).
+- **GEDI-L4A** (`GEDI04_A_002`) — footprint-level aboveground biomass,
+  will reuse the tracks reader-kind with a new `_read_gedi_l4a_tracks`
+  extractor. Same Parquet-sidecar contract.
+- **GEDI-L4B** (`GEDI_L4B_Gridded_Biomass_V2_1`) — gridded biomass,
+  will use the `"geotiff"` raster reader path (already sketched in
+  `_earthdata.py`).
 - **SMAP L3 soil moisture** — natural companion to NISAR L-band for
   soil-moisture-under-vegetation work.
-- **ICESat-2 ATL06** — laser altimetry, natural companion to DEM
-  missions.
 
 ## Quotas and cost
 
@@ -212,9 +250,17 @@ addition when the cloud-cost story becomes relevant.
 
 ## Adding another Earthdata mission
 
+Two flavours: **raster missions** (one granule -> one scene, like
+NISAR-L) and **track missions** (many granules -> one aggregated
+raster + Parquet sidecar, like ICESat-2 ATL06). Both are dispatched
+from the mission's `"reader"` config; the top-level
+`_fetch_via_earthdata` looks up `_READER_KINDS[reader]` and routes
+`"raster"` readers through the single-scene window path, `"tracks"`
+readers through the multi-granule aggregation path.
+
 Recipe for a mission whose file format already has a reader in
-`_READERS` (currently: NISAR GCOV HDF5, plus a stubbed generic
-GeoTIFF path):
+`_READERS` (currently: NISAR GCOV HDF5, ATL06 tracks, plus a stubbed
+generic GeoTIFF path):
 
 1. Add a profile stanza to `MISSION_PROFILES` in
    `geoai_datacubes/fetch/missions.py`:

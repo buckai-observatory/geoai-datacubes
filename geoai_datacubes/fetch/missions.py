@@ -904,6 +904,51 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ICESat-2 ATL06 Land Ice Height Segments (NASA / NSIDC DAAC).
+    #
+    # Along-track altimetry rather than raster imagery: each granule is
+    # one ~2000 km ATLAS sub-orbit HDF5 with six laser beams; every
+    # ``land_ice_segments`` sub-group carries per-40-m-segment h_li
+    # heights plus latitude/longitude/delta_time/quality flags. First
+    # mission wired through the multi-granule "tracks" reader-kind
+    # dispatch in ``_earthdata._fetch_tracks``: an AOI + time-range
+    # fetch discovers every intersecting granule, aggregates all six
+    # beams per granule, concatenates across granules, and bins the
+    # point cloud onto a UTM raster at the requested resolution using
+    # the configured reducer (default: mean of h_li per pixel). A loss-
+    # less ``<band>_observations.parquet`` sidecar is written next to
+    # the raster so downstream code can re-grid at a different
+    # resolution or run per-observation regressions without a re-fetch.
+    #
+    # Value range: WGS84 ellipsoid heights, mostly in [-100, 5000] m
+    # over land ice; the linear norm is set to [-500, 5000] to cover
+    # ocean corrections and interior Antarctic / Greenland ice caps.
+    # ============================================================
+    "ICESat-2-ATL06": {
+        "default_bands": ["h_li"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_li": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL06",
+                "reader":          "atl06_tracks",
+                "band_map":        {"h_li": "h_li"},
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
     # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
     # ALOS PALSAR mosaic by JAXA. Single classified band per tile;

@@ -22,7 +22,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Three
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Five
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -35,11 +35,18 @@ documented here — only the host and the credentialing path.
 > - **NISAR-L** (L-band SAR from NASA-ISRO NISAR mission, public archive
 >   opened 2026-07-20 — the first proper open L-band SAR archive since
 >   ALOS PALSAR-1) — via new `earthdata` provider, which authenticates
->   through NASA Earthdata Login and unlocks the full NASA-DAAC catalogue
->   (SMAP, ICESat-2, GEDI-L4B when unstubbed, etc.).
+>   through NASA Earthdata Login and unlocks the full NASA-DAAC catalogue.
+> - **ArcticDEM v4.1** (32 m polar-stereographic DEM mosaic, Polar
+>   Geospatial Center / OSU, Howat et al.) — via `direct_http` on AWS
+>   Open Data, higher-resolution complement to Copernicus DEM at Arctic
+>   latitudes.
+> - **ICESat-2 ATL06** (40 m along-track land-ice height segments, NASA
+>   NSIDC DAAC) — via the `earthdata` provider's new **tracks
+>   reader-kind** (multi-granule aggregation into one raster + a
+>   loss-less per-observation Parquet sidecar). First point/track
+>   mission wired; template for GEDI L4A next.
 >
-> All three are included in their respective quick-reference tables below
-> and have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All five have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -373,6 +380,53 @@ successor to ALOS PALSAR-1 (2006-2011) for:
   empirically because NISAR has 3+ dual-pol granules fully covering
   that AOI and Sentinel-1 has 70+ dual-pol RTC scenes in the
   2024-2026 window, so the L-vs-C comparison is guaranteed to work).
+
+---
+
+## ICESat-2 ATL06 land-ice heights *(v0.2 preview — this branch only)*
+
+**Mission name:** `ICESat-2-ATL06`
+**Product:** `ATL06` (Land Ice Height, Version 006/007 depending on
+segment), hosted by **NSIDC DAAC**.
+**Distribution:** one HDF5 per ~2000 km sub-orbit; each file carries
+per-40 m along-track segments along **six laser beams** (`gt1l`, `gt1r`,
+`gt2l`, `gt2r`, `gt3l`, `gt3r`).
+**Data model:** **tracks** — this is the first mission wired through
+the earthdata provider's multi-granule aggregation path. A single fetch
+downloads every intersecting granule in the AOI + time-window, extracts
+per-segment `(lat, lon, h_li, delta_time, quality)` across all beams,
+and emits **two** files:
+
+1. A gridded raster (`ICESat-2-ATL06_full_size.tiff`, default reducer
+   `mean`) that drops straight into the fusion pipeline.
+2. A **loss-less Parquet sidecar** (`h_li_observations.parquet`) with
+   one row per original 40 m segment. This preserves the individual
+   acquisition dates of every track that got binned into each pixel --
+   critical when the surface changes on the timescale of the aggregation
+   window.
+
+**Downstream helper:** `geoai_datacubes.tracks.PointObservations` reads
+the Parquet and lets users filter (by `time_range`, `quality`, `beams`,
+`value_range`) and re-rasterize (with `reducer` in `mean` / `median` /
+`robust_mean` / `count` / `latest`, `min_obs` threshold, and either
+`grid=(bbox, res, crs)` or `reference_raster=<path>` for snap-to-S2
+etc.) without re-downloading. See `docs/providers/earthdata.md` for the
+full API.
+
+**Bands:**
+- `h_li` — land-ice height, WGS84 ellipsoid, first-photon-bias-corrected,
+  meters. Norm `("linear", -500, 5000)` covers ocean to ice-cap
+  altitudes; tighten per AOI.
+
+**Auth:** NASA Earthdata Login + NSIDC DAAC application. See the
+[earthdata provider docs](providers/earthdata.md).
+
+**Use case:** natural companion to DEM missions (ArcticDEM, Copernicus
+DEM) as a sparse but precise altimetric truth source for masked-loss
+ML training on optical -> topography retrievals. Notebook 05 uses
+Baffin Island as its default AOI; ATL06 coverage there is dense
+(500+ granules 2019-present) and stacks cleanly against NISAR L-band,
+Sentinel-1 C-band, and ArcticDEM in the same UTM cube.
 
 ---
 
@@ -1428,14 +1482,19 @@ Tracked in
 
 ### Raster-shaped LIDAR / altimetry products (planned)
 
-The Level-3 / Level-4 gridded products from GEDI (canopy / biomass),
-ICESat-2 (ice elevation), and NISAR-when-it-launches are already
-raster-shaped and slot cleanly into the static-mosaic pattern used by
-ESA WorldCover and JRC Global Surface Water. Raw waveform / point
-cloud products (raw GEDI shots, ICESat-2 ATL03 photons, NISAR L1) are
-out of scope — they need a different data model and are better served
-by dedicated packages (`gedipy`, `icepyx`). Tracked in
+The Level-3 / Level-4 gridded products from GEDI (canopy / biomass)
+and NISAR-when-it-launches are already raster-shaped and slot cleanly
+into the static-mosaic pattern used by ESA WorldCover and JRC Global
+Surface Water. Tracked in
 [Issue #8](https://github.com/buckai-observatory/geoai-datacubes/issues/8).
+
+**Point / track LIDAR products** (ICESat-2 ATL06 today, GEDI L2A/L4A
+next) are handled by a separate **tracks reader-kind** in the
+`earthdata` provider: many granules -> one aggregated raster + a
+loss-less per-observation Parquet sidecar, with
+`geoai_datacubes.tracks.PointObservations` as the downstream filter /
+re-rasterize helper. See the [`earthdata` provider docs](providers/earthdata.md)
+for the full API and the ICESat-2-ATL06 section below.
 
 ### High-resolution commercial optical (mostly not free)
 

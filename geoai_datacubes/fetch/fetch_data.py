@@ -75,6 +75,7 @@ PROVIDER_AUTO = {
     "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
     "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
+    "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -280,6 +281,7 @@ def fetch_earthdata(mission, bands, time_range, roi,
         reader=cfg.get("reader", "nisar_gcov_h5"),
         band_meta=profile.get("band_meta"),
         filters=cfg.get("filters"),
+        default_reducer=cfg.get("default_reducer", "mean"),
     )
 
 

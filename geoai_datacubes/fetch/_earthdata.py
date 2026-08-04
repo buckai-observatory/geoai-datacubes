@@ -9,10 +9,16 @@ the NASA DAACs and requires a NASA Earthdata Login (EDL) token:
   with S-band; public archive opened 2026-07-20. Currently the flagship
   product wired through this provider is `NISAR_L2_GCOV_PROVISIONAL_V1`
   (Geocoded Polarimetric Covariance).
+- **ICESat-2 ATL06** (NSIDC DAAC) — 40 m land-ice height segments along
+  six laser beams. Distributed as one HDF5 per ~2000 km sub-orbit; a full
+  AOI + time-range fetch aggregates every intersecting granule into a
+  single gridded raster (mean h_li per pixel) plus a loss-less per-
+  observation Parquet sidecar. First mission wired through the tracks
+  reader-kind dispatch.
 - **GEDI-L4B** (ORNL DAAC) — global 1 km gridded aboveground biomass,
   natural next fit for this provider; currently a documented stub in
   `MISSION_PROFILES`.
-- **SMAP, ICESat-2, VIIRS** etc. — same auth path once wired.
+- **SMAP, VIIRS** etc. — same auth path once wired.
 
 Auth priority (lazy, at first fetch call), mirrors our `_earth_engine.py`:
 
@@ -23,7 +29,9 @@ Auth priority (lazy, at first fetch call), mirrors our `_earth_engine.py`:
 The provider writes the same on-disk contract as every other provider:
 ``<save_folder>/<mission>_<date>_earthdata/<mission>_full_size.tiff`` plus a
 ``userdata.json`` sidecar, so fusion, tiling, and the band-meta / norm
-machinery need zero provider-specific code.
+machinery need zero provider-specific code. Track missions additionally
+write ``<band>_observations.parquet`` next to the raster, holding the
+loss-less per-observation record before any grid binning.
 
 Per-mission product readers are dispatched from the mission's `"reader"`
 config field. Currently supported:
@@ -31,10 +39,15 @@ config field. Currently supported:
 - ``"nisar_gcov_h5"`` — NISAR L2 GCOV HDF5, windowed read via h5py, source
   CRS varies (polar-stereographic near the poles, UTM in mid-latitudes).
 - ``"geotiff"`` — plain single-band GeoTIFF (GEDI-L4B pattern, planned).
+- ``"atl06_tracks"`` — ICESat-2 ATL06 HDF5, six-beam per-segment extract;
+  handled by the multi-granule `_fetch_tracks` flow rather than the
+  single-scene raster flow (see ``_READER_KINDS``).
 
 Adding a new NASA product with an already-supported reader is a 5-line
 config addition to `MISSION_PROFILES`. Adding a new file format is one
-new reader function plus a dispatch case.
+new reader function plus a dispatch case (and, for point/track products,
+an entry in ``_READER_KINDS`` so the top-level dispatcher routes it to
+the aggregation flow instead of the raster flow).
 """
 from __future__ import annotations
 
@@ -350,9 +363,124 @@ def _read_geotiff_bands(
     )
 
 
+# ATLAS Standard Data Product epoch (UTC). ATL06 `delta_time` is stored as
+# "GPS seconds since the ATLAS SDP epoch"; leap-second offset is ~18 s in
+# 2018, which we ignore -- that precision is irrelevant for AOI clipping,
+# daily/monthly time-bucketing, or the eventual per-pixel mean grid.
+_ATL06_SDP_EPOCH = np.datetime64("2018-01-01T00:00:00")
+
+# Six ATLAS laser beams; the ATL06 HDF5 groups by beam (three pairs, left
+# and right). Any given granule may miss beams if the laser was off, so
+# every read is guarded with `if beam in f`.
+_ATL06_BEAMS = ("gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r")
+
+# ATL06 canonical DataFrame columns produced by _read_atl06_tracks and
+# consumed by _fetch_tracks. Kept in one place so tests + downstream
+# helpers can import it and stay in sync.
+TRACKS_CANONICAL_COLS = (
+    "latitude", "longitude", "value", "datetime",
+    "beam_id", "granule_id", "quality_flag",
+)
+
+
+def _read_atl06_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+):
+    """Extract per-segment land-ice height records from one ATL06 granule.
+
+    Iterates the six ATLAS beams (``gt1l``..``gt3r``), reads the
+    ``land_ice_segments`` sub-group's ``h_li`` / ``latitude`` /
+    ``longitude`` / ``delta_time`` / ``atl06_quality_summary`` arrays,
+    filters out ``_FillValue`` heights (3.4028235e38, i.e. float32 max),
+    NaN geolocation, and rows outside the AOI, then concatenates all
+    surviving beams into a single ``pandas.DataFrame`` with the canonical
+    ``TRACKS_CANONICAL_COLS`` schema. Missing beams (laser off) are
+    silently skipped rather than raised.
+
+    Parameters
+    ----------
+    fp
+        Local path to one ATL06 HDF5 file.
+    ee_bands
+        Source-side band names to extract. ATL06 currently surfaces a
+        single altimetric measurement (``h_li``); the parameter is kept
+        for interface parity with the raster reader dispatch and is not
+        checked -- ATL06 always returns h_li per segment.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; rows outside
+        are dropped before return.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    h5py = _lazy_import_h5py()
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+    frames = []
+
+    with h5py.File(fp, "r") as f:
+        for beam in _ATL06_BEAMS:
+            if beam not in f:
+                continue
+            grp = f[beam].get("land_ice_segments")
+            if grp is None:
+                continue
+
+            h_li = grp["h_li"][:]
+            lat  = grp["latitude"][:]
+            lon  = grp["longitude"][:]
+            dt   = grp["delta_time"][:]
+            qual = grp["atl06_quality_summary"][:]
+
+            # h_li carries the ATL06 float32-max _FillValue on invalid
+            # segments; also drop NaN geolocation and rows outside the AOI
+            # BEFORE building the DataFrame so we never materialise
+            # millions of scrap rows just to throw them out.
+            valid = (
+                (h_li < 1e38)
+                & np.isfinite(lat) & np.isfinite(lon)
+                & (lon >= lon_min) & (lon <= lon_max)
+                & (lat >= lat_min) & (lat <= lat_max)
+            )
+            if not valid.any():
+                continue
+
+            dt_valid = dt[valid]
+            utc = _ATL06_SDP_EPOCH + (dt_valid * 1e9).astype("timedelta64[ns]")
+
+            frames.append(pd.DataFrame({
+                "latitude":     lat[valid].astype(np.float64),
+                "longitude":    lon[valid].astype(np.float64),
+                "value":        h_li[valid].astype(np.float32),
+                "datetime":     pd.to_datetime(utc),
+                "beam_id":      beam,
+                "granule_id":   granule_id,
+                "quality_flag": qual[valid].astype(np.int8),
+            }))
+
+    if not frames:
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+    return pd.concat(frames, ignore_index=True)
+
+
 _READERS: Dict[str, Callable] = {
     "nisar_gcov_h5": _read_nisar_gcov_h5_window,
     "geotiff":       _read_geotiff_bands,
+    "atl06_tracks":  _read_atl06_tracks,
+}
+
+# Reader kind decides which top-level flow handles the mission:
+#   - "raster" : single-best-granule download + windowed read + reproject
+#                (existing NISAR/GeoTIFF flow, `_fetch_via_earthdata`)
+#   - "tracks" : multi-granule download + per-observation extract +
+#                bin-to-target-grid + Parquet sidecar (`_fetch_tracks`)
+# New file formats add themselves here alongside their reader entry.
+_READER_KINDS: Dict[str, str] = {
+    "nisar_gcov_h5": "raster",
+    "geotiff":       "raster",
+    "atl06_tracks":  "tracks",
 }
 
 
@@ -374,6 +502,7 @@ def _fetch_via_earthdata(
     band_meta: Optional[Dict[str, Dict]] = None,
     filters: Optional[Dict[str, Any]] = None,
     scene_tag: Optional[str] = None,
+    default_reducer: str = "mean",
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a mission via NASA Earthdata / CMR.
 
@@ -429,6 +558,28 @@ def _fetch_via_earthdata(
             f"Unknown Earthdata reader: {reader!r}. Available: {list(_READERS)!r}. "
             "Add a new reader function to _earthdata._READERS to wire a new file "
             "format."
+        )
+
+    # Track / point-cloud missions (ICESat-2 ATL06, and any future altimetric
+    # or lidar product) need every intersecting granule aggregated onto the
+    # target grid rather than the single-best-granule windowed read the
+    # raster flow does. Dispatch before doing any of the raster-shape setup.
+    kind = _READER_KINDS.get(reader, "raster")
+    if kind == "tracks":
+        return _fetch_tracks(
+            earthaccess,
+            mission=mission,
+            bands=bands,
+            time_range=time_range,
+            roi=roi,
+            resolution=resolution,
+            save_folder=save_root,
+            short_name=short_name,
+            band_map=band_map,
+            reader=reader,
+            filters=filters,
+            scene_tag=scene_tag,
+            default_reducer=default_reducer,
         )
 
     # Resolve requested bands.
@@ -540,6 +691,264 @@ def _default_scene_tag(mission: str, granule: Any) -> str:
     can extract the mission from the folder name.
     """
     gid = granule.get("meta", {}).get("native-id", "")
-    m = re.search(r"_(\d{8})T", gid)
+    m = re.search(r"_(\d{8})T?", gid)
     date_str = m.group(1) if m else "unknown"
     return f"{mission}_{date_str}_earthdata"
+
+
+# ============================================================
+# Track / point-cloud aggregation flow
+# ============================================================
+
+def _bin_points_to_grid(
+    x_dst: np.ndarray,
+    y_dst: np.ndarray,
+    values: np.ndarray,
+    aoi_dst: Sequence[float],
+    resolution: float,
+    out_w: int,
+    out_h: int,
+    reducer: str,
+) -> np.ndarray:
+    """Aggregate per-point ``values`` into a ``(out_h, out_w)`` raster.
+
+    Coordinates are in the target CRS (metres). The reducer defines how
+    multiple observations landing in the same pixel are combined:
+
+      * ``mean``  -- arithmetic mean of the observations (default)
+      * ``median``-- per-pixel median (slower; groupby-backed)
+      * ``min`` / ``max`` -- min / max height
+      * ``count`` -- number of observations in the pixel
+
+    Pixels with zero observations are ``NaN`` so the rest of the pipeline
+    (fusion, tiler, norm recipes) treats them as invalid rather than 0.
+    """
+    x_min, _y_min, _x_max, y_max = aoi_dst
+    # North-up grid: pixel origin at (x_min, y_max), rows increase south.
+    col = np.floor((x_dst - x_min) / resolution).astype(np.int64)
+    row = np.floor((y_max - y_dst) / resolution).astype(np.int64)
+    in_bounds = (col >= 0) & (col < out_w) & (row >= 0) & (row < out_h)
+    col = col[in_bounds]
+    row = row[in_bounds]
+    values = values[in_bounds]
+
+    flat_len = out_w * out_h
+    grid = np.full(flat_len, np.nan, dtype=np.float32)
+    if col.size == 0:
+        return grid.reshape(out_h, out_w)
+
+    flat_idx = row * out_w + col
+
+    if reducer == "count":
+        counts = np.bincount(flat_idx, minlength=flat_len).astype(np.float32)
+        grid = np.where(counts > 0, counts, np.nan)
+    elif reducer == "mean":
+        vals = values.astype(np.float64)
+        sums   = np.bincount(flat_idx, weights=vals, minlength=flat_len)
+        counts = np.bincount(flat_idx, minlength=flat_len)
+        with np.errstate(invalid="ignore"):
+            mean = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+        grid = mean.astype(np.float32)
+    elif reducer in ("min", "max", "median"):
+        # numpy has no groupby-reduce; sort by flat_idx once, then split.
+        # For MEAN/COUNT bincount is O(N); this branch is O(N log N) but
+        # only fires when someone explicitly asks for a non-mean reducer,
+        # so the extra cost is fine.
+        order = np.argsort(flat_idx, kind="stable")
+        flat_sorted = flat_idx[order]
+        vals_sorted = values[order].astype(np.float64)
+        splits = np.flatnonzero(np.diff(flat_sorted)) + 1
+        pixel_ids = np.concatenate([flat_sorted[:1], flat_sorted[splits]])
+        groups = np.split(vals_sorted, splits)
+        reducer_fn = {"min": np.min, "max": np.max, "median": np.median}[reducer]
+        out = np.full(flat_len, np.nan, dtype=np.float32)
+        for pid, g in zip(pixel_ids, groups):
+            out[pid] = reducer_fn(g)
+        grid = out
+    else:
+        raise ValueError(
+            f"Unknown tracks reducer {reducer!r}. "
+            f"Supported: 'mean', 'median', 'min', 'max', 'count'."
+        )
+    return grid.reshape(out_h, out_w)
+
+
+def _tracks_scene_tag(mission: str, time_range: Optional[Tuple[str, str]]) -> str:
+    """Track-flow scene folder name; MUST start with ``f'{mission}_'``.
+
+    Uses the time-range start date because a tracks fetch aggregates many
+    granules -- there is no single 'acquisition date' the way a single-
+    scene raster fetch has one.
+    """
+    if not time_range:
+        return f"{mission}_multi_earthdata"
+    d0 = (time_range[0] or "unknown").replace("-", "")
+    return f"{mission}_{d0}_earthdata"
+
+
+def _fetch_tracks(
+    earthaccess,
+    *,
+    mission: str,
+    bands: Sequence[str],
+    time_range: Optional[Tuple[str, str]],
+    roi: Sequence[float],
+    resolution: float,
+    save_folder: Path,
+    short_name: str,
+    band_map: Dict[str, str],
+    reader: str,
+    filters: Optional[Dict[str, Any]] = None,
+    scene_tag: Optional[str] = None,
+    default_reducer: str = "mean",
+    max_granules: int = 500,
+) -> Tuple[List[np.ndarray], List[str]]:
+    """Multi-granule aggregation flow for track / point-cloud missions.
+
+    See the module docstring for the on-disk contract. Returns the same
+    ``(data, final_bands)`` shape as ``_fetch_via_earthdata`` so downstream
+    callers (``fetch_earthdata`` / ``fetch_sentinel_data``) do not care
+    which reader kind produced the result.
+    """
+    from pyproj import Transformer  # noqa: PLC0415
+    import pandas as pd  # noqa: PLC0415
+
+    logical_bands = list(bands)
+    unknown = [b for b in logical_bands if b not in band_map]
+    if unknown:
+        raise ValueError(
+            f"{mission}: bands not in band_map: {unknown!r}. "
+            f"Available: {list(band_map)!r}"
+        )
+
+    # Target grid: local UTM at the requested resolution -- same convention
+    # as the raster flow, so a tracks-fetched cube fuses cleanly with any
+    # raster mission over the same AOI.
+    dst_crs = _aoi_utm_crs(roi)
+    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+
+    reducer = default_reducer or "mean"
+
+    print(f"Earthdata tracks fetch: {mission} / {short_name}")
+    print(f"  bands  : {logical_bands}")
+    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
+    print(f"  reducer: {reducer}")
+
+    # Search + download every intersecting granule. Cap at max_granules
+    # so a two-decade global time-range doesn't accidentally pull a TB.
+    search_kwargs: Dict[str, Any] = {
+        "short_name": short_name,
+        "bounding_box": tuple(roi),
+        "count": max_granules,
+    }
+    if time_range is not None:
+        search_kwargs["temporal"] = tuple(time_range)
+    if filters:
+        search_kwargs.update(filters)
+    results = earthaccess.search_data(**search_kwargs)
+    if not results:
+        raise RuntimeError(
+            f"No {short_name} granules found for AOI {roi} in {time_range}. "
+            "Widen the time range or check that the AOI falls under the "
+            "product's observation coverage."
+        )
+    print(f"  granules found: {len(results)} (cap {max_granules})")
+
+    cache_dir = save_folder / f".{mission}_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    files = earthaccess.download(results, local_path=str(cache_dir))
+    print(f"  OK {len(files)} granules downloaded in {time.time()-t0:.1f}s")
+
+    # Extract observations from every granule, then concat.
+    reader_fn = _READERS[reader]
+    per_granule_frames = []
+    for fp in files:
+        try:
+            df = reader_fn(fp, list(band_map.values()), roi)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  WARN failed to read {Path(fp).name}: "
+                  f"{type(exc).__name__}: {exc}")
+            continue
+        if len(df):
+            per_granule_frames.append(df)
+
+    if not per_granule_frames:
+        raise RuntimeError(
+            f"{mission}: none of the {len(files)} downloaded granules had "
+            "observations inside the AOI. The product footprint reported by "
+            "CMR overlaps but no along-track sample lands in the AOI -- "
+            "widen the AOI or the time range."
+        )
+    obs = pd.concat(per_granule_frames, ignore_index=True)
+    print(f"  OK {len(obs)} observations across {len(per_granule_frames)} granules")
+
+    # Reproject (lat, lon) once for all observations; done here rather than
+    # inside the reader so the reader stays CRS-agnostic and the transform
+    # cost is paid only once instead of per-granule.
+    tf = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
+    x_dst, y_dst = tf.transform(obs["longitude"].to_numpy(),
+                                 obs["latitude"].to_numpy())
+
+    # Write scene folder.
+    scene_dir = save_folder / (scene_tag or _tracks_scene_tag(mission, time_range))
+    scene_dir.mkdir(parents=True, exist_ok=True)
+
+    # Bin per band. ATL06 today ships only one logical band (h_li); the
+    # loop lets a future multi-band track product (per-beam custom sums,
+    # segment slope, ...) drop into the same flow with no refactor.
+    stack = np.full((len(logical_bands), out_h, out_w), np.nan, dtype=np.float32)
+    for i, logical in enumerate(logical_bands):
+        grid = _bin_points_to_grid(
+            x_dst, y_dst, obs["value"].to_numpy(),
+            aoi_dst, resolution, out_w, out_h, reducer,
+        )
+        stack[i] = grid
+        finite = int(np.isfinite(grid).sum())
+        pct = 100.0 * finite / grid.size if grid.size else 0.0
+        print(f"  [{logical:6s}] binned onto grid: {finite}/{grid.size} valid "
+              f"pixels ({pct:.2f}%)")
+
+        # One parquet per band. Loss-less per-observation record; the
+        # grid columns (col/row/x/y) are NOT persisted -- they get
+        # recomputed on the fly by tracks.py helpers so a re-grid at
+        # different resolution stays cheap and consistent.
+        parquet_path = scene_dir / f"{logical}_observations.parquet"
+        obs.to_parquet(parquet_path, index=False)
+
+    out_tiff = scene_dir / f"{mission}_full_size.tiff"
+    with rasterio.open(
+        out_tiff, "w",
+        driver="GTiff",
+        height=out_h, width=out_w, count=len(logical_bands),
+        dtype=np.float32,
+        crs=dst_crs, transform=dst_transform,
+        compress="DEFLATE", predictor=2, tiled=True,
+        nodata=np.nan,
+    ) as dst:
+        dst.write(stack.astype(np.float32))
+        dst.descriptions = tuple(logical_bands)
+
+    sidecar = {
+        "mission":       mission,
+        "provider":      "earthdata",
+        "short_name":    short_name,
+        "reader":        reader,
+        "reader_kind":   "tracks",
+        "reducer":       reducer,
+        "time_range":    list(time_range) if time_range else None,
+        "roi":           list(roi),
+        "resolution":    resolution,
+        "crs":           dst_crs,
+        "bands":         logical_bands,
+        "band_map":      {b: band_map[b] for b in logical_bands},
+        "granules":      len(files),
+        "observations":  int(len(obs)),
+    }
+    (scene_dir / "userdata.json").write_text(json.dumps(sidecar, indent=2))
+
+    print(f"OK {mission} written to {out_tiff}")
+    return [stack[i] for i in range(len(logical_bands))], logical_bands

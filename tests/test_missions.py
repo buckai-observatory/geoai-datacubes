@@ -25,6 +25,7 @@ _EXPECTED_MISSIONS = (
     "Dynamic-World",
     "JRC-GFC2020",
     "NISAR-L",
+    "ICESat-2-ATL06",
     "PlanetScope-4b", "PlanetScope-8b",
     "Sentinel-5P", "GEDI-L4B", "GEBCO",          # documented stubs
 )
