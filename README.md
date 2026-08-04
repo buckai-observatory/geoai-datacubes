@@ -159,6 +159,49 @@ For Docker, pip-only, slimmer installs via `[ml]` / `[geoai]` / `[notebooks]` / 
 
 ---
 
+## Talk to an agent (the primary way to use the package)
+
+For the ~80% case — "I want a fused datacube over [AOI] for [time window]" — the fastest path is to **chat with an AI coding agent** running in the repo. The agent picks missions, resolves the AOI, walks you through auth for anything that needs it, runs the fetches, fuses the cube, visualises the result, and optionally scaffolds a Jupyter notebook or a baseline ML model on top. No requirement that you know the Python API.
+
+**Every major agentic CLI works** (Claude Code, Gemini CLI, OpenAI Codex CLI, Cursor, Windsurf) — the repo ships an [`AGENTS.md`](AGENTS.md) at the root that all of them auto-load, plus modular skill files in [`agents/skills/`](agents/skills/). Nothing is tool-specific: plain English + shell/Python blocks, no MCP schemas, no vendor lock-in.
+
+**Getting started (from a fresh terminal):**
+
+```bash
+# 1. Clone the repo (or `cd` into an existing clone)
+git clone https://github.com/buckai-observatory/geoai-datacubes.git
+cd geoai-datacubes
+
+# 2. Launch your agent in this directory. Any of:
+claude          # Claude Code
+gemini          # Gemini CLI
+codex           # OpenAI Codex CLI
+# ... whichever you have installed
+
+# 3. Say what you want. Example prompts that "just work":
+#    "Build me a Sentinel-1 + Sentinel-2 + Copernicus DEM cube
+#     over Lake Erie for summer 2024, resolution 10 m."
+#    "Which missions give me L-band SAR over Baffin Island?"
+#    "Add ICESat-2 ATL06 as sparse labels and train a baseline
+#     ArcticDEM-bias-correction regressor with spatial-block CV."
+#    "Register my folder of drone GeoTIFFs at ~/data/drone/ as
+#     a new mission and fuse it with a Sentinel-2 scene."
+```
+
+The agent will:
+- Sniff your environment (Colab vs local vs HPC) and ask which install extras to pull in.
+- List available missions grouped by data modality (38 today) and match them to your needs.
+- Walk you through NASA EDL / Google Earth Engine / Sentinel Hub / Planet credentials only if a chosen mission requires them.
+- Fetch, fuse, and report per-band statistics + NaN coverage.
+- Optionally save the whole workflow as a Jupyter notebook (local or Colab-ready).
+- Optionally scaffold a baseline classifier / regressor / segmenter with correct spatial-block CV.
+
+The agent **stops and hands back to you** for anything outside the standard toolbox — custom loss functions, PINN training, foundation-model fine-tuning, large paid downloads, browser-based credential steps, `git commit`. See [`AGENTS.md`](AGENTS.md) for the full contract.
+
+**Prefer to read code first?** Every capability the agent has is available directly via the Python API — see the notebooks below and [`docs/`](docs/).
+
+---
+
 ## Try the notebooks
 
 The repo ships with **three complementary reviewed notebooks** in `notebooks/` plus one in-development scaffold. See [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
