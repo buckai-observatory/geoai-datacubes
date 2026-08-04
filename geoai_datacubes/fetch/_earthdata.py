@@ -65,6 +65,24 @@ config field. Currently supported:
   ``latitude`` / ``longitude``. Two heights are dispatchable per fetch:
   ``ht_water_surf`` (default, water surface WGS84 ellipsoid m) and
   ``ht_ortho`` (orthometric height above the segment_geoid, m).
+- ``"atl03_tracks"`` — ICESat-2 ATL03 Global Geolocated Photon Data
+  (NSIDC DAAC). Same six ATLAS beams and SDP epoch as ATL06 / ATL08 /
+  ATL13, but *per-photon* rather than per-segment: each ``/gt{beam}/
+  heights/`` group carries tens of millions of photon events (``h_ph``,
+  ``lat_ph``, ``lon_ph``, ``delta_time``, ``signal_conf_ph``). A single
+  granule is 3-6 GB and ~300 M photons across all six beams, so the
+  reader MUST downsample -- the ``max_points_per_granule`` reader
+  kwarg (default 100_000, threaded through the provider's
+  ``reader_kwargs`` field) draws a uniform random subsample after the
+  AOI + signal-confidence filter to keep memory bounded. The
+  ``min_signal_conf`` reader kwarg (default 3, medium+high across all
+  five surface types) filters ``signal_conf_ph`` before the sample.
+- ``"tropomi_no2_tracks"`` — Sentinel-5P TROPOMI Level-2 NO2 HiR NetCDF
+  (NASA GES_DISC). Reads the ``/PRODUCT`` group's 3-D swath variables
+  ``(time=1, scanline, ground_pixel)``, reconstructs absolute UTC per
+  scanline from ``time + delta_time``, filters by the recommended
+  ``qa_value >= 0.75`` threshold, and flattens surviving pixels into the
+  tracks Parquet + gridded raster via ``_fetch_tracks``.
 
 Adding a new NASA product with an already-supported reader is a 5-line
 config addition to `MISSION_PROFILES`. Adding a new file format is one
@@ -1270,9 +1288,302 @@ def _read_atl13_tracks(
     return pd.concat(frames, ignore_index=True)
 
 
+# ATL03 photon-data reader constants. Same SDP epoch and beam layout as
+# ATL06 / ATL08 / ATL13 (reused from the module-level _ATL06_SDP_EPOCH /
+# _ATL06_BEAMS above). The per-photon distribution model forces two extra
+# reader knobs versus the per-segment ATL06 family:
+#   * min_signal_conf: signal_conf_ph is a (N_photons, 5) int8 array where
+#     the 5 columns correspond to land / ocean / sea_ice / land_ice /
+#     inland_water surface types. Values -2..4 (-2=possible_tep,
+#     -1=not_considered, 0=noise, 1=buffer, 2=low, 3=medium, 4=high).
+#     Default 3 (medium+high) is the ATL03 ATBD recommendation for
+#     "signal" photons. We take the row-wise max across the 5 surface
+#     columns so a photon confidently classified as e.g. land ice keeps
+#     even if it's noise for the other surface types.
+#   * max_points_per_granule: an ATL03 granule holds tens of millions of
+#     photons per beam (verified: 42-58 M per beam in a 6 GB Baffin
+#     granule); loading all six beams unfiltered would materialise ~300 M
+#     rows and OOM most laptops. The reader draws a uniform random
+#     subsample of at most this many rows per granule AFTER the AOI +
+#     signal-confidence filter, so the sample stays representative of
+#     the surviving-photon population rather than being dominated by noise.
+_ATL03_MIN_SIGNAL_CONF_DEFAULT = 3
+_ATL03_MAX_POINTS_PER_GRANULE_DEFAULT = 100_000
+
+
+def _read_atl03_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+    *,
+    max_points_per_granule: int = _ATL03_MAX_POINTS_PER_GRANULE_DEFAULT,
+    min_signal_conf: int = _ATL03_MIN_SIGNAL_CONF_DEFAULT,
+    random_seed: Optional[int] = 0,
+):
+    """Extract per-photon WGS84 heights from one ATL03 granule.
+
+    Iterates the six ATLAS beams (``gt1l``..``gt3r``), reads the
+    ``/gt{beam}/heights/`` group's ``h_ph`` / ``lat_ph`` / ``lon_ph`` /
+    ``delta_time`` / ``signal_conf_ph`` arrays, filters photons whose
+    best (row-wise-max) signal confidence is below ``min_signal_conf``
+    (default: 3 = medium; the ATL03 ATBD's "signal" threshold), drops
+    NaN geolocation and rows outside the AOI, then -- because a single
+    granule holds tens to hundreds of millions of photons -- draws a
+    uniform random subsample of at most ``max_points_per_granule`` rows
+    (default 100_000) *after* filtering, so the sample represents the
+    surviving-signal population rather than the raw stream. All
+    surviving photons across all six beams are concatenated into a
+    single ``pandas.DataFrame`` with the canonical
+    ``TRACKS_CANONICAL_COLS`` schema. Missing beams (laser off) are
+    silently skipped rather than raised.
+
+    ``quality_flag`` carries the *best* signal-confidence value (0..4)
+    across the five surface-type columns of ``signal_conf_ph``, cast to
+    int8 (values above 4 don't occur; the noise / buffer bands are
+    dropped by the ``min_signal_conf`` filter before the cast).
+
+    Parameters
+    ----------
+    fp
+        Local path to one ATL03 HDF5 file (typically 3-6 GB).
+    ee_bands
+        Source-side band names to extract. ATL03 currently surfaces a
+        single per-photon altimetric measurement (``h_ph``); the
+        parameter is kept for interface parity with the raster reader
+        dispatch and is not checked -- ATL03 always returns h_ph per
+        photon.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; photons
+        outside are dropped before return.
+    max_points_per_granule
+        Upper bound on the number of photons returned per granule after
+        the AOI + signal-confidence filter. ``None`` (or a non-positive
+        integer) disables the subsample entirely -- do that only over
+        very small AOIs where the surviving photon count is already
+        manageable, otherwise expect gigabytes of Parquet.
+    min_signal_conf
+        Minimum row-wise-max ``signal_conf_ph`` to keep a photon.
+        Default ``3`` (medium+high), the ATL03 ATBD recommendation for
+        signal photons. Set to ``2`` to include low-confidence returns
+        or to ``0`` to keep noise photons as well (multiplies the
+        surviving-photon count by 10-100x and defeats the subsample
+        knob's memory target).
+    random_seed
+        Seed for the uniform-subsample RNG so successive fetches of the
+        same AOI + time-range produce the same sidecar. Default ``0``.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    h5py = _lazy_import_h5py()
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+    frames = []
+    rng = np.random.default_rng(random_seed)
+
+    with h5py.File(fp, "r") as f:
+        for beam in _ATL06_BEAMS:
+            if beam not in f:
+                continue
+            grp = f[beam].get("heights")
+            if grp is None:
+                continue
+            required = ("h_ph", "lat_ph", "lon_ph", "delta_time",
+                        "signal_conf_ph")
+            if not all(k in grp for k in required):
+                continue
+
+            # AOI-clip on lat/lon FIRST to shrink the per-photon arrays we
+            # subsequently pull into memory. Per-beam h_ph is up to ~60 M
+            # float32 (~240 MB); five arrays at that size across six beams
+            # would peak near 7 GB before filtering. Load lat/lon (both
+            # float64 -- ~440 MB each per beam), build the AOI mask, then
+            # only pull the surviving indices for the other datasets.
+            lat_all = grp["lat_ph"][:]
+            lon_all = grp["lon_ph"][:]
+            in_box = (
+                np.isfinite(lat_all) & np.isfinite(lon_all)
+                & (lon_all >= lon_min) & (lon_all <= lon_max)
+                & (lat_all >= lat_min) & (lat_all <= lat_max)
+            )
+            if not in_box.any():
+                continue
+
+            # h5py fancy-indexing with a boolean mask requires the mask to
+            # be a 1-D numpy array of matching length; slice-then-mask is
+            # cheaper for the 2-D signal_conf_ph.
+            h_ph = grp["h_ph"][:][in_box]
+            dt   = grp["delta_time"][:][in_box]
+            # signal_conf_ph is (N_photons, 5) int8: land / ocean / sea_ice /
+            # land_ice / inland_water columns. Row-wise max keeps a photon
+            # if ANY surface type gives it >= min_signal_conf, which is the
+            # AOI-agnostic default -- users who want to restrict to one
+            # surface (e.g. only land-ice) can filter the Parquet on the
+            # int8 quality_flag column downstream.
+            sc = grp["signal_conf_ph"][:][in_box, :]
+            sc_best = sc.max(axis=1).astype(np.int8)
+
+            valid = sc_best >= int(min_signal_conf)
+            if not valid.any():
+                continue
+
+            lat_v  = lat_all[in_box][valid]
+            lon_v  = lon_all[in_box][valid]
+            h_v    = h_ph[valid]
+            dt_v   = dt[valid]
+            conf_v = sc_best[valid]
+
+            # Subsample AFTER filtering so the retained photons are
+            # representative of the surviving-signal population rather
+            # than the raw stream. Skip if under the cap or the cap is
+            # disabled (None / non-positive).
+            n_valid = int(lat_v.size)
+            if (max_points_per_granule is not None
+                    and max_points_per_granule > 0
+                    and n_valid > max_points_per_granule):
+                idx = rng.choice(n_valid, size=int(max_points_per_granule),
+                                 replace=False)
+                idx.sort()
+                lat_v  = lat_v[idx]
+                lon_v  = lon_v[idx]
+                h_v    = h_v[idx]
+                dt_v   = dt_v[idx]
+                conf_v = conf_v[idx]
+
+            utc = _ATL06_SDP_EPOCH + (dt_v * 1e9).astype("timedelta64[ns]")
+
+            frames.append(pd.DataFrame({
+                "latitude":     lat_v.astype(np.float64),
+                "longitude":    lon_v.astype(np.float64),
+                "value":        h_v.astype(np.float32),
+                "datetime":     pd.to_datetime(utc),
+                "beam_id":      beam,
+                "granule_id":   granule_id,
+                "quality_flag": conf_v,
+            }))
+
+    if not frames:
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+    return pd.concat(frames, ignore_index=True)
+
+
+# TROPOMI /PRODUCT/time is int32 seconds since this epoch; /PRODUCT/delta_time
+# is int32 milliseconds relative to that reference. Absolute UTC per scanline
+# is epoch + time(sec) + delta_time(ms). Do NOT confuse with the redundant
+# /PRODUCT/time_utc ISO-string convenience field.
+_S5P_L2_EPOCH = np.datetime64("2010-01-01T00:00:00")
+
+# Recommended TROPOMI L2 usable-pixel threshold from the S5P Product User
+# Manual: qa_value >= 0.75 selects best-quality unpolluted scenes; >= 0.5
+# widens the mask to include polluted-scene retrievals. Applied at read time
+# so the Parquet sidecar contains only pixels the retrieval algorithm
+# considers valid; callers who want a different threshold can override via
+# ``MISSION_PROFILES["Sentinel-5P-NO2"]["providers"]["earthdata"]["filters"]``
+# or by post-filtering the Parquet with PointObservations.
+_S5P_NO2_QA_MIN = 0.75
+
+
+def _read_tropomi_no2_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+    *,
+    qa_min: float = _S5P_NO2_QA_MIN,
+):
+    """Extract per-pixel TROPOMI NO2 records from one Sentinel-5P L2 granule.
+
+    Reads the ``/PRODUCT`` group of an S5P L2 NO2 NetCDF-4/HDF5 (dims
+    ``(time=1, scanline~3600, ground_pixel=450)`` -> ~1.6 M pixels per
+    orbit), builds an absolute UTC timestamp per scanline from
+    ``/PRODUCT/time + /PRODUCT/delta_time``, masks pixels below
+    ``qa_value >= qa_min`` (Product User Manual recommends 0.75 for
+    unpolluted best-quality retrievals; 0.5 to include polluted scenes),
+    clips to the AOI, and returns a ``pandas.DataFrame`` with the
+    canonical ``TRACKS_CANONICAL_COLS`` schema. The tropospheric NO2
+    column (mol m^-2) lives in ``value``; ``qa_value * 100`` (rounded to
+    int8, 0..100) lives in ``quality_flag``; the orbit number parsed
+    from the granule filename lives in ``beam_id`` (reusing the slot so
+    the schema stays column-compatible with ATL06 / GEDI-L4A tracks).
+
+    Parameters
+    ----------
+    fp
+        Local path to one S5P_L2__NO2____HiR granule (~590 MB NetCDF-4).
+    ee_bands
+        Source-side band names to extract. TROPOMI NO2 currently
+        surfaces a single retrieval (``nitrogendioxide_tropospheric_column``);
+        the parameter is kept for interface parity with the raster
+        reader dispatch and is not checked -- NO2 tropo column is always
+        what we bin. Extra bands (precision, stratospheric column,
+        cloud fraction, SZA, ...) are documented in the mission profile
+        for user-facing metadata but are not yet plumbed through the
+        single-``value`` tracks flow; a follow-up can wire them as a
+        wider Parquet schema.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; pixels
+        outside are dropped before return.
+    qa_min
+        Minimum ``qa_value`` (0..1 scale) for a pixel to survive. Default
+        ``0.75`` per the S5P L2 NO2 Product User Manual.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    xr = _lazy_import_xarray()
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+
+    # decode_times=False: /PRODUCT/time carries "seconds since 2010-01-01"
+    # units so xarray would decode it to datetime64; we want the raw int32
+    # seconds so we can combine cleanly with the int32 ms delta_time.
+    # mask_and_scale stays True (the default) so qa_value's uint8+scale
+    # decodes to 0..1 float and NO2 column _FillValue -> NaN transparently.
+    with xr.open_dataset(fp, group="PRODUCT", engine="h5netcdf",
+                         decode_times=False) as ds:
+        lat = ds["latitude"].values[0]
+        lon = ds["longitude"].values[0]
+        no2 = ds["nitrogendioxide_tropospheric_column"].values[0]
+        qa  = ds["qa_value"].values[0]
+        dt_ms       = ds["delta_time"].values[0].astype(np.int64)
+        time_ref_s  = int(ds["time"].values[0])
+
+    scanline_ns = (time_ref_s * 1_000_000_000
+                   + dt_ms * 1_000_000).astype("int64")
+    utc_scanline = _S5P_L2_EPOCH + scanline_ns.astype("timedelta64[ns]")
+    utc = np.broadcast_to(utc_scanline[:, None], no2.shape)
+
+    # Orbit number sits between the end-time token and the collection id
+    # in the OFFL filename, e.g.
+    # S5P_OFFL_L2__NO2____<start>_<end>_<orbit>_<coll>_<proc>_<prod>.nc.
+    m = re.search(r"_(\d{5})_\d{2}_\d{6}_", granule_id)
+    orbit = m.group(1) if m else "?????"
+
+    valid = (
+        np.isfinite(lat) & np.isfinite(lon) & np.isfinite(no2)
+        & (qa >= qa_min)
+        & (lon >= lon_min) & (lon <= lon_max)
+        & (lat >= lat_min) & (lat <= lat_max)
+    )
+    if not valid.any():
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+
+    return pd.DataFrame({
+        "latitude":     lat[valid].astype(np.float64),
+        "longitude":    lon[valid].astype(np.float64),
+        "value":        no2[valid].astype(np.float32),
+        "datetime":     pd.to_datetime(utc[valid]),
+        "beam_id":      f"orbit{orbit}",
+        "granule_id":   granule_id,
+        # qa_value in [0, 1] -> int8 [0, 100] so the schema stays
+        # column-compatible with ATL06 / GEDI-L4A tracks.
+        "quality_flag": np.round(qa[valid] * 100.0).astype(np.int8),
+    })
+
+
 _READERS: Dict[str, Callable] = {
     "nisar_gcov_h5":      _read_nisar_gcov_h5_window,
     "geotiff":            _read_geotiff_bands,
+    "atl03_tracks":       _read_atl03_tracks,
     "atl06_tracks":       _read_atl06_tracks,
     "atl08_tracks":       _read_atl08_tracks,
     "atl13_tracks":       _read_atl13_tracks,
@@ -1280,6 +1591,7 @@ _READERS: Dict[str, Callable] = {
     "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
     "rdeft4_nc":          _read_rdeft4_nc,
     "smap_l3_sm_h5":      _read_smap_l3_sm_h5,
+    "tropomi_no2_tracks": _read_tropomi_no2_tracks,
 }
 
 # Reader kind decides which top-level flow handles the mission:
@@ -1297,6 +1609,7 @@ _READERS: Dict[str, Callable] = {
 _READER_KINDS: Dict[str, str] = {
     "nisar_gcov_h5":      "raster",
     "geotiff":            "raster_per_band",
+    "atl03_tracks":       "tracks",
     "atl06_tracks":       "tracks",
     "atl08_tracks":       "tracks",
     "atl13_tracks":       "tracks",
@@ -1304,6 +1617,7 @@ _READER_KINDS: Dict[str, str] = {
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",
     "smap_l3_sm_h5":      "raster",
+    "tropomi_no2_tracks": "tracks",
 }
 
 
@@ -1326,6 +1640,7 @@ def _fetch_via_earthdata(
     filters: Optional[Dict[str, Any]] = None,
     scene_tag: Optional[str] = None,
     default_reducer: str = "mean",
+    reader_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a mission via NASA Earthdata / CMR.
 
@@ -1403,6 +1718,7 @@ def _fetch_via_earthdata(
             filters=filters,
             scene_tag=scene_tag,
             default_reducer=default_reducer,
+            reader_kwargs=reader_kwargs,
         )
     if kind == "raster_per_band":
         return _fetch_raster_per_band(
@@ -1641,6 +1957,7 @@ def _fetch_tracks(
     scene_tag: Optional[str] = None,
     default_reducer: str = "mean",
     max_granules: int = 500,
+    reader_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Multi-granule aggregation flow for track / point-cloud missions.
 
@@ -1709,10 +2026,17 @@ def _fetch_tracks(
     # ignore the arg regardless.
     reader_fn = _READERS[reader]
     ee_bands_for_reader = [band_map[b] for b in logical_bands]
+    # reader_kwargs lets a mission profile pass per-reader tuning knobs
+    # (e.g. ATL03's max_points_per_granule downsample cap and
+    # min_signal_conf threshold) all the way from missions.py through
+    # fetch_earthdata to the physical reader without adding a per-mission
+    # branch in this flow. Readers without extra kwargs (ATL06, GEDI-L4A,
+    # ...) ignore the empty dict.
+    rkw = reader_kwargs or {}
     per_granule_frames = []
     for fp in files:
         try:
-            df = reader_fn(fp, ee_bands_for_reader, roi)
+            df = reader_fn(fp, ee_bands_for_reader, roi, **rkw)
         except Exception as exc:  # noqa: BLE001
             print(f"  WARN failed to read {Path(fp).name}: "
                   f"{type(exc).__name__}: {exc}")

@@ -23,7 +23,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Thirteen
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Fourteen
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -41,6 +41,14 @@ documented here — only the host and the credentialing path.
 >   Geospatial Center / OSU, Howat et al.) — via `direct_http` on AWS
 >   Open Data, higher-resolution complement to Copernicus DEM at Arctic
 >   latitudes.
+> - **ICESat-2 ATL03** (per-photon Global Geolocated Photon Data, NASA
+>   NSIDC DAAC) — via the `earthdata` provider's tracks reader-kind
+>   with a new `reader_kwargs` mechanism that lets a mission profile
+>   pass reader-side tuning knobs (here: `max_points_per_granule`
+>   downsample cap and `min_signal_conf` filter) all the way to the
+>   physical HDF5 reader. Foundational ATLAS product every ATL06 /
+>   ATL08 / ATL13 downstream derives from; per-photon distribution
+>   forces the downsample (a single granule holds ~290 M photons).
 > - **ICESat-2 ATL06** (40 m along-track land-ice height segments, NASA
 >   NSIDC DAAC) — via the `earthdata` provider's new **tracks
 >   reader-kind** (multi-granule aggregation into one raster + a
@@ -87,7 +95,7 @@ documented here — only the host and the credentialing path.
 >   coverage including ocean bathymetry; graduates the previous
 >   `GEBCO` stub to a first-class mission.
 >
-> All thirteen have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All fourteen have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -210,6 +218,7 @@ product with documented per-class quality.
 | SMAP L3 soil moisture *(v0.2 preview)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
 | ICESat-2 ATL08 land + vegetation *(v0.2 preview)* | `ICESat-2-ATL08` | 100 m along-track (rasterized at user resolution) | 2018-10-14 → present | h_te_best_fit (terrain height, default) + h_canopy (canopy top height, extra) | ATL06 sibling on the tracks flow; six ATLAS beams; global up to ±88° latitude; NASA Earthdata Login (NSIDC application) |
 | ICESat-2 ATL13 inland water surface heights *(v0.2 preview)* | `ICESat-2-ATL13` | along-track segments (~100 signal photons each; rasterized at user resolution) | 2018-10-14 → present | ht_water_surf (water surface, WGS84 ellipsoid, default) + ht_ortho (orthometric water height, extra) | Third ATLAS-beam mission on the tracks flow after ATL06 / ATL08; six ATLAS beams; segments limited to classified lakes / rivers / reservoirs / estuaries / coastal water; NASA Earthdata Login (NSIDC application) |
+| ICESat-2 ATL03 per-photon geolocated heights *(v0.2 preview)* | `ICESat-2-ATL03` | per-photon returns (rasterized at user resolution) | 2018-10-14 → present | h_ph (per-photon WGS84 ellipsoid height, m) | Foundational photon cloud ATL06 / ATL08 / ATL13 derive from; 6 beams, ~290 M photons and 3-6 GB per granule; reader honours `reader_kwargs["max_points_per_granule"]` (default 100 k random subsample) and `reader_kwargs["min_signal_conf"]` (default 3 = medium+high); NASA Earthdata Login (NSIDC application) |
 
 ## Quick reference — derived products
 
@@ -425,6 +434,105 @@ successor to ALOS PALSAR-1 (2006-2011) for:
   empirically because NISAR has 3+ dual-pol granules fully covering
   that AOI and Sentinel-1 has 70+ dual-pol RTC scenes in the
   2024-2026 window, so the L-vs-C comparison is guaranteed to work).
+
+---
+
+## ICESat-2 ATL03 per-photon geolocated heights *(v0.2 preview — this branch only)*
+
+**Mission name:** `ICESat-2-ATL03`
+**Product:** `ATL03` (Global Geolocated Photon Data), hosted by
+**NSIDC DAAC**.
+**Distribution:** one HDF5 per ~90 min ICESat-2 orbit but **3-6 GB
+per granule** — an order of magnitude bigger than the per-segment
+ATL06 / ATL08 / ATL13 siblings, because the file carries every
+individual geolocated photon return rather than 40-100 m aggregated
+segments. Six ATLAS laser beams (`gt1l`..`gt3r`) with 40-60 M photons
+each: verified against a June 2023 Baffin granule at **6.4 GB, ~290 M
+photons total across all six beams**.
+**Data model:** **tracks** — reuses the same multi-granule aggregation
+path as ATL06 / ATL08 / ATL13 / GEDI-L4A. What is different is the
+scale: a raw six-beam concat would OOM most laptops long before the
+AOI clip, so ATL03 is the first tracks-flow mission to expose
+**reader-side tuning knobs** via a new `reader_kwargs` field on the
+provider config (threaded from `missions.py` through `fetch_earthdata`
+all the way to the physical HDF5 reader).
+
+Physical layout: `/gt{beam}/heights/` group with `h_ph` (WGS84
+ellipsoidal photon height, m), `lat_ph` / `lon_ph` (float64
+geolocation), `delta_time` (seconds since the ATLAS SDP epoch,
+2018-01-01 UTC, same as ATL06 / ATL08 / ATL13), and `signal_conf_ph`
+— an `(N_photons, 5)` int8 array where the 5 columns correspond to
+the land / ocean / sea_ice / land_ice / inland_water surface types
+and values -2..4 encode (from the ATL03 ATBD)
+`possible_tep, not_considered, noise, buffer, low, medium, high`.
+
+A fetch produces the standard tracks pair:
+
+1. A gridded raster (`ICESat-2-ATL03_full_size.tiff`, default reducer
+   `mean`) ready for the fusion pipeline.
+2. A **loss-less Parquet sidecar** (`h_ph_observations.parquet`, one
+   row per surviving photon across all six beams and all granules in
+   the window) with columns
+   `latitude, longitude, value (h_ph, m WGS84), datetime, beam_id,
+   granule_id, quality_flag`. The `quality_flag` column carries the
+   **row-wise-max** across the 5 `signal_conf_ph` surface columns,
+   so a photon confidently classified as signal for **any** surface
+   type survives; users who want the full per-surface breakdown
+   should extend the reader to emit five separate int8 columns.
+
+**Reader knobs** (defaults in the mission profile;
+`fetch_sentinel_data` calls honour them):
+
+- `max_points_per_granule` (default `100_000`) — uniform random
+  subsample cap applied **after** the AOI + signal-confidence filter,
+  so retained photons are representative of the surviving-signal
+  population rather than dominated by the noise / buffer tiers.
+  `None` (or a non-positive integer) disables the subsample entirely;
+  do that only over very small AOIs where the AOI clip alone brings
+  the count into manageable range, otherwise expect gigabyte-scale
+  Parquet sidecars.
+- `min_signal_conf` (default `3` = medium+high) — the ATL03 ATBD
+  recommendation for signal photons. Lower to `2` to include
+  low-confidence returns; raise to `4` for only the highest-
+  confidence photons (useful for calibration / validation work).
+
+Bands:
+- `h_ph` — per-photon WGS84 ellipsoidal height, meters. Norm
+  `("linear", -1000, 5000)` covers the vast majority of Earth-surface
+  land / ice returns; deep-sea or airborne noise photons will clip.
+
+**Coverage.** ICESat-2 observes globally between +/-88 deg latitude,
+same as ATL06 / ATL08 / ATL13, on-orbit since 2018-10-14. Baffin AOI
+test (71.6 N, -72.75 W, 5-km bbox, 2023-06-05 single-day window):
+**1 granule found (6.4 GB), 2900 photons retained** after AOI +
+`min_signal_conf=3` filter across beam `gt3l` (the only beam
+intersecting the AOI), gridded at 30 m in UTM zone 18N to 35 / 49256
+valid pixels (0.07%; ATL03's along-track photon cloud sparsely
+samples any AOI wider than a beam footprint). Values `[191, 720]` m
+WGS84 — consistent with per-photon returns over the Baffin plateau's
+Barnes Ice Cap perimeter. The same fetch over the requested
+2023-06-01 → 2023-07-31 window would hit **4 granules totaling
+~19 GB** and — before the subsample cap kicks in — easily produce
+millions of photons; the 100 k default keeps the Parquet at ~5 MB
+per granule.
+
+**Auth:** NASA Earthdata Login + NSIDC DAAC application (same row as
+ATL06 / ATL08 / ATL13 / CryoSat-RDEFT4 / SMAP-L3; no extra approval
+needed once ATL06 is set up). See the
+[earthdata provider docs](providers/earthdata.md).
+
+**Use case:** the raw photon cloud unlocks analyses the per-segment
+derivatives smear out — bathymetric extraction (e.g. Parrish et al.
+2019 shallow-water lidar over lakes / reefs), custom canopy metrics
+beyond ATL08's `h_canopy` percentile, ice-shelf grounding-line
+studies, and per-photon regression against high-resolution optical
+or SAR co-registered in the same UTM cube. Because the sidecar keeps
+loss-less lat / lon / h_ph / delta_time per photon, users can
+re-grid at any resolution or run per-photon regressions without a
+re-fetch. **The 100 k default cap is far too aggressive for
+photon-level bathymetric work** over even a small lake — override
+`reader_kwargs["max_points_per_granule"]` (e.g. to `5_000_000`) at
+the profile or call level for those workflows.
 
 ---
 

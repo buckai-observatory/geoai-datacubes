@@ -918,6 +918,103 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ICESat-2 ATL03 Global Geolocated Photon Data (NASA / NSIDC DAAC).
+    #
+    # Per-photon rather than per-segment: the foundational L2 product
+    # every other ATLAS product (ATL06 land ice, ATL08 land + vegetation,
+    # ATL13 inland water) is derived from. Each ``/gt{beam}/heights/``
+    # group carries tens of millions of geolocated photon events -- one
+    # row per photon return with h_ph (WGS84 ellipsoidal height, m),
+    # lat_ph / lon_ph (float64), delta_time (seconds since the ATLAS SDP
+    # epoch, same as ATL06), and signal_conf_ph (int8 array of shape
+    # [N_photons, 5] over the land / ocean / sea_ice / land_ice /
+    # inland_water surface types; values -2..4 where 3=medium and 4=high
+    # are the ATBD "signal" bands and 0=noise / 1=buffer / 2=low are the
+    # non-signal bands).
+    #
+    # Distribution: one HDF5 per ~90-min ICESat-2 orbit but MUCH bigger
+    # than the derived products. Verified against a June 2023 Baffin
+    # granule: 6.4 GB, 6 beams, 42-58 M photons per beam, ~290 M photon
+    # events total. A raw six-beam concat would blow up laptop memory
+    # long before hitting the AOI clip; the ATL03 reader is therefore
+    # the first mission in the tracks flow to expose reader-side tuning
+    # knobs via the provider's ``reader_kwargs`` field:
+    #   * ``max_points_per_granule`` (default 100_000) -- uniform random
+    #     subsample cap applied AFTER the AOI + signal-conf filter so
+    #     the retained photons stay representative of the surviving-
+    #     signal population. Set to ``None`` to disable (only over very
+    #     small AOIs where the AOI clip alone brings the count into
+    #     manageable range; expect gigabyte-scale Parquet otherwise).
+    #   * ``min_signal_conf`` (default 3, medium+high) -- row-wise-max
+    #     across the 5 signal_conf_ph surface columns, so a photon
+    #     classified as signal for ANY surface type survives the filter.
+    #     Lower to 2 to include low-confidence returns; raise to 4 for
+    #     only the highest-confidence photons (useful for calibration /
+    #     validation work).
+    #
+    # Reuses the multi-granule _fetch_tracks flow ATL06 introduced, so
+    # the on-disk contract (gridded <mission>_full_size.tiff + loss-less
+    # <band>_observations.parquet sidecar with the canonical
+    # TRACKS_CANONICAL_COLS schema) is identical. ``quality_flag``
+    # carries the per-photon best-across-surfaces signal_conf_ph value
+    # (0..4 after the min_signal_conf filter drops the -2/-1/0/1 tiers).
+    #
+    # Downstream use case: bathymetric extraction (e.g. Parrish et al.
+    # 2019 shallow-water CoastNet), custom canopy analyses that go
+    # beyond ATL08's h_canopy, ice-shelf grounding-line studies, and
+    # anything else where the derived product's segment-scale averaging
+    # loses signal the raw photon cloud preserves. Because the sidecar
+    # keeps loss-less lat/lon/h_ph/delta_time per photon, users can
+    # re-grid at any resolution or run per-photon regressions without a
+    # re-fetch. Note that the DEFAULT downsample cap of 100k is far too
+    # aggressive for bathymetric work over even a small lake -- users
+    # doing photon-level analyses should override
+    # ``reader_kwargs["max_points_per_granule"]`` (e.g. to 5_000_000)
+    # at the mission-profile or fetch-call level.
+    #
+    # Value range: WGS84 ellipsoid heights of individual photons; land
+    # returns cluster near the local terrain, ocean/lake returns near
+    # sea level, and noise / instrument-effect photons can sit hundreds
+    # to thousands of metres above or below (mostly filtered by the
+    # signal_conf_ph mask, but the raw h_ph range is wide). Linear norm
+    # [-1000, 5000] covers the vast majority of Earth-surface land + ice
+    # returns; deep-sea or airborne noise photons will clip.
+    # ============================================================
+    "ICESat-2-ATL03": {
+        "default_bands": ["h_ph"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_ph": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -1000, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL03",
+                "reader":          "atl03_tracks",
+                "band_map":        {"h_ph": "h_ph"},
+                "default_reducer": "mean",
+                # ATL03 reader knobs; see the reader docstring in
+                # _earthdata.py::_read_atl03_tracks for the full contract.
+                # The defaults keep a per-granule Parquet under ~5 MB for
+                # a typical Baffin AOI; users doing per-photon bathymetric
+                # or canopy work should override these at fetch time by
+                # editing the profile.
+                "reader_kwargs": {
+                    "max_points_per_granule": 100_000,
+                    "min_signal_conf":        3,
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # ICESat-2 ATL06 Land Ice Height Segments (NASA / NSIDC DAAC).
     #
     # Along-track altimetry rather than raster imagery: each granule is
@@ -2010,6 +2107,80 @@ MISSION_PROFILES = {
                     "AER_LH": "aer_lh",
                     "CLOUD":  "cloud",
                 },
+            },
+        },
+    },
+
+    # ============================================================
+    # Sentinel-5P TROPOMI Tropospheric NO2 -- 1-Orbit L2, 5.5 km x 3.5 km
+    # (NASA GES_DISC).
+    #
+    # Product: S5P_L2__NO2____HiR v2 (CMR concept-id C2089270961-GES_DISC;
+    # short_name S5P_L2__NO2____HiR, version 2). One NetCDF-4 per ~100-min
+    # orbit (~590 MB), CF-compliant, /PRODUCT group hierarchy. Sentinel-5P
+    # is polar-orbiting so a fixed high-latitude AOI can intersect 8-14
+    # orbits per day; expect ~130 granules per fortnight over a mid-size
+    # Arctic AOI, ~500+ over a wider ocean AOI.
+    #
+    # Data model: **tracks**. Native swath data at dims
+    # (time=1, scanline~3600, ground_pixel=450) with per-pixel corner
+    # geolocations. In-reader resampling would need pyresample-KDTree per
+    # orbit and per-target-CRS work; ascending/descending pass overlap
+    # complicates any mosaic. Reusing the ATL06 / GEDI-L4A tracks flow
+    # gives us: read /PRODUCT/{lat, lon, delta_time, NO2 tropo column,
+    # qa_value}, mask to bbox + qa_value >= 0.75 (Product User Manual
+    # recommendation), flatten (scanline, ground_pixel), write one row
+    # per surviving pixel into the tracks Parquet, and let
+    # PointObservations bin / rasterize at any downstream resolution.
+    #
+    # Auth: NASA Earthdata Login PLUS a one-time application authorization
+    # for **NASA GESDISC DATA ARCHIVE** at
+    # https://urs.earthdata.nasa.gov/approve_app?client_id=e2WVk8Pw6weeLUKZYOxvTQ
+    # -- without that click, earthaccess.download raises EulaNotAccepted
+    # even though the .netrc credentials are valid. Users see a clear
+    # error message pointing at the URL when this happens.
+    #
+    # Value range: ``nitrogendioxide_tropospheric_column`` in mol m^-2.
+    # Typical polluted urban 5e-5 to 3e-4, remote / marine <5e-5. Multiply
+    # by 6.022e19 to get molec/cm^2 (the classic display unit). The
+    # ("linear", 0, 2e-4) norm maps most polluted-city values into [0, 1].
+    #
+    # Product variants NOT wired here:
+    # * NRTI (Near-Real-Time, ~3-hour latency) -- separate CMR collection;
+    #   OFFL is the default for retrospective / research use.
+    # * Additional gases (CO, SO2, CH4, O3, HCHO): each is its own CMR
+    #   short_name with the same /PRODUCT group layout, so wiring another
+    #   is a 5-line profile stanza + a per-band suffix change in the
+    #   reader (or a shared reader keyed on band name).
+    # ============================================================
+    "Sentinel-5P-NO2": {
+        "default_bands": ["no2_tropospheric"],
+        "extra_bands":   [],
+        "cloud_filter":  False,   # atmospheric column, cloud fraction is
+                                  # ancillary; qa_value gating happens in
+                                  # the reader.
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "no2_tropospheric": {
+                "kind":  "continuous",
+                "units": "mol m^-2",
+                "norm":  ("linear", 0.0, 2e-4),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "S5P_L2__NO2____HiR",
+                "reader":          "tropomi_no2_tracks",
+                "band_map":        {
+                    "no2_tropospheric": "nitrogendioxide_tropospheric_column",
+                },
+                "default_reducer": "mean",
+                # CMR version filter: pins the search to the v2 (collection
+                # 03/06) archive so an eventual v3 release does not silently
+                # change the file layout our reader depends on.
+                "filters":         {"version": "2"},
             },
         },
     },

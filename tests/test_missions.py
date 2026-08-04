@@ -25,6 +25,7 @@ _EXPECTED_MISSIONS = (
     "Dynamic-World",
     "JRC-GFC2020",
     "NISAR-L",
+    "ICESat-2-ATL03",
     "ICESat-2-ATL06",
     "ICESat-2-ATL08",
     "ICESat-2-ATL13",
@@ -34,7 +35,8 @@ _EXPECTED_MISSIONS = (
     "GEDI-L4B", "GEDI-L4A",
     "SMAP-L3",
     "GEBCO-2024",
-    "Sentinel-5P",                                # documented stub
+    "Sentinel-5P-NO2",                            # v0.2 preview: TROPOMI NO2 via tracks flow
+    "Sentinel-5P",                                # documented stub (remaining unwired gases)
 )
 
 

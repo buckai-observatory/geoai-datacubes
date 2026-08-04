@@ -76,6 +76,7 @@ PROVIDER_AUTO = {
     "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
     "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
+    "ICESat-2-ATL03": "earthdata",          # NSIDC DAAC, per-photon geolocated photons (tracks flow, downsampled)
     "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
     "ICESat-2-ATL08": "earthdata",          # NSIDC DAAC, land + vegetation heights (100 m tracks flow)
     "ICESat-2-ATL13": "earthdata",          # NSIDC DAAC, along-track inland water surface heights (tracks flow)
@@ -84,6 +85,7 @@ PROVIDER_AUTO = {
     "GEDI-L4B":       "earthdata",          # ORNL DAAC, 1 km global gridded biomass (EASE-Grid 2.0)
     "GEDI-L4A":       "earthdata",          # ORNL DAAC, per-shot 25 m footprint biomass (tracks flow)
     "SMAP-L3":        "earthdata",          # NSIDC DAAC, daily global 9 km enhanced soil moisture (SPL3SMP_E V006)
+    "Sentinel-5P-NO2": "earthdata",         # GES_DISC, TROPOMI L2 NO2 HiR v2 (tracks flow, ~590 MB/orbit)
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -290,6 +292,7 @@ def fetch_earthdata(mission, bands, time_range, roi,
         band_meta=profile.get("band_meta"),
         filters=cfg.get("filters"),
         default_reducer=cfg.get("default_reducer", "mean"),
+        reader_kwargs=cfg.get("reader_kwargs"),
     )
 
 
