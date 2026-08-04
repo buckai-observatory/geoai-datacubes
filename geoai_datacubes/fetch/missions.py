@@ -963,6 +963,90 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ICESat-2 ATL08 Land and Vegetation Height (NASA / NSIDC DAAC).
+    #
+    # Sibling of ATL06: same platform, same six ATLAS beams, same GPS-SDP
+    # epoch. Where ATL06 delivers 40 m along-track land-*ice* heights,
+    # ATL08 delivers 100 m along-track land + vegetation heights over
+    # non-ice terrain -- terrain elevation and canopy top height jointly
+    # derived from the ATL03 photon cloud. The two products complement:
+    # ATL06 covers Greenland / Antarctica / high-latitude glaciers; ATL08
+    # covers everything else where ICESat-2 has land / vegetation returns.
+    #
+    # File layout: /gt{beam}/land_segments/{latitude, longitude,
+    # delta_time, terrain_flg} for the segment-level metadata, plus two
+    # child sub-groups carrying the physical variables --
+    # /land_segments/terrain/h_te_best_fit (best-fit terrain elevation
+    # over the segment, m WGS84) and /land_segments/canopy/h_canopy
+    # (98th-percentile canopy relative height above the estimated terrain
+    # surface, m). Both have the ATL06-style float32-max _FillValue
+    # (3.4028235e+38) on invalid segments; the reader filters on
+    # ``h < 1e38`` in the same one-line pattern as ATL06.
+    #
+    # Distribution: one HDF5 per ~2000 km sub-orbit (~100-150 MB each),
+    # 5 granules over the Baffin test AOI (71.6 N, -72.75 W, 5 km bbox,
+    # 2023-06 to 2023-07). Reuses the multi-granule _fetch_tracks flow
+    # ATL06 introduced, so the on-disk contract (gridded
+    # <mission>_full_size.tiff + loss-less <band>_observations.parquet
+    # sidecar) is identical.
+    #
+    # Per-fetch single-band caveat: the tracks flow today writes the
+    # same ``value`` column into every requested band's grid, so a
+    # request for both h_te_best_fit AND h_canopy in one fetch would
+    # produce two identical grids. The reader guards with a
+    # NotImplementedError until per-band value columns land. Default
+    # here is h_te_best_fit (dense over non-forested Arctic terrain);
+    # h_canopy is documented as an ``extra_band`` and users switch by
+    # requesting ``bands=["h_canopy"]`` at call time.
+    #
+    # Quality: ``terrain_flg`` (0 = below-threshold agreement with the
+    # reference DEM, canonical "good"; 1 = above-threshold deviation,
+    # kept for downstream filtering because on glaciers / recent-change
+    # AOIs a DEM disagreement is often the real signal; 255 = undetermined,
+    # wraps to int8 -1 in the Parquet ``quality_flag`` column).
+    #
+    # Value ranges (verified empirically against the Baffin sample):
+    #   h_te_best_fit: [-100, 5500] m WGS84 (Arctic terrain to Andes /
+    #                  Himalaya peaks) -- linear norm [-500, 5000] mirrors
+    #                  ATL06 with a modest bump below sea-level for
+    #                  bathymetric returns.
+    #   h_canopy:      [0, 130] m above terrain (tallest observed
+    #                  vegetation; typical global forest <60 m) -- linear
+    #                  norm [0, 60] fits most cases.
+    # ============================================================
+    "ICESat-2-ATL08": {
+        "default_bands": ["h_te_best_fit"],
+        "extra_bands":   ["h_canopy"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_te_best_fit": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+            "h_canopy": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", 0, 60),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL08",
+                "reader":          "atl08_tracks",
+                "band_map":        {
+                    "h_te_best_fit": "h_te_best_fit",
+                    "h_canopy":      "h_canopy",
+                },
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
     # GEDI L4A Footprint-Level Aboveground Biomass Density (NASA / ORNL DAAC).
     #
     # Per-shot AGBD (Mg/ha) at the native 25-m GEDI footprint, distributed

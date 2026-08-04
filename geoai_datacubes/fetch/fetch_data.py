@@ -77,6 +77,7 @@ PROVIDER_AUTO = {
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
     "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
     "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
+    "ICESat-2-ATL08": "earthdata",          # NSIDC DAAC, land + vegetation heights (100 m tracks flow)
     "SWOT-HR":        "earthdata",          # PODAAC, KaRIn L2 HR Raster NetCDF (250 m default)
     "CryoSat-RDEFT4": "earthdata",          # NSIDC DAAC, monthly NH sea-ice thickness (25 km)
     "GEDI-L4B":       "earthdata",          # ORNL DAAC, 1 km global gridded biomass (EASE-Grid 2.0)

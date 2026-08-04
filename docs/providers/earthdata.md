@@ -168,6 +168,7 @@ personal one.
 |---|---|---|---|---|---|---|
 | `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | raster (single granule) | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
 | `ICESat-2-ATL06` | `ATL06` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 40 m along-track segments (rasterized at user resolution) | `h_li` (land-ice height, m WGS84) |
+| `ICESat-2-ATL08` | `ATL08` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 100 m along-track segments (rasterized at user resolution) | `h_te_best_fit` (terrain, m WGS84) + `h_canopy` (canopy top, m above terrain) |
 | `SWOT-HR` | `SWOT_L2_HR_Raster_250m_2.0` (default) or `..._100m_2.0` | raster (per-tile NetCDF) | PODAAC (JPL) | 2023-04-07 → present | 250 m or 100 m native | `wse`, `water_frac`, `sig0` (+ 8 quality/uncert extras) |
 | `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
 | `GEDI-L4B` | `GEDI_L4B_Gridded_Biomass_V2_1_2299` | **raster (per-band COGs)** | ORNL DAAC | static (MW019–MW223, 2019-04-18 → 2023-03-16) | 1 km native (EASE-Grid 2.0, EPSG:6933) | `MU`, `SE` (defaults) + `V1`, `V2`, `PE`, `MI`, `QF`, `NS`, `NC`, `PS` |
@@ -229,6 +230,55 @@ Reducers: `mean`, `median`, `robust_mean` (5-95 percentile trim),
 `count`, `latest`. Grid can be `(bbox, resolution_m, target_crs)`,
 `reference_raster=<path>` (snap to an existing GeoTIFF), or `None`
 (auto-UTM). See `docs/data_layers.md` for the full track-missions story.
+
+**ICESat-2 ATL08 notes** — sibling of ATL06 on the same tracks flow.
+Same platform (ATLAS on ICESat-2), same six laser beams, same GPS-SDP
+epoch (2018-01-01 UTC). Where ATL06 delivers 40 m along-track land-*ice*
+heights over Greenland / Antarctica / high-latitude glaciers, ATL08
+delivers 100 m along-track land + vegetation heights over everywhere
+else -- terrain elevation *and* canopy top height jointly derived from
+the ATL03 photon cloud. The two products complement in latitude
+coverage and are natural pair-mates for global topography /
+biomass / cryosphere fusion.
+
+- File layout: `/gt{beam}/land_segments/{latitude, longitude,
+  delta_time, terrain_flg}` for the segment-level metadata, plus two
+  child sub-groups carrying the physical variables --
+  `/land_segments/terrain/h_te_best_fit` (best-fit segment terrain
+  elevation, m WGS84) and `/land_segments/canopy/h_canopy` (98th-
+  percentile canopy relative height above the estimated terrain
+  surface, m). Both use the ATL06-style float32-max `_FillValue`
+  (3.4028235e+38) on invalid segments; the reader filters on
+  `h < 1e38` in the same pattern as ATL06.
+- **Default vs extra band:** `h_te_best_fit` is the default (dense
+  over non-forested Arctic terrain and useful even where there is no
+  canopy signal); `h_canopy` is listed as an `extra_band` and users
+  switch by requesting `bands=["h_canopy"]` at call time. A single
+  fetch can currently surface only one of the two -- the shared
+  `_fetch_tracks` binning writes the same `value` column into every
+  requested band's grid, so requesting both simultaneously would
+  produce two identical rasters; the ATL08 reader guards against that
+  with a clean `NotImplementedError`. Per-band value columns in the
+  tracks flow are a planned follow-up.
+- **`terrain_flg` semantics** in the Parquet `quality_flag` column:
+  `0` = below-threshold agreement with the reference DEM (the canonical
+  "good" segments), `1` = above-threshold deviation from the DEM
+  (retained rather than filtered because on glaciers or recent-change
+  AOIs a DEM disagreement is often the real signal), `255` =
+  undetermined (wraps to int8 `-1` under the modular cast; documented
+  in the reader's docstring).
+- **Coverage:** ICESat-2 has been on-orbit since 2018-10-14 and
+  observes globally between +/-88 deg latitude (well above the +/-52
+  deg cap that limits GEDI / GEDI-L4A / GEDI-L4B). Baffin AOI test
+  (71.6 N, -72.75 W, 5-km bbox, 2023-06 to 2023-07): 3 granules found,
+  109 valid `h_te_best_fit` observations across 4 beams; Ohio AOI
+  (~100 km around Columbus, same window) with `bands=["h_canopy"]`:
+  8 granules, 1278 valid canopy observations across 4 granules with
+  values in [3, 42] m -- consistent with the state's temperate
+  deciduous forest cover.
+- **Auth** is the same NSIDC DAAC application authorization as
+  ATL06 / CryoSat-RDEFT4 / SMAP-L3; no additional approval needed
+  once ATL06 is set up.
 
 **SWOT-HR notes:**
 

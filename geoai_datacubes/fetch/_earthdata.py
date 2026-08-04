@@ -49,6 +49,14 @@ config field. Currently supported:
   HDF5 (ORNL DAAC). Dynamically discovers the 1-to-8 ``BEAM*`` groups
   and applies the canonical L4A quality mask; routed through the same
   `_fetch_tracks` flow as ATL06.
+- ``"atl08_tracks"`` — ICESat-2 ATL08 Land and Vegetation Height, 100 m
+  segments (NSIDC DAAC). Same six ATLAS beams and SDP epoch as ATL06,
+  but two datasets live under ``/gt{beam}/land_segments/`` in separate
+  ``terrain/`` and ``canopy/`` subgroups (``h_te_best_fit`` and
+  ``h_canopy``). The reader dispatches on the requested source-side
+  band name so a single fetch surfaces either the terrain elevation
+  (default) or the canopy top height; multi-band-per-fetch is a follow-
+  up when ``_fetch_tracks`` grows per-band value columns.
 
 Adding a new NASA product with an already-supported reader is a 5-line
 config addition to `MISSION_PROFILES`. Adding a new file format is one
@@ -994,10 +1002,140 @@ def _read_gedi_l4a_tracks(
     return pd.concat(frames, ignore_index=True)
 
 
+# ATL08 reuses ATL06's SDP epoch, six-beam layout, and float32-max fill
+# sentinel; the data model difference is the /land_segments sub-group
+# with terrain/ and canopy/ children instead of ATL06's /land_ice_segments
+# flat h_li field. Product-side band names understood by the reader; the
+# canonical band-map for the ATL08 profile always uses these as the
+# right-hand-side (ee_band) values so a switch is a one-line profile edit.
+_ATL08_TERRAIN_DATASET = "terrain/h_te_best_fit"
+_ATL08_CANOPY_DATASET  = "canopy/h_canopy"
+_ATL08_SUPPORTED_BANDS = {
+    "h_te_best_fit": _ATL08_TERRAIN_DATASET,
+    "h_canopy":      _ATL08_CANOPY_DATASET,
+}
+
+
+def _read_atl08_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+):
+    """Extract per-segment land or canopy heights from one ATL08 granule.
+
+    Iterates the six ATLAS beams (``gt1l``..``gt3r``), reads the
+    ``land_segments`` sub-group's ``latitude`` / ``longitude`` /
+    ``delta_time`` / ``terrain_flg`` plus one of two altimetric
+    datasets living in the ``terrain/`` or ``canopy/`` child groups
+    (``h_te_best_fit`` -- best-fit segment terrain elevation, WGS84 m;
+    ``h_canopy`` -- 98th-percentile relative canopy height, m). Which
+    dataset is read is decided by the first entry in ``ee_bands``:
+    ``"h_te_best_fit"`` picks terrain, ``"h_canopy"`` picks canopy.
+    Rows with the ATL08 float32-max ``_FillValue`` (3.4028235e+38),
+    NaN geolocation, or coordinates outside the AOI are dropped before
+    concatenating all surviving beams into a single ``pandas.DataFrame``
+    with the canonical ``TRACKS_CANONICAL_COLS`` schema. Missing beams
+    (laser off) are silently skipped rather than raised.
+
+    ``quality_flag`` carries the ATL08 ``terrain_flg`` DEM-comparison
+    quality check (0 = below-threshold agreement with reference DEM,
+    the standard "good" segments; 1 = above-threshold deviation from
+    the DEM, retained for downstream filtering because over glacier or
+    fresh-topography AOIs a DEM disagreement is often real signal;
+    ``255`` = undetermined maps to int8 ``-1`` after the cast).
+
+    Parameters
+    ----------
+    fp
+        Local path to one ATL08 HDF5 file.
+    ee_bands
+        Source-side band names to extract. Must be a single-element
+        sequence containing one of ``"h_te_best_fit"`` (default,
+        terrain height) or ``"h_canopy"`` (canopy top height). A
+        multi-band per-fetch request raises ``NotImplementedError``
+        because the shared ``_fetch_tracks`` binning today writes the
+        same ``value`` column into every requested band's grid; wiring
+        per-band value columns is a follow-up.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; rows
+        outside are dropped before return.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    h5py = _lazy_import_h5py()
+
+    if len(ee_bands) != 1:
+        raise NotImplementedError(
+            "ATL08 reader currently returns one physical variable per fetch "
+            f"(got ee_bands={list(ee_bands)!r}). Request either "
+            "['h_te_best_fit'] (terrain) or ['h_canopy'] (canopy) in "
+            "isolation; per-band value columns in the tracks flow are a "
+            "planned follow-up."
+        )
+    ee_band = ee_bands[0]
+    if ee_band not in _ATL08_SUPPORTED_BANDS:
+        raise ValueError(
+            f"ATL08 reader does not know source band {ee_band!r}. "
+            f"Supported: {sorted(_ATL08_SUPPORTED_BANDS)}. Additional ATL08 "
+            "fields (h_te_uncertainty, h_te_std, canopy_h_metrics, ...) can "
+            "be wired by extending _ATL08_SUPPORTED_BANDS."
+        )
+    dataset_path = _ATL08_SUPPORTED_BANDS[ee_band]
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+    frames = []
+
+    with h5py.File(fp, "r") as f:
+        for beam in _ATL06_BEAMS:
+            if beam not in f:
+                continue
+            grp = f[beam].get("land_segments")
+            if grp is None:
+                continue
+            if dataset_path not in grp:
+                continue
+
+            h    = grp[dataset_path][:]
+            lat  = grp["latitude"][:]
+            lon  = grp["longitude"][:]
+            dt   = grp["delta_time"][:]
+            qual = grp["terrain_flg"][:]
+
+            valid = (
+                (h < 1e38)
+                & np.isfinite(lat) & np.isfinite(lon)
+                & (lon >= lon_min) & (lon <= lon_max)
+                & (lat >= lat_min) & (lat <= lat_max)
+            )
+            if not valid.any():
+                continue
+
+            dt_valid = dt[valid]
+            utc = _ATL06_SDP_EPOCH + (dt_valid * 1e9).astype("timedelta64[ns]")
+
+            frames.append(pd.DataFrame({
+                "latitude":     lat[valid].astype(np.float64),
+                "longitude":    lon[valid].astype(np.float64),
+                "value":        h[valid].astype(np.float32),
+                "datetime":     pd.to_datetime(utc),
+                "beam_id":      beam,
+                "granule_id":   granule_id,
+                # terrain_flg == 255 (Undetermined) wraps to int8 -1
+                # under the modular cast; documented in the docstring.
+                "quality_flag": qual[valid].astype(np.int8),
+            }))
+
+    if not frames:
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+    return pd.concat(frames, ignore_index=True)
+
+
 _READERS: Dict[str, Callable] = {
     "nisar_gcov_h5":      _read_nisar_gcov_h5_window,
     "geotiff":            _read_geotiff_bands,
     "atl06_tracks":       _read_atl06_tracks,
+    "atl08_tracks":       _read_atl08_tracks,
     "gedi_l4a_tracks":    _read_gedi_l4a_tracks,
     "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
     "rdeft4_nc":          _read_rdeft4_nc,
@@ -1020,6 +1158,7 @@ _READER_KINDS: Dict[str, str] = {
     "nisar_gcov_h5":      "raster",
     "geotiff":            "raster_per_band",
     "atl06_tracks":       "tracks",
+    "atl08_tracks":       "tracks",
     "gedi_l4a_tracks":    "tracks",
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",
@@ -1422,12 +1561,17 @@ def _fetch_tracks(
     files = earthaccess.download(results, local_path=str(cache_dir))
     print(f"  OK {len(files)} granules downloaded in {time.time()-t0:.1f}s")
 
-    # Extract observations from every granule, then concat.
+    # Extract observations from every granule, then concat. Pass the
+    # user-requested source names (not all band_map values) so readers
+    # with multiple candidate datasets -- ATL08 has terrain vs canopy --
+    # can pick the right one; single-band readers (ATL06, GEDI-L4A)
+    # ignore the arg regardless.
     reader_fn = _READERS[reader]
+    ee_bands_for_reader = [band_map[b] for b in logical_bands]
     per_granule_frames = []
     for fp in files:
         try:
-            df = reader_fn(fp, list(band_map.values()), roi)
+            df = reader_fn(fp, ee_bands_for_reader, roi)
         except Exception as exc:  # noqa: BLE001
             print(f"  WARN failed to read {Path(fp).name}: "
                   f"{type(exc).__name__}: {exc}")

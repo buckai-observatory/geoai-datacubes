@@ -26,6 +26,7 @@ _EXPECTED_MISSIONS = (
     "JRC-GFC2020",
     "NISAR-L",
     "ICESat-2-ATL06",
+    "ICESat-2-ATL08",
     "SWOT-HR",
     "CryoSat-RDEFT4",
     "PlanetScope-4b", "PlanetScope-8b",

@@ -23,7 +23,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Eleven
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Twelve
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -46,6 +46,12 @@ documented here — only the host and the credentialing path.
 >   reader-kind** (multi-granule aggregation into one raster + a
 >   loss-less per-observation Parquet sidecar). First point/track
 >   mission wired; GEDI-L4A (see below) reuses the same flow.
+> - **ICESat-2 ATL08** (100 m along-track land + vegetation height
+>   segments, NASA NSIDC DAAC) — sibling of ATL06 on the same tracks
+>   flow; delivers terrain elevation (`h_te_best_fit`, default) and
+>   canopy top height (`h_canopy`, extra) jointly derived from the
+>   ATL03 photon cloud. Complements ATL06's ice-only coverage with
+>   global land + vegetation heights up to +/-88 deg latitude.
 > - **SWOT-HR** (250 m or 100 m KaRIn HR Raster surface water heights,
 >   NASA/CNES SWOT mission, PODAAC) — via `earthdata` provider raster
 >   path; NetCDF tiles with proper CRS metadata; delivers `wse`,
@@ -73,7 +79,7 @@ documented here — only the host and the credentialing path.
 >   coverage including ocean bathymetry; graduates the previous
 >   `GEBCO` stub to a first-class mission.
 >
-> All eleven have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All twelve have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -194,6 +200,7 @@ product with documented per-class quality.
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 | NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
 | SMAP L3 soil moisture *(v0.2 preview)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
+| ICESat-2 ATL08 land + vegetation *(v0.2 preview)* | `ICESat-2-ATL08` | 100 m along-track (rasterized at user resolution) | 2018-10-14 → present | h_te_best_fit (terrain height, default) + h_canopy (canopy top height, extra) | ATL06 sibling on the tracks flow; six ATLAS beams; global up to ±88° latitude; NASA Earthdata Login (NSIDC application) |
 
 ## Quick reference — derived products
 
@@ -456,6 +463,70 @@ ML training on optical -> topography retrievals. Notebook 05 uses
 Baffin Island as its default AOI; ATL06 coverage there is dense
 (500+ granules 2019-present) and stacks cleanly against NISAR L-band,
 Sentinel-1 C-band, and ArcticDEM in the same UTM cube.
+
+---
+
+## ICESat-2 ATL08 land and vegetation heights *(v0.2 preview — this branch only)*
+
+**Mission name:** `ICESat-2-ATL08`
+**Product:** `ATL08` (Land and Vegetation Height, Version 006/007
+depending on segment), hosted by **NSIDC DAAC**.
+**Distribution:** one HDF5 per ~2000 km sub-orbit (~100-150 MB each);
+each file carries per-100 m along-track segments along the **six ATLAS
+laser beams** (`gt1l`, `gt1r`, `gt2l`, `gt2r`, `gt3l`, `gt3r`).
+**Data model:** **tracks** — sibling of ATL06 on the same
+multi-granule aggregation path. A fetch downloads every intersecting
+granule in the AOI + time-window, extracts per-segment
+`(lat, lon, value, delta_time, terrain_flg)` across all beams, and
+emits the standard tracks pair:
+
+1. A gridded raster (`ICESat-2-ATL08_full_size.tiff`, default reducer
+   `mean`) ready for the fusion pipeline.
+2. A **loss-less Parquet sidecar**
+   (`<band>_observations.parquet`, one row per surviving segment
+   across all beams and granules).
+
+**Bands:**
+- `h_te_best_fit` (default) — best-fit segment terrain elevation,
+  WGS84 ellipsoid, meters. Recommended norm
+  `("linear", -500, 5000)` covers Arctic sea-level to
+  Andes / Himalaya peaks; tighten per AOI.
+- `h_canopy` (extra) — 98th-percentile relative canopy height above
+  the estimated terrain surface, meters. Recommended norm
+  `("linear", 0, 60)` covers most global forests; tighten to
+  `[0, 40]` for temperate forests, extend to `[0, 100]` for
+  tropical / redwood AOIs.
+
+**Quality flag** (Parquet `quality_flag` column): the ATL08
+`terrain_flg` DEM-comparison check — `0` = below-threshold agreement
+with the reference DEM (canonical "good"); `1` = above-threshold
+deviation (retained because on glaciers or recent-change AOIs a DEM
+disagreement is often real signal); `255` = undetermined, wraps to
+int8 `-1` under the modular cast.
+
+**Single-band-per-fetch caveat.** The shared `_fetch_tracks` binning
+today writes the same `value` column into every requested band's grid,
+so a request for both `h_te_best_fit` and `h_canopy` in one fetch would
+produce two identical rasters. The ATL08 reader guards against that
+with a clean `NotImplementedError`. Fetch one band per call for now;
+per-band value columns in the tracks flow are a planned follow-up.
+
+**Coverage.** ICESat-2 observes globally between +/-88 deg latitude,
+well above the +/-52 deg cap that limits the GEDI mission family; this
+is the mission of choice for polar / high-latitude vegetation or
+non-ice terrain altimetry.
+
+**Auth:** NASA Earthdata Login + NSIDC DAAC application (same row as
+ATL06 / CryoSat-RDEFT4 / SMAP-L3; no extra approval needed once
+ATL06 is set up). See the
+[earthdata provider docs](providers/earthdata.md).
+
+**Use case:** natural pair-mate to `ICESat-2-ATL06` for global
+terrain / vegetation surveys where ATL06 only covers land ice, and to
+`GEDI-L4A` for cross-mission vegetation altimetry validation within
+the ±52° GEDI cap. Combines with `Sentinel-2` optical + `Copernicus-DEM`
+for the standard "optical → altimetric truth → DEM residual" ML
+training stack.
 
 ---
 
