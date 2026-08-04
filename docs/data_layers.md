@@ -2,8 +2,9 @@
 
 The `geoai-datacubes` pipeline supports **twenty-six** satellite or
 ancillary missions (fifteen direct-observation + eight derived working
-today, plus three documented stubs — Sentinel-5P TROPOMI, GEDI L4B
-biomass, GEBCO bathymetry). `Landsat`, `Landsat-8`, and `Landsat-9` are
+today, plus one documented stub — Sentinel-5P TROPOMI; GEDI L4B and
+GEBCO have graduated to full wiring on the v0.2 branch). `Landsat`,
+`Landsat-8`, and `Landsat-9` are
 aliases of the same Landsat 8/9 Collection 2 Level 2 profile and are
 counted once. Each mission exposes a set of named bands that the user
 can pick freely from a `BANDS_<mission>` configuration list. This
@@ -22,7 +23,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Ten
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Eleven
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -66,8 +67,13 @@ documented here — only the host and the credentialing path.
 >   provider; global-daily coverage on the EASE-Grid 2.0 Global
 >   fixed grid (EPSG:6933); natural companion to NISAR L-band SAR
 >   for soil-moisture-under-vegetation work.
+> - **GEBCO-2024** (15-arc-second global elevation + bathymetry grid,
+>   IHO/IOC BODC 2024 release) — via `direct_http` on BODC / CEDA's
+>   Data Access Portal (anonymous HTTPS, no auth); truly global
+>   coverage including ocean bathymetry; graduates the previous
+>   `GEBCO` stub to a first-class mission.
 >
-> All ten have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All eleven have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -205,7 +211,7 @@ product with documented per-class quality.
 | JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
 | GEDI L4B Biomass *(v0.2 preview)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
 | GEDI L4A Biomass footprints *(v0.2 preview)* | `GEDI-L4A` | 25 m native (rasterised at user resolution) | 2019-04-18 → 2023-03-16 (V2.1) | agbd (per-shot AGBD, Mg/ha) | Loss-less per-shot Parquet sidecar + gridded raster; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap; 1-to-8 beams per granule |
-| GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
+| GEBCO 2024 Global Bathymetry *(v0.2 preview)* | `GEBCO-2024` | ~463 m (15 arc-sec) | static (2024 release) | elevation, elevation_sub_ice | Global elevation + bathymetry; anonymous BODC/CEDA GeoTIFFs via `direct_http`; ice-surface (default) or sub-ice bedrock variants |
 
 ---
 
@@ -1665,34 +1671,87 @@ biomass-and-loss feature stack without any optical input.
 
 ---
 
-## GEBCO 2024 Global Bathymetry *(stub only)*
+## GEBCO 2024 Global Bathymetry *(v0.2 preview — this branch only)*
 
-**Mission name:** `GEBCO`
-**Status:** Profile declared with `band_meta` for `elevation` + `tid`,
-but the `providers:` dict is empty. The canonical anonymous-access
-source is BODC at
-`https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/zip/`,
-distributed as a ~4 GB zipped GeoTIFF rather than a `/vsicurl/`-streamable
-COG. Wiring this in requires a download-and-cache extension to the
-`direct_http` fetcher; the NetCDF distribution (7.5 GB) is blocked by
-the same NetCDF reader gap that holds back Sentinel-5P.
-**Spatial resolution (when implemented):** ~463 m at the equator
-(15 arc-second).
-**Temporal:** static; one release every few years (2024 release current).
-**Coverage:** global, including ocean bathymetry.
+**Mission name:** `GEBCO-2024`
+**Producer:** General Bathymetric Chart of the Oceans (GEBCO), a joint
+project of the International Hydrographic Organization (IHO) and the
+Intergovernmental Oceanographic Commission (IOC) of UNESCO. 2024 release
+DOI: [10.5285/1c44ce99-0a0d-5f4f-e063-7086abc0ea0f](https://doi.org/10.5285/1c44ce99-0a0d-5f4f-e063-7086abc0ea0f).
+Distributed by the British Oceanographic Data Centre (BODC) via
+CEDA's Data Access Portal.
+**Provider:** `direct_http` — anonymous HTTPS, no auth. Per-tile
+GeoTIFFs at
+`https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2024/<variant>/geotiff/`.
+The user-facing `www.bodc.ac.uk/data/open_download/gebco/gebco_2024/geotiff/`
+entrypoint 301-redirects to a 4.26 GB whole-world zip and is **not**
+used by the fetcher; the per-tile CEDA URLs support HTTP byte-range
+requests, so `rasterio` + `/vsicurl/` streams only the AOI window
+(~kB per fetch despite the 933 MB nominal tile size).
+**Spatial resolution:** 15 arc-second (~463 m at the equator).
+**Temporal:** static; single 2024 release. `time_range` is ignored.
+**Coverage:** truly global, including ocean bathymetry — no coverage
+gaps.
+**Native CRS:** EPSG:4326 (WGS84 geographic), area-registered
+(`AREA_OR_POINT=Area`, `node_offset=1`).
+**Licence:** Free to use; cite the GEBCO 2024 Grid DOI.
 
-| Band | Description |
-|---|---|
-| elevation | Elevation + bathymetry, metres (positive above geoid, negative below) |
-| tid       | Type-identifier flag (per-pixel source provenance) |
+**Two co-tiled variants** (same 8-tile layout, different filename
+prefix, one logical band each):
 
-**Value range (when implemented):** `elevation` ranges roughly
-`[-11000, +9000]` m. `tid` is a small set of integer source codes.
+| Logical band | Variant | Meaning over grounded ice |
+|---|---|---|
+| `elevation` (default) | `ice_surface_elevation` | Ice-sheet top over Greenland / Antarctica (reports ice-surface elevation, not bedrock) |
+| `elevation_sub_ice` | `sub_ice_topography_bathymetry` | Bedrock beneath the ice removed (true bathymetry / bedrock elevation) |
 
-**When implemented:** the standard global bathymetry input for coastal
-and ocean studies, plus a global DEM where Copernicus DEM GLO-30 has
-gaps (open ocean). Naturally pairs with Sentinel-2 / Landsat optical
-over coastal AOIs for shallow-water bathymetry retrievals.
+Over ice-free land and ocean the two variants are identical. Request
+`elevation_sub_ice` (or add it to `extra_bands`) whenever your AOI
+touches Greenland, Antarctica, or a large ice cap and you want the
+solid-earth surface rather than the ice-sheet top.
+
+**URL pattern for tiles** (used by the tile-callback):
+
+```
+https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2024/
+    <variant>/geotiff/<prefix>_n<N>.0_s<S>.0_w<W>.0_e<E>.0.tif
+
+variant in {ice_surface_elevation, sub_ice_topography_bathymetry}
+prefix  = "gebco_2024"  or  "gebco_2024_sub_ice"
+```
+
+**Tile-grid math** (encoded in `_gebco_2024_tile_callback` in
+`missions.py`): 90° × 90° tiles in EPSG:4326, 4 columns × 2 rows =
+**8 fixed tiles per variant** (`lon` edges −180 / −90 / 0 / 90 / 180,
+`lat` edges −90 / 0 / 90). Each tile is 21600 × 21600 int16
+(~933 MB uncompressed) with `nodata = -32767`. GEBCO's finest
+pre-tiled slicing is these 8 tiles — no 5° or 1° tiles exist. For a
+typical 5–10 km AOI exactly one tile is needed; byte-range GETs keep
+the actual transfer to a few kB.
+
+**Value range:** `elevation` ranges roughly `[-10919, +8627]` m (per
+the `geospatial_vertical_min/max` tags on the tile). Norm recipe
+`("linear", -8000.0, 4000.0)` maps most of the usable land + shelf
+range to `[0, 1]` while clipping only extreme trenches / peaks.
+
+**Type-Identifier Grid (`tid`)** — per-pixel source-provenance flag —
+is deliberately not surfaced here: BODC only ships it as a NetCDF zip
+(`gebco_2024_tid.zip`, 107 MB), not as per-tile GeoTIFFs, so it
+cannot be wired through the geotiff-only `direct_http` fetcher. The
+CF-compliant NetCDF whole-world grid also carries `tid` alongside
+`elevation` and is a candidate for a future xarray-backed reader
+(same code path that would unblock Sentinel-5P).
+
+**Empirical smoke test:** Baffin AOI (71.6°N, −72.75°E, ±5 km) at
+100 m output resolution fetched both variants from tile
+`n90.0_s0.0_w-90.0_e0.0.tif` in ~5 s each; 100 % valid pixels;
+elevation range −106 to +797 m, median +214 m (Penny Ice Cap coast,
+ice-free rock — `elevation` and `elevation_sub_ice` match exactly
+as expected).
+
+**Pairs naturally with:** Sentinel-2 / Landsat for shallow-water
+bathymetry retrievals; Copernicus DEM for on-land elevation where
+GEBCO's 15 arc-second is coarser than the 1 arc-second Cop-DEM;
+ArcticDEM for high-detail cryosphere work.
 
 ---
 

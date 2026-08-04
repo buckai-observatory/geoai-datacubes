@@ -1711,32 +1711,72 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
-    # GEBCO 2024 Global Bathymetry -- STUB ONLY.
-    # 15-arcsec global elevation + bathymetry grid (-32768 to +9000 m).
-    # The canonical anonymous-access source is BODC at
-    # https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/zip/
-    # but it ships as a *4 GB zipped GeoTIFF*, not a /vsicurl/-streamable
-    # COG. The direct_http fetcher would need a download-and-cache
-    # extension to handle this. NetCDF variant (7.5 GB) needs the
-    # xarray backend (same blocker as Sentinel-5P / DAYMET / GOES-R).
+    # GEBCO 2024 Global Bathymetry + Elevation Grid (IHO/IOC BODC,
+    # released 2024-07-04, DOI 10.5285/1c44ce99-0a0d-5f4f-e063-7086abc0ea0f).
     #
-    # When wired, GEBCO is the standard global bathymetry input for
-    # coastal / ocean studies + serves as a global DEM where Cop-DEM
-    # GLO-30 lacks coverage (open ocean).
+    # 15-arc-second global raster (~463 m at the equator) of elevation
+    # and bathymetry, distributed by BODC on the CEDA Data Access
+    # Portal (dap.ceda.ac.uk) as EIGHT fixed 90-deg x 90-deg GeoTIFF
+    # tiles per variant (4 columns x 2 rows; lon edges -180/-90/0/90/180,
+    # lat edges -90/0/90). Each tile is 21600 x 21600 int16 (~933 MB
+    # uncompressed) in EPSG:4326, area-registered, with nodata = -32767.
+    #
+    # Anonymous HTTPS, no auth. The user-facing entrypoint
+    # https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/geotiff/
+    # 301-redirects to the 4.26 GB whole-world zip -- do NOT follow it
+    # for AOI work. The per-tile CEDA URLs support HTTP byte-range
+    # requests (Accept-Ranges: bytes verified), so rasterio /vsicurl/
+    # streams only the AOI window and per-fetch cost stays small
+    # (~kB for a 5-10 km AOI) despite the 933 MB nominal tile size.
+    #
+    # Two co-tiled variants share the tile layout, differing only in
+    # the filename prefix and in how each pixel is reported over grounded
+    # ice sheets:
+    #   * "ice_surface_elevation" (default)     -- ice-sheet top over
+    #     Greenland / Antarctica. Prefix: ``gebco_2024``.
+    #   * "sub_ice_topography_bathymetry"       -- bedrock beneath the
+    #     ice removed. Prefix: ``gebco_2024_sub_ice``. Use for true
+    #     bathymetry / bedrock under ice.
+    # Each logical band maps to one variant (see band_map below); the
+    # tile_callback formats the CEDA URL string per band.
+    #
+    # Static climatology: no time axis, single 2024 release. The
+    # tile_callback ignores any time_range arg.
+    #
+    # The Type-Identifier Grid (per-pixel source provenance flag) is
+    # NOT included: BODC only ships it as a NetCDF zip
+    # (gebco_2024_tid.zip, 107 MB), not as per-tile GeoTIFFs, so it
+    # cannot be wired through the geotiff-only direct_http fetcher.
     # ============================================================
-    "GEBCO": {
+    "GEBCO-2024": {
         "default_bands": ["elevation"],
-        "extra_bands":   ["tid"],   # type-identifier flag (source provenance)
+        "extra_bands":   ["elevation_sub_ice"],
         "cloud_filter":  False,
         "ndvi":          None,
         "cloud_mask":    None,
-        "static":        True,
-        "_needs_zip_unpack": True,
+        "static":        True,       # 2024 release; no temporal filter
         "band_meta": {
-            "elevation": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
-            "tid":       {"kind": "qa",        "norm": ('passthrough',)},
+            # Norm range aligned with the geospatial_vertical_min/max tags
+            # observed on the per-tile GeoTIFFs (-10919 / +8627 m).
+            "elevation":         {"kind": "elevation",
+                                  "units": "meters",
+                                  "norm": ("linear", -8000.0, 4000.0)},
+            "elevation_sub_ice": {"kind": "elevation",
+                                  "units": "meters",
+                                  "norm": ("linear", -8000.0, 4000.0)},
         },
-        "providers": {},   # empty until download-and-cache lands in direct_http
+        "providers": {
+            "direct_http": {
+                "release_tag":   "2024",
+                # Logical band -> GEBCO variant folder + filename prefix.
+                # Consumed by the tile_callback wired up below the dict.
+                "band_variant": {
+                    "elevation":         "ice_surface_elevation",
+                    "elevation_sub_ice": "sub_ice_topography_bathymetry",
+                },
+                "tile_callback": None,       # wired up below the dict
+            },
+        },
     },
 
     # ============================================================
@@ -1979,6 +2019,91 @@ MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]["tile_callback"] = (
 # that reads either field before the first fetch call sees real values,
 # not None.
 set_arcticdem_resolution("32m")
+
+
+# ============================================================
+# GEBCO 2024 tile callback
+# ============================================================
+# BODC / CEDA publish GEBCO 2024 as EIGHT fixed 90 deg x 90 deg tiles per
+# variant (4 columns x 2 rows). No 5-deg pre-tiled slicing exists; the
+# GEBCO subset app produces arbitrary AOI cutouts but only via a form-POST
+# session-cookie flow with no stable URLs, so it is not automatable.
+#
+# The 933 MB nominal tile size is not a fetch cost -- CEDA supports HTTP
+# byte-range (Accept-Ranges: bytes), so rasterio /vsicurl/ transfers only
+# the AOI window (~kB for a typical 5-10 km AOI).
+
+_GEBCO_2024_BASE_URL = "https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2024"
+_GEBCO_2024_LON_WEST_EDGES = (-180, -90, 0, 90)
+_GEBCO_2024_LAT_SOUTH_EDGES = (-90, 0)
+_GEBCO_2024_VARIANT_PREFIX = {
+    "ice_surface_elevation":         "gebco_2024",
+    "sub_ice_topography_bathymetry": "gebco_2024_sub_ice",
+}
+
+
+def _gebco_2024_tile_callback(roi, bands, time_range):
+    """Enumerate the GEBCO 2024 90 deg x 90 deg tiles intersecting an AOI.
+
+    GEBCO 2024 is a static climatology, so ``time_range`` is ignored.
+    Each requested band maps to a specific GEBCO variant folder + filename
+    prefix via the mission profile's ``band_variant`` table (currently
+    ``elevation`` -> ``ice_surface_elevation`` and ``elevation_sub_ice``
+    -> ``sub_ice_topography_bathymetry``); tiles are the same 8 for both.
+    """
+    del time_range   # static climatology: single 2024 release
+    band_variant = (MISSION_PROFILES["GEBCO-2024"]["providers"]
+                    ["direct_http"].get("band_variant") or {})
+
+    lon_min, lat_min, lon_max, lat_max = roi
+
+    intersecting = []
+    for lon_w in _GEBCO_2024_LON_WEST_EDGES:
+        lon_e = lon_w + 90
+        # Half-open intersection: skip tiles fully east or fully west of AOI.
+        if lon_e <= lon_min or lon_w >= lon_max:
+            continue
+        for lat_s in _GEBCO_2024_LAT_SOUTH_EDGES:
+            lat_n = lat_s + 90
+            if lat_n <= lat_min or lat_s >= lat_max:
+                continue
+            intersecting.append((lat_n, lat_s, lon_w, lon_e))
+
+    if not intersecting:
+        raise RuntimeError(
+            f"No GEBCO-2024 tiles intersect AOI {roi!r}. GEBCO is truly "
+            "global; this indicates a malformed bbox (e.g. lon_min > lon_max)."
+        )
+
+    refs = []
+    for band in bands:
+        variant = band_variant.get(band)
+        if variant is None:
+            raise ValueError(
+                f"GEBCO-2024: band {band!r} has no variant mapping. Known "
+                f"bands: {sorted(band_variant)}."
+            )
+        prefix = _GEBCO_2024_VARIANT_PREFIX[variant]
+        base = f"{_GEBCO_2024_BASE_URL}/{variant}/geotiff"
+        for (lat_n, lat_s, lon_w, lon_e) in intersecting:
+            # Filename edges are written as signed floats with one decimal
+            # (e.g. n90.0_s0.0_w-90.0_e0.0.tif). Verified against BODC/CEDA.
+            tile_stem = (f"n{lat_n:.1f}_s{lat_s:.1f}"
+                         f"_w{lon_w:.1f}_e{lon_e:.1f}")
+            refs.append({
+                "band":         band,
+                "url":          f"{base}/{prefix}_{tile_stem}.tif",
+                "tile_bbox_ll": [float(lon_w), float(lat_s),
+                                 float(lon_e), float(lat_n)],
+                "tile_name":    f"{variant}/{tile_stem}",
+                "auth":         None,
+            })
+    return refs
+
+
+MISSION_PROFILES["GEBCO-2024"]["providers"]["direct_http"]["tile_callback"] = (
+    _gebco_2024_tile_callback
+)
 
 
 def get_profile(mission):

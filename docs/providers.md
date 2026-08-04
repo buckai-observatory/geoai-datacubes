@@ -75,11 +75,13 @@ walkthroughs.
 | `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
 | `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
+| `ArcticDEM` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous AWS Open Data COGs (PGC S3) |
+| `GEBCO-2024` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous BODC/CEDA per-tile GeoTIFFs |
 | `Dynamic-World` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
 | `JRC-GFC2020` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
 | `NISAR-L` *(v0.2 preview)* | `earthdata` | ASF DAAC only; requires NASA Earthdata Login |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
-| `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Sentinel-5P: NetCDF reader pending. GEDI-L4B: `earthdata` provider exists on branch but the ORNL-DAAC GeoTIFF reader stub in `_earthdata.py::_READERS["geotiff"]` needs finishing. GEBCO: cache-download work pending. |
+| `Sentinel-5P` | not routed (stubbed) | Sentinel-5P: NetCDF reader pending. |
 
 The output `<Mission>_full_size.tiff` is functionally identical
 regardless of provider; the rest of the pipeline (cloud masking, NDVI,
@@ -226,27 +228,31 @@ repo because of that.
 
 **What it is.** A small in-tree provider for missions that are *not* in
 any STAC catalogue but expose anonymous HTTPS COG URLs directly --
-Hansen Global Forest Change on Google Cloud Storage is the reference
-case, with planned next additions for GEDI L4B, Lang 2023 canopy height,
-and Tolan 2024 1-m CHM. The pipeline calls a per-mission tile-callback
-(declared in `MISSION_PROFILES[<mission>]["providers"]["direct_http"]`)
-that turns an AOI bbox into a list of `(URL, band)` tuples; the generic
-fetcher then `/vsicurl/`-reads, reprojects, and mosaics them like any
-other STAC-served mission.
+Hansen Global Forest Change on Google Cloud Storage was the reference
+case; ArcticDEM v4.1 (PGC AWS Open Data) and GEBCO 2024 (BODC/CEDA
+per-tile GeoTIFFs) followed on the v0.2 branch. Planned next
+additions: Lang 2023 canopy height and Tolan 2024 1-m CHM. The
+pipeline calls a per-mission tile-callback (declared in
+`MISSION_PROFILES[<mission>]["providers"]["direct_http"]`) that turns
+an AOI bbox into a list of `(URL, band)` tuples; the generic fetcher
+then `/vsicurl/`-reads, reprojects, and mosaics them like any other
+STAC-served mission.
 
 **Where it wins.** Datasets the broader STAC ecosystem hasn't indexed
 yet -- Hansen GFC is widely cited but has never had a public STAC
 endpoint; bundling it as a `direct_http` mission lets users pull
 forest-loss-by-year rasters into a fused multi-mission cube with the
-same `fetch_sentinel_data` API as Sentinel-2 or Landsat.
+same `fetch_sentinel_data` API as Sentinel-2 or Landsat. GEBCO 2024
+is another textbook fit: BODC's per-tile GeoTIFFs support HTTP
+byte-range requests, so a 5-10 km AOI transfers only a few kB from
+each 933 MB tile.
 
 **The catch.** No catalogue search -- each mission's tile-callback has
 to know the dataset's URL scheme by hand. Acceptable when the
-dataset's tile layout is simple (e.g. Hansen GFC's 10° × 10° NW-corner
-naming); awkward when it isn't. Auth-gated direct downloads (NASA
-Earthdata Login for GEDI L4B) need a Bearer-token extension that is
-declared in the profile (`requires_auth` shape) but not yet wired
-through.
+dataset's tile layout is simple (e.g. Hansen GFC's 10° × 10°
+NW-corner naming or GEBCO's 8 fixed 90° tiles); awkward when it
+isn't. Auth-gated direct downloads (NASA Earthdata Login) belong on
+the separate `earthdata` provider, not here.
 
 ---
 

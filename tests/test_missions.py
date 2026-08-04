@@ -31,7 +31,8 @@ _EXPECTED_MISSIONS = (
     "PlanetScope-4b", "PlanetScope-8b",
     "GEDI-L4B", "GEDI-L4A",
     "SMAP-L3",
-    "Sentinel-5P", "GEBCO",                       # documented stubs
+    "GEBCO-2024",
+    "Sentinel-5P",                                # documented stub
 )
 
 
@@ -65,13 +66,14 @@ def test_band_meta_entries_have_kind_and_norm():
 
 
 def test_stub_missions_have_no_providers():
-    # Sentinel-5P and GEBCO are documented stubs: registered in
+    # Sentinel-5P is the only remaining documented stub: registered in
     # MISSION_PROFILES for visibility / docs but not yet wired into the
-    # PROVIDER_AUTO router. Their providers dict should be empty OR
-    # they should not appear in PROVIDER_AUTO. GEDI-L4B was moved out
-    # of this list when it was wired via the earthdata provider's new
-    # raster_per_band flow.
+    # PROVIDER_AUTO router. Its providers dict should be empty OR it
+    # should not appear in PROVIDER_AUTO. GEDI-L4B was moved out when
+    # it was wired via the earthdata `raster_per_band` flow; GEBCO
+    # (renamed `GEBCO-2024` on the same commit) was moved out when it
+    # was wired via `direct_http` against BODC/CEDA's per-tile GeoTIFFs.
     from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
-    for stub in ("GEBCO",):
+    for stub in ("Sentinel-5P",):
         # No router entry == cannot be fetched (which is the contract).
         assert stub not in PROVIDER_AUTO or not PROVIDER_AUTO[stub]

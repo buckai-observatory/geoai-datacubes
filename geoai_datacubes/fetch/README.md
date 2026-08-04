@@ -3,10 +3,10 @@
 Downloads raw imagery and ancillary layers (DEM, land cover, water
 extent, biomass, forest cover) from 26 public missions plus commercial
 PlanetScope. The registry covers 16 direct-observation missions (15
-working + 1 stub Sentinel-5P) and 10 derived products (8 working +
-2 stubs GEDI-L4B and GEBCO); see
-[`docs/data_layers.md`](../../docs/data_layers.md) for the authoritative
-per-mission reference.
+working + 1 stub Sentinel-5P) and 10 derived products (all working;
+GEDI-L4B and GEBCO have graduated from stubs on the v0.2 branch);
+see [`docs/data_layers.md`](../../docs/data_layers.md) for the
+authoritative per-mission reference.
 
 ## Public API
 
@@ -91,16 +91,16 @@ Variations across missions:
 - **Multi-band-per-asset COGs** (NAIP) use `(asset_key, band_index)`
   tuples in `asset_map` instead of plain strings. The dispatcher
   resolves both transparently via `_resolve_band_mapping`.
-- **Non-STAC missions** (Hansen-GFC today; GEDI-L4B and GEBCO as
-  documented stubs) use the `direct_http` provider class: a
-  per-mission `tile_callback` declared on the profile turns an AOI
-  bbox into a list of `(URL, band)` tuples and the generic fetcher
-  reads them via `/vsicurl/` just like any STAC-served COG.
-- **NetCDF-only missions** (Sentinel-5P; GEBCO's NetCDF distribution)
-  sit as profile stubs without a `PROVIDER_AUTO` entry — they're
-  discoverable via `MISSION_PROFILES` but raise a clear error if you
-  try to fetch them, because the rasterio + `/vsicurl/` reader doesn't
-  speak NetCDF. See the stub's docstring for the planned xarray-based
+- **Non-STAC missions** (Hansen-GFC, ArcticDEM, GEBCO-2024 on the
+  v0.2 branch) use the `direct_http` provider class: a per-mission
+  `tile_callback` declared on the profile turns an AOI bbox into a
+  list of `(URL, band)` tuples and the generic fetcher reads them
+  via `/vsicurl/` just like any STAC-served COG.
+- **NetCDF-only missions** (Sentinel-5P) sit as profile stubs
+  without a `PROVIDER_AUTO` entry — they're discoverable via
+  `MISSION_PROFILES` but raise a clear error if you try to fetch
+  them, because the rasterio + `/vsicurl/` reader doesn't speak
+  NetCDF. See the stub's docstring for the planned xarray-based
   reader path.
 
 ## Adding a new STAC-served mission
