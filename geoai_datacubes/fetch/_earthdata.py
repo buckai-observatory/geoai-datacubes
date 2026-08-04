@@ -624,6 +624,161 @@ def _read_rdeft4_nc(
         return band_arrays, src_transform, src_crs
 
 
+# EASE-Grid 2.0 Global (M09km) parameters used by SMAP Enhanced L3 soil
+# moisture (SPL3SMP_E). EPSG:6933 (WGS84 / NSIDC EASE-Grid 2.0 Global,
+# Lambert cylindrical equal-area). Corner + step are canonical and fixed
+# for every SPL3SMP_E granule; hard-coding is safer than trying to
+# reconstruct coordinates from the file's /latitude and /longitude fields
+# (those carry -9999 sentinels at the +/-85 deg latitude corners).
+_SMAP_M09KM_EPSG      = 6933
+_SMAP_M09KM_ORIGIN_X  = -17367530.44567
+_SMAP_M09KM_ORIGIN_Y  =   7314540.83001
+_SMAP_M09KM_STEP_M    =       9008.05521
+_SMAP_M09KM_NROW      = 1624
+_SMAP_M09KM_NCOL      = 3856
+
+# Group prefixes inside the SPL3SMP_E HDF5. Each granule ships four
+# sibling grid groups (global AM 6 AM descending, global PM 6 PM
+# ascending, and two polar EASE2 counterparts). PM datasets carry a
+# `_pm` suffix (e.g. `soil_moisture_pm`) while the polar groups reuse
+# the un-suffixed dataset names -- reader path construction has to
+# account for this per-group naming convention.
+_SMAP_L3_GROUPS = {
+    "AM":       ("/Soil_Moisture_Retrieval_Data_AM",       ""),
+    "PM":       ("/Soil_Moisture_Retrieval_Data_PM",       "_pm"),
+    "Polar_AM": ("/Soil_Moisture_Retrieval_Data_Polar_AM", ""),
+    "Polar_PM": ("/Soil_Moisture_Retrieval_Data_Polar_PM", ""),
+}
+
+
+def _read_smap_l3_sm_h5(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+    *,
+    smap_group: str = "AM",
+) -> Tuple[Dict[str, np.ndarray], Any, str]:
+    """Windowed read of a SMAP Enhanced L3 soil-moisture HDF5 over the AOI.
+
+    SPL3SMP_E (NASA/NSIDC DAAC) ships daily global 9-km composites on
+    the fixed EASE-Grid 2.0 Global (M09km) grid: EPSG:6933, 1624 rows x
+    3856 cols. Each daily file (~700 MB) packs four sibling grid
+    groups -- ``/Soil_Moisture_Retrieval_Data_AM`` (6 AM descending),
+    ``.../_PM`` (6 PM ascending; fields carry a ``_pm`` suffix), and
+    two ``Polar_AM`` / ``Polar_PM`` counterparts on the N09km EASE2
+    polar grid (2000x2000, EPSG:6931). We default to the AM global
+    group; callers wanting PM or the polar variants pass ``smap_group``.
+    Analogous to ``_read_rdeft4_nc`` in shape (fixed-grid hard-coded
+    Affine + AOI window) and to ``_read_nisar_gcov_h5_window`` in
+    file-handling (h5py group descent + per-dataset attribute reads).
+
+    Fill-value handling is per-dataset because SPL3SMP_E carries two
+    sentinels in the same file: ``-9999.0`` (float32 physical variables
+    like ``soil_moisture``, ``vegetation_water_content``,
+    ``surface_temperature``, ``tb_*``, ``freeboard``, and even the
+    ``latitude`` / ``longitude`` fields at the +/-85 deg latitude
+    corners) and ``65534`` (uint16 flag / index fields like
+    ``retrieval_qual_flag``, ``EASE_row_index``, ``EASE_column_index``).
+    The reader consults each dataset's ``_FillValue`` attribute rather
+    than assuming a single sentinel.
+
+    Parameters
+    ----------
+    fp
+        Local path to one SPL3SMP_E HDF5 granule.
+    ee_bands
+        Source-side dataset names inside the chosen SMAP group WITHOUT
+        the group-specific suffix (e.g. ``soil_moisture``; the reader
+        appends ``_pm`` when ``smap_group="PM"``).
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window.
+    smap_group
+        Which SMAP grid group to open. Defaults to ``"AM"`` (global
+        6 AM descending), the canonical daily soil-moisture product.
+        ``"PM"`` returns the 6 PM ascending counterpart. ``"Polar_AM"``
+        / ``"Polar_PM"`` return the N09km EASE2 polar variants (source
+        CRS EPSG:6931 rather than EPSG:6933); mission profile
+        overrides can wire those if needed.
+    """
+    h5py = _lazy_import_h5py()
+
+    if smap_group not in _SMAP_L3_GROUPS:
+        raise ValueError(
+            f"Unknown SMAP L3 group {smap_group!r}. "
+            f"Choose one of: {list(_SMAP_L3_GROUPS)}."
+        )
+    group_path, suffix = _SMAP_L3_GROUPS[smap_group]
+    # Polar variants live on N09km EASE2 (EPSG:6931), 2000x2000 -- our
+    # default reader targets the global M09km grid. Fail fast rather
+    # than silently misinterpret the affine.
+    if smap_group.startswith("Polar"):
+        raise NotImplementedError(
+            "SMAP L3 polar groups (Polar_AM / Polar_PM) live on the "
+            "N09km EASE2 polar grid (EPSG:6931, 2000x2000) which the "
+            "current reader does not encode. Use smap_group='AM' or "
+            "'PM' for the global M09km cylindrical grid."
+        )
+
+    src_crs = f"EPSG:{_SMAP_M09KM_EPSG}"
+    step = _SMAP_M09KM_STEP_M
+    origin_x = _SMAP_M09KM_ORIGIN_X
+    origin_y = _SMAP_M09KM_ORIGIN_Y
+
+    aoi_src = transform_bounds("EPSG:4326", src_crs, *aoi_wgs84)
+    x_min_s, y_min_s, x_max_s, y_max_s = aoi_src
+
+    i0 = max(0, int(np.floor((x_min_s - origin_x) / step)) - 1)
+    i1 = min(_SMAP_M09KM_NCOL,
+             int(np.ceil((x_max_s - origin_x) / step)) + 1)
+    # y decreases with row index: row 0 has y = origin_y - step/2.
+    j0 = max(0, int(np.floor((origin_y - y_max_s) / step)) - 1)
+    j1 = min(_SMAP_M09KM_NROW,
+             int(np.ceil((origin_y - y_min_s) / step)) + 1)
+    if i1 <= i0 or j1 <= j0:
+        raise RuntimeError(
+            f"AOI {aoi_wgs84} does not intersect the SMAP M09km "
+            f"EASE-Grid 2.0 Global grid (aoi in {src_crs}: {aoi_src})."
+        )
+
+    band_arrays: Dict[str, np.ndarray] = {}
+    with h5py.File(fp, "r") as f:
+        if group_path.lstrip("/") not in f:
+            raise RuntimeError(
+                f"SMAP granule at {fp} has no group {group_path!r} "
+                f"(available top-level groups: {list(f.keys())})."
+            )
+        grp = f[group_path]
+        for ee_band in ee_bands:
+            ds_name = f"{ee_band}{suffix}"
+            if ds_name not in grp:
+                # PM group carries the suffix but not every field is
+                # duplicated (e.g. lat/lon are AM-only); silently skip
+                # to match the NISAR/SWOT missing-band convention.
+                continue
+            ds = grp[ds_name]
+            arr = ds[j0:j1, i0:i1].astype(np.float32)
+            fill = ds.attrs.get("_FillValue", None)
+            if fill is not None:
+                # h5py returns numpy scalars for attribute values; cast to
+                # float once so both -9999.0 (float32 fields) and 65534
+                # (uint16 flag / index fields) mask cleanly.
+                arr[arr == np.float32(fill)] = np.nan
+            band_arrays[ee_band] = arr
+
+    if not band_arrays:
+        raise RuntimeError(
+            f"None of the requested bands {list(ee_bands)} were found in "
+            f"SMAP granule {fp} under group {group_path!r}. Available "
+            f"datasets: check the granule contents with h5ls."
+        )
+
+    west  = origin_x + i0 * step
+    north = origin_y - j0 * step
+    src_transform = rasterio.transform.from_origin(west, north, step, step)
+
+    return band_arrays, src_transform, src_crs
+
+
 # ATLAS Standard Data Product epoch (UTC). ATL06 `delta_time` is stored as
 # "GPS seconds since the ATLAS SDP epoch"; leap-second offset is ~18 s in
 # 2018, which we ignore -- that precision is irrelevant for AOI clipping,
@@ -846,6 +1001,7 @@ _READERS: Dict[str, Callable] = {
     "gedi_l4a_tracks":    _read_gedi_l4a_tracks,
     "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
     "rdeft4_nc":          _read_rdeft4_nc,
+    "smap_l3_sm_h5":      _read_smap_l3_sm_h5,
 }
 
 # Reader kind decides which top-level flow handles the mission:
@@ -867,6 +1023,7 @@ _READER_KINDS: Dict[str, str] = {
     "gedi_l4a_tracks":    "tracks",
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",
+    "smap_l3_sm_h5":      "raster",
 }
 
 

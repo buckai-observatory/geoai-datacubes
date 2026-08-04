@@ -22,7 +22,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Nine
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Ten
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -61,8 +61,13 @@ documented here — only the host and the credentialing path.
 >   NASA ORNL DAAC) — via the `earthdata` provider's tracks
 >   reader-kind. Same ±52 deg latitude cap as GEDI-L4B; loss-less
 >   per-shot Parquet sidecar alongside the aggregated raster.
+> - **SMAP-L3** (daily global 9 km Enhanced L-band radiometer soil
+>   moisture, SPL3SMP_E V006, NASA NSIDC DAAC) — via the `earthdata`
+>   provider; global-daily coverage on the EASE-Grid 2.0 Global
+>   fixed grid (EPSG:6933); natural companion to NISAR L-band SAR
+>   for soil-moisture-under-vegetation work.
 >
-> All nine have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All ten have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -182,6 +187,7 @@ product with documented per-class quality.
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 | NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
+| SMAP L3 soil moisture *(v0.2 preview)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
 
 ## Quick reference — derived products
 
@@ -526,6 +532,95 @@ altimetry over ice sheets, see the ESA CryoTEMPO Land Ice product
 **Fill values:** RDEFT4 uses `-9999` and `-999` sentinels without a
 declared `_FillValue` attribute; our reader replaces any value <= -100
 with NaN so downstream fusion / stats work correctly.
+
+---
+
+## SMAP L3 Enhanced Soil Moisture *(v0.2 preview — this branch only)*
+
+**Mission name:** `SMAP-L3`
+**Product:** `SPL3SMP_E` V006 (Soil Moisture Passive, Level 3, **Enhanced**
+9 km daily global composite from the SMAP L-band radiometer), hosted by
+**NASA NSIDC DAAC**. CMR concept-id `C2938664763-NSIDC_CPRD`,
+Composite Release ID R19240.
+**Data model:** raster (one daily HDF5 per calendar day; ~697 MB each).
+**Native grid:** **EASE-Grid 2.0 Global M09km** (EPSG:6933, WGS 84 /
+NSIDC EASE-Grid 2.0 Global, Lambert cylindrical equal-area). 1624 rows
+× 3856 cols at 9008.055 m nominal pixel; grid extent x ∈ [±17 367 530 m],
+y ∈ [±7 314 541 m]. Fixed; the reader hard-codes the affine.
+**Temporal coverage:** 2015-03-31 → present, **global daily** — every
+CMR search returns 2 granules/day regardless of AOI because the
+composite is global. SMAP has been operating from a 685 km polar
+orbit since April 2015; L-band radar failed in 2015-07 (radiometer
+alone continues).
+
+| Band | Kind | Units | Description |
+|---|---|---|---|
+| `soil_moisture` | continuous | cm³/cm³ | Volumetric surface soil moisture (top ~5 cm); typical range 0.02–0.5 |
+| `vegetation_water_content` | continuous | kg/m² | Ancillary VWC used in the retrieval; typical range 0–5 over most land |
+| `retrieval_qual_flag` | qa | — | uint16 bit field; 0 = best, 7/15 = retrieval not attempted (frozen / snow / permanent water) |
+| `soil_moisture_error` | continuous | cm³/cm³ | 1σ error estimate on `soil_moisture`; typical 0–0.1 |
+| `surface_temperature` | temperature | K | Auxiliary surface temperature from GMAO GEOS-5 |
+| `tb_h_corrected` | continuous | K | L-band H-pol brightness temperature after standard corrections |
+| `tb_v_corrected` | continuous | K | L-band V-pol brightness temperature after standard corrections |
+| `freeze_thaw_fraction` | fraction | 1 | Frozen fraction of the pixel; 0 = fully thawed, 1 = fully frozen |
+
+Defaults: `["soil_moisture", "vegetation_water_content", "retrieval_qual_flag"]`
+— the primary retrieval, its ancillary vegetation term, and the
+quality flag so users can distinguish "no data" from "retrieval not
+attempted" without a re-fetch (see the Arctic caveat below).
+
+**Fill values:** **TWO sentinels coexist in one file** — `-9999.0`
+for float32 physical variables (soil_moisture,
+vegetation_water_content, surface_temperature, tb_*,
+freeze_thaw_fraction, latitude, longitude) and `65534` for uint16
+flag/index fields (retrieval_qual_flag, EASE_row_index,
+EASE_column_index, surface_flag). The reader consults each
+dataset's `_FillValue` attribute rather than assuming a single
+sentinel.
+
+**Sibling grid groups.** Each SPL3SMP_E HDF5 packs four grid groups:
+`AM` (6 AM descending, canonical), `PM` (6 PM ascending; field names
+carry a `_pm` suffix like `soil_moisture_pm`), `Polar_AM`, and
+`Polar_PM` (the polar variants live on the N09km EASE2 polar grid,
+EPSG:6931, 2000×2000). The default reader targets the `AM` global
+group; the reader accepts a `smap_group` kwarg for the `PM` group,
+and the Polar variants are guarded with a clean `NotImplementedError`
+since they need a different affine.
+
+**Auth:** NASA Earthdata Login + the **NSIDC_DATAPOOL_OPS**
+application authorization in the EDL profile (same row as ICESat-2
+and CryoSat-RDEFT4). See
+[`docs/providers/earthdata.md`](providers/earthdata.md#first-time-setup-on-a-laptop)
+for the full walkthrough.
+
+**Coverage caveat — Arctic AOIs.** SMAP retrievals are inhibited
+whenever the ground is frozen, snow-covered, or a permanent water
+body. Empirical Baffin test (71.6 N, −72.75 W, ±1°):
+
+- **2024-06-15**: 144 pixels in bbox, **zero valid** soil_moisture
+  (all `retrieval_qual_flag == 7` or `15` — retrieval not attempted).
+- **2024-08-01**: 91/186 valid pixels in the 0.20–0.68 cm³/cm³ range.
+
+Arctic users should expect valid soil-moisture pixels only in
+roughly **June–September** (the snow-free / thawed window). Winter
+frames will look mostly empty over land AND ocean. Always keep
+`retrieval_qual_flag` in the default cube so downstream code can
+tell the difference between "no data" and "not retrieved".
+
+**Version note.** V007 does **not** yet exist for the Enhanced 9-km
+product — V006 is genuinely the current version. The 36-km standard
+product (`SPL3SMP`) is on V009 and uses a different version
+numbering track; wiring it as a coarser fallback is a five-line
+config addition to `MISSION_PROFILES`.
+
+**Normalisation for ML:** the defaults in `band_meta` map
+`soil_moisture` linearly into `[0.02, 0.5] → [0, 1]`,
+`vegetation_water_content` into `[0.0, 5.0] → [0, 1]`, and the
+brightness-temperature bands into `[150, 300] K → [0, 1]`. The
+`retrieval_qual_flag` band is `passthrough` — the raw uint16 bit
+field survives, and a categorical colormap is the right visualisation.
+For soil-moisture-under-vegetation work this profile pairs naturally
+with **NISAR-L** L-band SAR at the same AOI.
 
 ---
 

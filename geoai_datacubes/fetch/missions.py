@@ -1150,6 +1150,123 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # SMAP L3 Enhanced Soil Moisture -- Global Daily 9 km EASE-Grid
+    # V006 (NASA / NSIDC DAAC).
+    #
+    # Product: SPL3SMP_E (CMR concept-id C2938664763-NSIDC_CPRD,
+    # ECS VersionID 006, Composite Release ID R19240). Daily
+    # composite from the SMAP L-band radiometer with the Enhanced
+    # 9 km posting (the standard SPL3SMP is 36 km); global daily
+    # coverage, so a CMR search returns 2 granules per calendar day
+    # (one file per composite) regardless of AOI.
+    #
+    # Distribution: NSIDC DAAC (Cumulus S3-backed) via NASA
+    # Earthdata Login -- the same auth path already wired for
+    # NISAR / ICESat-2 / GEDI. Each daily granule is HDF5, ~697 MB.
+    #
+    # File layout: FOUR sibling grid groups per file --
+    #   /Soil_Moisture_Retrieval_Data_AM         (6 AM descending)
+    #   /Soil_Moisture_Retrieval_Data_PM         (6 PM ascending;
+    #                                             field names carry
+    #                                             a `_pm` suffix)
+    #   /Soil_Moisture_Retrieval_Data_Polar_AM   (N09km EASE2 polar,
+    #                                             2000x2000, EPSG:6931)
+    #   /Soil_Moisture_Retrieval_Data_Polar_PM   (same, PM)
+    # We wire the AM global group as canonical (1624 x 3856 on the
+    # EASE-Grid 2.0 Global M09km grid, EPSG:6933). The PM /
+    # Polar_* groups are reachable by extending the reader (a
+    # `smap_group` kwarg is already plumbed through).
+    #
+    # Value ranges: soil_moisture 0.02-0.5 cm3/cm3 (volumetric);
+    # vegetation_water_content 0-5 kg/m2 over most land (file
+    # valid_max is 20 but 0-5 covers the usable range); brightness
+    # temperatures 150-300 K. retrieval_qual_flag is a uint16 bit
+    # field (0 = best; 7 / 15 = "retrieval not attempted" over
+    # frozen ground / snow / permanent water) -- surfaced as a
+    # default band so users can distinguish "no data" from "not
+    # retrieved" (see the Arctic-coverage caveat below).
+    #
+    # Fill values: TWO sentinels coexist in one file -- -9999.0 for
+    # the float32 physical variables (soil_moisture,
+    # vegetation_water_content, surface_temperature, tb_*,
+    # freeze_thaw_fraction, latitude, longitude) and 65534 for the
+    # uint16 flag / index fields (retrieval_qual_flag,
+    # EASE_row_index, EASE_column_index, surface_flag). The reader
+    # consults each dataset's `_FillValue` attribute rather than
+    # assuming a single sentinel.
+    #
+    # Coverage caveat: SMAP retrievals are inhibited whenever the
+    # ground is frozen, snow-covered, or a permanent water body.
+    # Empirical Baffin test (71.6 N, -72.75 W, +/-1 deg):
+    #   * 2024-06-15: 144 pixels in the bbox, ZERO valid
+    #     soil_moisture (all retrieval_qual_flag == 7 or 15 --
+    #     retrieval-not-attempted, frozen / snow-covered)
+    #   * 2024-08-01: 91/186 valid pixels in the 0.20-0.68
+    #     cm3/cm3 range
+    # Arctic users should expect valid soil-moisture pixels only in
+    # roughly June-September; winter frames will look empty over
+    # land AND ocean. Users of this cube should surface
+    # retrieval_qual_flag alongside soil_moisture to distinguish
+    # "no data" from "not retrieved".
+    #
+    # Version note: V007 does NOT yet exist for the Enhanced
+    # product -- V006 is genuinely the current version. The 36-km
+    # standard product (SPL3SMP) is on V009 and uses a different
+    # version numbering track.
+    # ============================================================
+    "SMAP-L3": {
+        "default_bands": ["soil_moisture", "vegetation_water_content",
+                          "retrieval_qual_flag"],
+        "extra_bands":   ["soil_moisture_error", "surface_temperature",
+                          "tb_h_corrected", "tb_v_corrected",
+                          "freeze_thaw_fraction"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "soil_moisture":            {"kind": "continuous",  "units": "cm^3/cm^3",
+                                          "norm": ("linear", 0.02, 0.5)},
+            "vegetation_water_content": {"kind": "continuous",  "units": "kg/m^2",
+                                          "norm": ("linear", 0.0, 5.0)},
+            # Bit-field flag; passthrough so users can decode bits and /
+            # or supply a categorical colormap. Do NOT norm as continuous.
+            "retrieval_qual_flag":      {"kind": "qa",           "norm": ("passthrough",)},
+            "soil_moisture_error":      {"kind": "continuous",  "units": "cm^3/cm^3",
+                                          "norm": ("linear", 0.0, 0.1)},
+            "surface_temperature":      {"kind": "temperature", "units": "K",
+                                          "norm": ("linear", 240.0, 320.0)},
+            "tb_h_corrected":           {"kind": "continuous",  "units": "K",
+                                          "norm": ("linear", 150.0, 300.0)},
+            "tb_v_corrected":           {"kind": "continuous",  "units": "K",
+                                          "norm": ("linear", 150.0, 300.0)},
+            "freeze_thaw_fraction":     {"kind": "fraction",    "units": "1",
+                                          "norm": ("linear", 0.0, 1.0)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "SPL3SMP_E",
+                "reader":     "smap_l3_sm_h5",
+                # Logical band == source dataset name inside the AM
+                # global group (1:1). PM / Polar variants are reachable
+                # by extending the reader with a group override; not
+                # exposed as separate bands here to keep the default
+                # cube shape simple.
+                "band_map": {
+                    "soil_moisture":            "soil_moisture",
+                    "vegetation_water_content": "vegetation_water_content",
+                    "retrieval_qual_flag":      "retrieval_qual_flag",
+                    "soil_moisture_error":      "soil_moisture_error",
+                    "surface_temperature":      "surface_temperature",
+                    "tb_h_corrected":           "tb_h_corrected",
+                    "tb_v_corrected":           "tb_v_corrected",
+                    "freeze_thaw_fraction":     "freeze_thaw_fraction",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
     # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
     # ALOS PALSAR mosaic by JAXA. Single classified band per tile;

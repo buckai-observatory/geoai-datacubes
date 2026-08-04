@@ -172,6 +172,7 @@ personal one.
 | `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
 | `GEDI-L4B` | `GEDI_L4B_Gridded_Biomass_V2_1_2299` | **raster (per-band COGs)** | ORNL DAAC | static (MW019–MW223, 2019-04-18 → 2023-03-16) | 1 km native (EASE-Grid 2.0, EPSG:6933) | `MU`, `SE` (defaults) + `V1`, `V2`, `PE`, `MI`, `QF`, `NS`, `NC`, `PS` |
 | `GEDI-L4A` | `GEDI_L4A_AGB_Density_V2_1_2056` | **tracks** (multi-granule aggregation) | ORNL DAAC | 2019-04-18 → 2023-03-16 (V2.1 archive) | 25 m native footprint (rasterized at user resolution) | `agbd` (aboveground biomass density, Mg/ha) |
+| `SMAP-L3` | `SPL3SMP_E` (V006) | raster (daily global composite) | NSIDC DAAC | 2015-03-31 → present, global-daily | 9 km native (EASE-Grid 2.0 Global, EPSG:6933) | `soil_moisture`, `vegetation_water_content`, `retrieval_qual_flag` (+ 5 extras) |
 
 **NISAR-L notes:**
 
@@ -361,12 +362,74 @@ segment (~130-250 MB each). The reader reuses the multi-granule
   GEDI-L4B — the ORNL row in the DAAC-applications table already
   covers this.
 
+**SMAP-L3 notes** — daily global L-band radiometer soil-moisture
+composites (`SPL3SMP_E`, Enhanced 9-km product V006), the natural
+companion to NISAR L-band SAR for soil-moisture-under-vegetation work.
+Distributed as one HDF5 per calendar day from the NSIDC DAAC; every
+CMR search returns 2 granules/day regardless of AOI because the
+composite is global.
+
+- Bands surfaced: `soil_moisture` (volumetric, cm³/cm³),
+  `vegetation_water_content` (kg/m²), and `retrieval_qual_flag`
+  (uint16 bit-field) as the defaults; extras cover the SMAP
+  uncertainty budget (`soil_moisture_error`), the auxiliary
+  meteorology (`surface_temperature` from GMAO GEOS-5),
+  the L-band brightness temperatures used by the retrieval
+  (`tb_h_corrected`, `tb_v_corrected`), and the freeze/thaw
+  fraction (`freeze_thaw_fraction`). `retrieval_qual_flag` is a
+  default because Arctic AOIs (see the caveat below) need it to
+  distinguish "no data" from "retrieval not attempted".
+- Source grid is the **EASE-Grid 2.0 Global M09km grid** (EPSG:6933,
+  1624 rows × 3856 cols, 9008.055 m step), hard-coded by the reader
+  in the same style as the RDEFT4 fixed-grid path. The reader does
+  NOT construct coordinates from the file's `/latitude` and
+  `/longitude` fields because those carry `-9999` sentinels at the
+  ±85° latitude corners where the cylindrical grid clips.
+- **Two `_FillValue` sentinels coexist in one file:** `-9999.0`
+  for float32 physical variables (soil_moisture,
+  vegetation_water_content, surface_temperature, tb_*,
+  freeze_thaw_fraction, latitude, longitude) and `65534` for uint16
+  flag/index fields (`retrieval_qual_flag`, `EASE_row_index`,
+  `EASE_column_index`, `surface_flag`). The reader consults each
+  dataset's own `_FillValue` attribute rather than assuming a
+  single sentinel.
+- Each file packs **four sibling grid groups**: `AM` (6 AM
+  descending, canonical), `PM` (6 PM ascending; field names carry a
+  `_pm` suffix like `soil_moisture_pm`), `Polar_AM`, and `Polar_PM`
+  (the polar variants live on the N09km EASE2 polar grid,
+  EPSG:6931, 2000×2000). Default is the AM global group; the
+  reader accepts a `smap_group` kwarg for the PM group (Polar
+  variants are not encoded in the default reader — they need a
+  separate EPSG:6931 affine).
+- **Arctic-coverage caveat.** SMAP retrievals are inhibited over
+  frozen ground, snow-covered ground, and permanent water bodies.
+  Empirical Baffin test (71.6 N, −72.75 W, ±1°):
+  * 2024-06-15: 144 pixels in bbox, **zero** valid soil_moisture
+    pixels (all `retrieval_qual_flag == 7` or `15` — retrieval
+    not attempted).
+  * 2024-08-01: 91/186 valid pixels in the 0.20–0.68 cm³/cm³
+    range.
+  Users of this mission at high latitudes should expect valid
+  soil-moisture pixels only during roughly **June–September** and
+  surface `retrieval_qual_flag` so downstream code can tell "no
+  data" from "not retrieved".
+- **Version note.** V007 does **not** yet exist for the Enhanced
+  9-km product — V006 is genuinely the current version. The
+  36-km standard product (`SPL3SMP`) is on V009 and uses a
+  different version numbering track.
+- Requires the **NSIDC_DATAPOOL_OPS** application authorization
+  in the EDL profile (same row as ICESat-2 / CryoSat-RDEFT4 in the
+  DAAC-applications table above).
+- Each daily granule is ~697 MB; the provider downloads once and
+  caches under `<save_folder>/.SMAP-L3_cache/`. For time-series
+  work over a fixed AOI, subsequent runs skip re-download.
+
 **Planned next missions on this provider:**
 
-- **SMAP L3 soil moisture** — natural companion to NISAR L-band for
-  soil-moisture-under-vegetation work.
 - **CryoSat land-ice altimetry** (CryoTEMPO Land Ice, ESA) — needs a
   new ESA-auth provider class; deferred.
+- **MODIS in its native HDF form** (LP DAAC) — canonical distribution
+  for cross-checking the current EE-served MODIS path.
 
 ## Quotas and cost
 

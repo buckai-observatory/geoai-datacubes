@@ -30,6 +30,7 @@ _EXPECTED_MISSIONS = (
     "CryoSat-RDEFT4",
     "PlanetScope-4b", "PlanetScope-8b",
     "GEDI-L4B", "GEDI-L4A",
+    "SMAP-L3",
     "Sentinel-5P", "GEBCO",                       # documented stubs
 )
 
