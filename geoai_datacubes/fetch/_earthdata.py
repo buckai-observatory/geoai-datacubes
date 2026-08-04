@@ -151,6 +151,31 @@ def _reset_earthdata_state_for_tests():
 # Granule discovery + download
 # ============================================================
 
+def _granule_aoi_overlap(granule: Any, roi: Sequence[float]) -> float:
+    """Fraction of the AOI covered by the granule's footprint polygon.
+
+    Returns 0.0 if the footprint can't be extracted or shapely isn't
+    available -- callers should treat that as "unknown, don't sort by
+    this" rather than a genuine 0% overlap.
+    """
+    try:
+        from shapely.geometry import Polygon, box  # noqa: PLC0415
+    except ImportError:
+        return 0.0
+    try:
+        pts = (granule["umm"]["SpatialExtent"]["HorizontalSpatialDomain"]
+                ["Geometry"]["GPolygons"][0]["Boundary"]["Points"])
+        poly = Polygon([(p["Longitude"], p["Latitude"]) for p in pts])
+        if not poly.is_valid or poly.is_empty:
+            return 0.0
+        aoi_box = box(*roi)
+        if aoi_box.area <= 0:
+            return 0.0
+        return float(aoi_box.intersection(poly).area / aoi_box.area)
+    except (KeyError, IndexError, TypeError):
+        return 0.0
+
+
 def _search_and_download_first(
     earthaccess,
     short_name: str,
@@ -159,8 +184,16 @@ def _search_and_download_first(
     cache_dir: Path,
     filters: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, str]:
-    """Search DAAC for the given short_name over roi + time_range, download
-    the first matching granule, return the (granule_metadata, local_path)."""
+    """Search DAAC for the given short_name over roi + time_range, sort by
+    AOI-coverage fraction, download the best-covered granule, return the
+    (granule_metadata, local_path).
+
+    Sorting by AOI coverage matters because CMR returns granules in a
+    default order that's not related to how much of your AOI each one
+    actually covers -- an "edge" granule that clips only a corner of
+    the AOI can easily be first, giving you a mostly-NaN cube. If
+    shapely isn't installed we fall back to CMR default order.
+    """
     kwargs: Dict[str, Any] = {
         "short_name": short_name,
         "bounding_box": tuple(roi),
@@ -179,9 +212,18 @@ def _search_and_download_first(
             "the product's coverage / observation swath."
         )
 
-    granule = results[0]
+    # Sort by AOI overlap (descending). No-ops if shapely isn't around;
+    # in that case CMR's default order is what you get.
+    scored = [(g, _granule_aoi_overlap(g, roi)) for g in results]
+    scored.sort(key=lambda x: -x[1])
+    granule, best_frac = scored[0]
     gid = granule.get("meta", {}).get("native-id", "<no id>")
-    print(f"  granules found: {len(results)}, using first: {gid}")
+    print(f"  granules found: {len(results)}, picking best AOI coverage "
+          f"({100*best_frac:.0f}%): {gid}")
+    if best_frac < 0.5:
+        print(f"  WARN: best available granule only covers {100*best_frac:.0f}% "
+              "of the AOI; the fetched raster will be mostly NaN. Consider "
+              "widening `time_range` to include more acquisitions.")
     # earthaccess can report byte-sizes; be tolerant of both attr + method APIs.
     try:
         size_mb = float(granule.size) if not callable(granule.size) else float(granule.size())

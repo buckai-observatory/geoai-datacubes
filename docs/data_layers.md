@@ -1347,6 +1347,55 @@ bands from dominating the early gradients.
 
 ---
 
+## ArcticDEM *(planned addition — direct_http stub sketched)*
+
+**Mission name (planned):** `ArcticDEM`
+**Producer:** Polar Geospatial Center (PGC), University of Minnesota.
+PI Ian Howat (Ohio State University, School of Earth Sciences —
+BuckAI Observatory affiliated). Time-series digital-elevation
+model of the Arctic derived from sub-metre commercial optical stereo
+(WorldView-1/2/3, GeoEye-1) via SETSM.
+
+**Difference from Copernicus DEM:** ArcticDEM is a genuinely
+different product, not just a re-hosting of the same elevation
+signal — it complements rather than duplicates our existing
+`Copernicus-DEM` mission:
+
+| | ArcticDEM v4.1 | Copernicus DEM (GLO-30) |
+|---|---|---|
+| Native resolution | **2 m** (also 10 m + 32 m mosaics) | 30 m |
+| Coverage | Arctic only (>60°N) | Global (60°S–85°N) |
+| Temporal | Time-series (individual strips + versioned mosaics; v1 → v4.1 spans 2015–present) | Static single global mosaic (built ~2011–2015) |
+| Source data | Sub-metre commercial optical stereo (WorldView / GeoEye) | Tandem-X InSAR |
+| Best for | Glacier thickness change (temporal DEM differencing), calving-front topography, high-detail cryosphere work | Global fallback, non-polar coverage, static topographic priors |
+
+**Hosting:** publicly on AWS Open Data at
+`s3://pgc-opendata-dems/arcticdem/` (region `us-west-2`, anonymous
+access verified). URL pattern for mosaic tiles:
+
+```
+https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/<res>/<row>_<col>/<row>_<col>_<res>_v4.1_dem.tif
+```
+
+where `<res>` is `2m`, `10m`, or `32m`, and `<row>_<col>` is PGC's
+100 km × 100 km EPSG:3413 tile grid ID (e.g. `07_40`). Files are
+Cloud-Optimized GeoTIFFs; a 32 m Greenland-area tile is ~15 MB.
+
+**Wire-up path:** Natural fit for the existing `direct_http` provider,
+same pattern as `Hansen-GFC` — one entry in `MISSION_PROFILES` plus a
+per-mission tile-callback in `missions.py` that maps an AOI to
+intersecting `<row>_<col>` tile IDs. The tile-grid math requires the
+PGC EPSG:3413 origin and tile-index convention (v4.1 index PDF at
+<https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/mosaic/v4.1/index/>).
+Not yet wired; tracked as a follow-up in [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18)'s
+comments.
+
+**When wired**, notebook `05_nisar_helheim_datacube.ipynb` would gain
+a `USE_ARCTICDEM = True` toggle to swap Copernicus DEM for ArcticDEM
+in the fused cube over polar / cryosphere AOIs.
+
+---
+
 ## Sources considered but not currently included
 
 A short note on what is **not** in the table above, and why. Tracked
