@@ -66,6 +66,7 @@ PROVIDER_AUTO = {
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
+    "ArcticDEM":      "direct_http",        # PGC ArcticDEM v4.1 32 m mosaic, AWS Open Data
     "Copernicus-DEM-90": "planetary_computer", # 90 m static, lower-res complement
     "USDA-CDL":       "planetary_computer", # annual US crop-type raster
     "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)

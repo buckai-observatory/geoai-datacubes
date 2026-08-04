@@ -11,6 +11,7 @@ _EXPECTED_MISSIONS = (
     "Sentinel-1",
     "Landsat",
     "Copernicus-DEM", "Copernicus-DEM-90",
+    "ArcticDEM",
     "ESA-WorldCover",
     "NAIP",
     "MODIS_SR", "MODIS_LST",

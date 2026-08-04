@@ -228,6 +228,49 @@ MISSION_PROFILES = {
         },
     },
 
+    # ============================================================
+    # ArcticDEM v4.1 (Polar Geospatial Center, U. of Minnesota;
+    # PI Ian Howat, Ohio State University).
+    #
+    # Time-series digital elevation model of the Arctic (>60N) built
+    # from sub-metre commercial optical stereo (WorldView-1/2/3,
+    # GeoEye-1) via SETSM. Different from Copernicus DEM in every way
+    # that matters over polar targets:
+    #   * 32 m mosaic here (also 10 m / 2 m available on the same bucket)
+    #   * Arctic-only (>60N) coverage
+    #   * Time-series (mosaic versions v1 -> v4.1 span 2015-present),
+    #     not a single static snapshot
+    #   * Optical stereo -> real surface elevation of ice + rock;
+    #     Copernicus is Tandem-X InSAR-derived and lags on fast-changing
+    #     surfaces like glacier tongues.
+    #
+    # Hosting: publicly on AWS Open Data at
+    # s3://pgc-opendata-dems/arcticdem/mosaics/v4.1/<res>/<row>_<col>/
+    # as anonymous COGs. Native EPSG:3413 polar-stereographic; 100 km x
+    # 100 km tile grid indexed as (row, col) with the origin (row=0,
+    # col=0) placed at EPSG:3413 (x=-4100000, y=-4100000). Tile
+    # (R, C) covers x in [(C-41)e5, (C-40)e5], y in [(R-41)e5, (R-40)e5].
+    # Wired through the direct_http provider using the tile-callback
+    # pattern already used by Hansen-GFC.
+    # ============================================================
+    "ArcticDEM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,             # single mosaic release (v4.1)
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "direct_http": {
+                "release_tag":   "v4.1_32m",
+                "tile_callback": None,       # wired up below the dict
+            },
+        },
+    },
+
     "ESA-WorldCover": {
         "default_bands": ["LULC"],
         "extra_bands":   [],
@@ -1395,6 +1438,98 @@ def _hansen_gfc_tile_callback(roi, bands, time_range):
 
 MISSION_PROFILES["Hansen-GFC"]["providers"]["direct_http"]["tile_callback"] = (
     _hansen_gfc_tile_callback
+)
+
+
+# ============================================================
+# ArcticDEM v4.1 mosaic tile callback
+# ============================================================
+# Grid parameters derived empirically (see notes on the ArcticDEM
+# mission profile above and verified against a downloaded tile):
+#   * EPSG:3413 polar-stereographic, 100 km x 100 km tiles.
+#   * Tile (row, col) covers
+#         x in [ORIGIN + col*STEP, ORIGIN + (col+1)*STEP]
+#         y in [ORIGIN + row*STEP, ORIGIN + (row+1)*STEP]
+#     with ORIGIN = -4100000 and STEP = 100000.
+#   * URL:
+#         https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/
+#         arcticdem/mosaics/v4.1/<res>/<row>_<col>/<row>_<col>_<res>_v4.1_dem.tif
+
+_ARCTICDEM_ORIGIN_M = -4100000     # x=y origin of the tile grid in EPSG:3413
+_ARCTICDEM_STEP_M   = 100000       # tile size (m) in EPSG:3413
+_ARCTICDEM_BASE_URL = (
+    "https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1"
+)
+_ARCTICDEM_RES      = "32m"        # default; switch to "10m" or "2m" for higher-res
+
+
+def _arcticdem_tile_callback(roi, bands, time_range):
+    """Enumerate the ArcticDEM v4.1 32 m mosaic tiles intersecting an AOI.
+
+    The AOI (WGS84 bbox) is projected to EPSG:3413 by transforming ALL
+    FOUR corners (polar stereographic rotates a lat/lon bbox into a
+    tilted quadrilateral; using just two opposite corners would clip
+    the wrong pixels). Then the intersecting tile grid indices are
+    computed and one TileRef per tile is returned.
+    """
+    from pyproj import Transformer
+
+    lon_min, lat_min, lon_max, lat_max = roi
+    tf_fwd = Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
+    tf_back = Transformer.from_crs("EPSG:3413", "EPSG:4326", always_xy=True)
+
+    xs, ys = tf_fwd.transform(
+        [lon_min, lon_max, lon_max, lon_min],
+        [lat_min, lat_min, lat_max, lat_max],
+    )
+    x_min_s, x_max_s = min(xs), max(xs)
+    y_min_s, y_max_s = min(ys), max(ys)
+
+    col_min = int((x_min_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    col_max = int((x_max_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    row_min = int((y_min_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    row_max = int((y_max_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+
+    if col_min > col_max or row_min > row_max:
+        raise RuntimeError(
+            f"No ArcticDEM tiles intersect AOI {roi} in EPSG:3413. AOI may "
+            "be outside the Arctic domain -- ArcticDEM only covers latitudes "
+            "north of ~60N."
+        )
+
+    refs = []
+    for row in range(row_min, row_max + 1):
+        for col in range(col_min, col_max + 1):
+            tile_name = f"{row:02d}_{col:02d}"
+            url = (f"{_ARCTICDEM_BASE_URL}/{_ARCTICDEM_RES}/{tile_name}/"
+                   f"{tile_name}_{_ARCTICDEM_RES}_v4.1_dem.tif")
+
+            # Tile bbox in EPSG:3413 -> WGS84 (four corners, then min/max).
+            tx_lo = _ARCTICDEM_ORIGIN_M + col * _ARCTICDEM_STEP_M
+            tx_hi = tx_lo + _ARCTICDEM_STEP_M
+            ty_lo = _ARCTICDEM_ORIGIN_M + row * _ARCTICDEM_STEP_M
+            ty_hi = ty_lo + _ARCTICDEM_STEP_M
+            lons_t, lats_t = tf_back.transform(
+                [tx_lo, tx_hi, tx_hi, tx_lo],
+                [ty_lo, ty_lo, ty_hi, ty_hi],
+            )
+            refs.append({
+                "band":         "DEM",
+                "url":          url,
+                "tile_bbox_ll": [min(lons_t), min(lats_t), max(lons_t), max(lats_t)],
+                "tile_name":    tile_name,
+                "auth":         None,
+            })
+
+    # No overlap-check against s3 here: some tiles in the candidate grid
+    # may be genuinely absent (ArcticDEM v4.1 doesn't publish every
+    # possible tile, only the ones with source coverage). The
+    # direct_http fetcher already logs+skips 404-ing tiles gracefully.
+    return refs
+
+
+MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]["tile_callback"] = (
+    _arcticdem_tile_callback
 )
 
 
