@@ -189,6 +189,12 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
         )
 
+    if provider == "local_files":
+        return fetch_local_files(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
@@ -202,7 +208,7 @@ def fetch_sentinel_data(
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
         f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
-        f"'earthdata', or 'sentinelhub'."
+        f"'earthdata', 'local_files', or 'sentinelhub'."
     )
 
 
@@ -261,6 +267,35 @@ def fetch_earth_engine(mission, bands, time_range, roi,
         is_image=cfg.get("is_image", False),
         unmask_value=cfg.get("unmask_value"),
         project=cfg.get("project"),
+    )
+
+
+def fetch_local_files(mission, bands, time_range, roi,
+                        resolution=10, save_folder="data"):
+    """Local-files fetcher (see ``fetch._local_files``).
+
+    Wraps a user-registered set of local raster files (GeoTIFF in v1,
+    NetCDF/HDF5 on the roadmap) as a first-class mission -- same
+    fetch/fuse/tile pipeline, output contract, and downstream ML flow
+    as any other provider.
+
+    Users register missions at runtime with
+    :func:`geoai_datacubes.fetch.register_local_mission`; there is no
+    hardcoded mission profile in ``missions.py`` for this provider.
+    """
+    from ._local_files import _fetch_via_local_files
+    cfg = get_provider_config(mission, "local_files")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_local_files(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        path=cfg["path"],
+        reader=cfg.get("reader", "geotiff"),
+        band_map=cfg.get("band_map"),
+        band_meta=profile.get("band_meta"),
+        time_from_filename=cfg.get("time_from_filename"),
     )
 
 

@@ -1,13 +1,14 @@
 # Provider trade-offs: convenience vs throughput at scale
 
-The pipeline supports **26 missions** end-to-end (v0.1.0 release; **29 with
-the three v0.2-preview additions on this branch**) across up to **seven
+The pipeline supports **38 missions** end-to-end (v0.1.0 release: 23;
+**+15 v0.2-preview additions on this branch**) across up to **eight
 interchangeable providers** — four STAC-based, one commercial, plus
 `direct_http` for non-STAC anonymous COGs, `earth_engine` for
-Google Earth Engine, and `earthdata` for anything hosted by a NASA
-DAAC behind Earthdata Login. Four of the seven need no credentials.
-The default `PROVIDER = "auto"` routes each mission to the best free
-option.
+Google Earth Engine, `earthdata` for anything hosted by a NASA
+DAAC behind Earthdata Login, and `local_files` for the user's own
+local rasters (registered at runtime). Five of the eight need no
+credentials. The default `PROVIDER = "auto"` routes each mission to
+the best free option.
 
 This document covers two axes: **(1) capability** — which provider
 serves which mission, which needs credentials, which has server-side
@@ -15,10 +16,11 @@ band math — and **(2) throughput** — the same provider that wins for
 one AOI on a laptop can lose by an order of magnitude on a
 continent-scale workflow.
 
-> **v0.2-preview on this branch (`feature/earth-engine-provider`).** Two
-> new provider classes and three new missions land on this branch and
-> are documented here alongside the reviewed v0.1.0 providers. `main`
-> currently ships only the first five providers (STAC + direct_http).
+> **v0.2-preview on this branch (`feature/earth-engine-provider`).**
+> Three new provider classes and fifteen new missions land on this
+> branch and are documented here alongside the reviewed v0.1.0
+> providers. `main` currently ships only the first five providers
+> (STAC + direct_http).
 
 ---
 
@@ -41,23 +43,30 @@ v0.1.0):
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) | No |
 | **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs | Missions with no STAC / no auth (Hansen GFC and similar) |
 
-Plus two new provider classes on this branch (**v0.2 preview**):
+Plus three new provider classes on this branch (**v0.2 preview**):
 
-| | `earth_engine` | `earthdata` |
-|---|---|---|
-| **Credentials** | Google account + GCP project with EE API enabled | Free NASA Earthdata Login + DAAC-app authorization |
-| **Hosted by** | Google Earth Engine (server-side compute + reproject) | NASA CMR + per-DAAC HTTPS (ASF, ORNL, NSIDC, GES DISC, LP DAAC) |
-| **Dynamic World** | ✅ Only public host | — |
-| **JRC-GFC2020** | ✅ Only public host | — |
-| **MODIS_SR / MODIS_LST** | ✅ **Default on this branch** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — |
-| **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) |
-| **GEDI-L4B biomass** | — | ⏳ Stubbed; ready-to-unstub once first ORNL DAAC GeoTIFF reader lands |
-| **SMAP / ICESat-2 / VIIRS / Landsat archive** | — | ⏳ Same auth path; wire on demand |
-| **Server-side operations** | Full ImageCollection reductions, per-band scale factors, reprojection, temporal composites | Windowed reads into large HDF5 / GeoTIFF granules; download-and-cache |
-| **Best for** | Dynamic World, MODIS in a target CRS, JRC-GFC2020, and any of hundreds of other EE-native collections | NISAR L-band, GEDI biomass, SMAP soil moisture, ICESat-2, and anything else in the NASA DAAC catalogue |
+| | `earth_engine` | `earthdata` | `local_files` |
+|---|---|---|---|
+| **Credentials** | Google account + GCP project with EE API enabled | Free NASA Earthdata Login + DAAC-app authorization | None |
+| **Hosted by** | Google Earth Engine (server-side compute + reproject) | NASA CMR + per-DAAC HTTPS (ASF, ORNL, NSIDC, GES DISC, PODAAC) | User's own local filesystem |
+| **Dynamic World** | ✅ Only public host | — | — |
+| **JRC-GFC2020** | ✅ Only public host | — | — |
+| **MODIS_SR / MODIS_LST** | ✅ **Default on this branch** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
+| **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) | — |
+| **ICESat-2 (ATL03/06/08/13)** | — | ✅ NSIDC DAAC; multi-granule tracks aggregation | — |
+| **GEDI L4A / L4B biomass** | — | ✅ ORNL DAAC | — |
+| **SWOT L2 HR Raster** | — | ✅ PODAAC | — |
+| **CryoSat-2 RDEFT4 sea ice** | — | ✅ NSIDC DAAC | — |
+| **Sentinel-5P TROPOMI** | — | ✅ GES DISC (requires `NASA GESDISC DATA ARCHIVE` app) | — |
+| **SMAP L3 soil moisture** | — | ✅ NSIDC DAAC | — |
+| **GEBCO 2024 bathymetry** | — | — | — (`direct_http`) |
+| **Airborne LIDAR / commercial optical / drone imagery** | — | — | ✅ Any locally-stored raster registered via `register_local_mission(...)` |
+| **Server-side operations** | Full ImageCollection reductions, per-band scale factors, reprojection, temporal composites | Windowed reads into large HDF5 / GeoTIFF granules; download-and-cache | AOI-window read + reproject to local UTM; mosaic across matching files |
+| **Best for** | Dynamic World, MODIS in a target CRS, JRC-GFC2020, and any of hundreds of other EE-native collections | NISAR L-band, GEDI biomass, SMAP soil moisture, ICESat-2, SWOT, CryoSat, TROPOMI, and anything else in the NASA DAAC catalogue | Airborne LIDAR bathymetry / topography, licensed WorldView / Maxar, georeferenced drone RGB-NIR, any per-project raster the user wants to fuse |
 
-See [`providers/earth_engine.md`](providers/earth_engine.md) and
-[`providers/earthdata.md`](providers/earthdata.md) for the full auth
+See [`providers/earth_engine.md`](providers/earth_engine.md),
+[`providers/earthdata.md`](providers/earthdata.md), and
+[`providers/local_files.md`](providers/local_files.md) for the full
 walkthroughs.
 
 ## `PROVIDER = "auto"` routing (the default)
