@@ -369,9 +369,10 @@ successor to ALOS PALSAR-1 (2006-2011) for:
   Sentinel-1 C-band gives sensitivity to scatterers at two different
   physical scales in one cube. Notebook
   `05_nisar_arctic_datacube.ipynb` demonstrates this over an Arctic
-  calving-glacier / ice-cap AOI (default: Penny Ice Cap, Baffin
-  Island — chosen because NISAR currently has confirmed dual-pol
-  coverage there).
+  ice-cap AOI (default: northern Baffin Island plateau — chosen
+  empirically because NISAR has 3+ dual-pol granules fully covering
+  that AOI and Sentinel-1 has 70+ dual-pol RTC scenes in the
+  2024-2026 window, so the L-vs-C comparison is guaranteed to work).
 
 ---
 

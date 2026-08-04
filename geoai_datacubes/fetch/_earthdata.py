@@ -269,7 +269,20 @@ def _read_nisar_gcov_h5_window(
     h5py = _lazy_import_h5py()
 
     with h5py.File(fp, "r") as f:
-        g = f["/science/LSAR/GCOV/grids/frequencyA"]
+        # Most NISAR granules use frequencyA; a subset of observation modes
+        # publish grids under frequencyB instead (or additionally). Fall
+        # back rather than error so we can still read those granules.
+        grids = f["/science/LSAR/GCOV/grids"]
+        if "frequencyA" in grids:
+            g = grids["frequencyA"]
+        elif "frequencyB" in grids:
+            g = grids["frequencyB"]
+        else:
+            raise RuntimeError(
+                f"NISAR granule at {fp} has no frequencyA or frequencyB "
+                f"grids group -- unexpected product structure "
+                f"(available: {list(grids.keys())})."
+            )
 
         # Source CRS from the 'projection' scalar's attrs.
         src_epsg = int(g["projection"].attrs["epsg_code"])
