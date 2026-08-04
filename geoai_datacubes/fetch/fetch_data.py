@@ -293,6 +293,9 @@ def fetch_earthdata(mission, bands, time_range, roi,
         filters=cfg.get("filters"),
         default_reducer=cfg.get("default_reducer", "mean"),
         reader_kwargs=cfg.get("reader_kwargs"),
+        # Per-mission download guards; ignored by non-tracks readers.
+        max_granules=cfg.get("max_granules"),
+        max_download_gb=cfg.get("max_download_gb"),
     )
 
 

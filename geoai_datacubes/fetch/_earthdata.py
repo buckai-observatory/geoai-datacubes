@@ -1641,6 +1641,8 @@ def _fetch_via_earthdata(
     scene_tag: Optional[str] = None,
     default_reducer: str = "mean",
     reader_kwargs: Optional[Dict[str, Any]] = None,
+    max_granules: Optional[int] = None,
+    max_download_gb: Optional[float] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a mission via NASA Earthdata / CMR.
 
@@ -1719,6 +1721,10 @@ def _fetch_via_earthdata(
             scene_tag=scene_tag,
             default_reducer=default_reducer,
             reader_kwargs=reader_kwargs,
+            # None -> keep the _fetch_tracks default; a per-mission
+            # override in MISSION_PROFILES flows through cfg.get(...) here.
+            max_granules=max_granules if max_granules is not None else 500,
+            max_download_gb=max_download_gb,
         )
     if kind == "raster_per_band":
         return _fetch_raster_per_band(
@@ -1957,6 +1963,7 @@ def _fetch_tracks(
     scene_tag: Optional[str] = None,
     default_reducer: str = "mean",
     max_granules: int = 500,
+    max_download_gb: Optional[float] = None,
     reader_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Multi-granule aggregation flow for track / point-cloud missions.
@@ -2012,6 +2019,37 @@ def _fetch_tracks(
             "product's observation coverage."
         )
     print(f"  granules found: {len(results)} (cap {max_granules})")
+
+    # Estimate total download size from CMR-reported per-granule sizes.
+    # Products with global-daily coverage + big per-file sizes (Sentinel-5P
+    # TROPOMI at ~600 MB/file, ATL03 at 500 MB - 2 GB/file) can easily
+    # request tens of GB from an innocent-looking AOI + time-range combo.
+    # A short_name lookup would be more precise, but the per-granule size
+    # is authoritative when earthaccess reports it.
+    total_mb = 0.0
+    for g in results:
+        try:
+            sz = g.size
+            if callable(sz):
+                sz = sz()
+            total_mb += float(sz)
+        except Exception:
+            pass
+    total_gb = total_mb / 1024.0
+    if total_gb > 0:
+        print(f"  estimated download: ~{total_gb:.2f} GB across {len(results)} granules")
+    if max_download_gb is not None and total_gb > max_download_gb:
+        raise RuntimeError(
+            f"{mission}: estimated download {total_gb:.2f} GB exceeds "
+            f"max_download_gb={max_download_gb} GB. Options: narrow the AOI, "
+            f"narrow time_range, lower max_granules (currently "
+            f"{max_granules}), or raise the mission's max_download_gb in "
+            f"MISSION_PROFILES."
+        )
+    if max_download_gb is None and total_gb > 10.0:
+        print(f"  WARN: {total_gb:.2f} GB download is large. Consider "
+              f"narrower AOI/time_range or setting max_download_gb / lower "
+              f"max_granules in the mission profile.")
 
     cache_dir = save_folder / f".{mission}_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)

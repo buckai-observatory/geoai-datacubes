@@ -1010,6 +1010,11 @@ MISSION_PROFILES = {
                     "max_points_per_granule": 100_000,
                     "min_signal_conf":        3,
                 },
+                # ATL03 granules are 500 MB - 2 GB each. Cap hard so a
+                # too-wide time_range doesn't accidentally pull a TB.
+                # Bump for real photon-level workflows over a target AOI.
+                "max_granules":    10,
+                "max_download_gb": 15.0,
             },
         },
     },
@@ -2181,6 +2186,13 @@ MISSION_PROFILES = {
                 # 03/06) archive so an eventual v3 release does not silently
                 # change the file layout our reader depends on.
                 "filters":         {"version": "2"},
+                # TROPOMI granules are ~600 MB each and polar orbits mean
+                # 3-10 unique passes per day cross a high-latitude AOI. A
+                # one-week window can easily hit 30+ GB unbounded. Users
+                # doing multi-week aggregation should override in-code
+                # (they're aware of the disk cost by then).
+                "max_granules":    10,
+                "max_download_gb": 10.0,
             },
         },
     },
