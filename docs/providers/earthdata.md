@@ -62,7 +62,7 @@ Five steps, ~10 minutes end-to-end.
    | **Alaska Satellite Facility Data Access** | NISAR + Sentinel-1 + ALOS PALSAR |
    | **ORNL DAAC production website** | GEDI-L4B + other ORNL products |
    | **NSIDC_DATAPOOL_OPS** (+ HTTPS_ALT + Cumulus Data + nsidc-daacdata) | SMAP, ICESat-2, IceBridge |
-   | **GES DISC** | Sentinel-5P TROPOMI, MERRA-2, GPM |
+   | **NASA GESDISC DATA ARCHIVE** | Sentinel-5P TROPOMI (`Sentinel-5P-NO2` etc.), MERRA-2, GPM. Search the profile page for this exact app name -- it's not indexed under "GES DISC" / "TROPOMI" / "Sentinel-5P". Without it, `earthaccess.download` returns `EulaNotAccepted` even though CMR search + netrc work fine. |
    | **LP DAAC OPS** | MODIS in `.hdf`, Landsat archive, ASTER, VIIRS |
 
    Skip anything labelled *Dashboard*, *Drive*, *OPeNDAP*, *Prototype*,
