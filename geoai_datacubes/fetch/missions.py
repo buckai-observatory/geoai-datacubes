@@ -265,7 +265,21 @@ MISSION_PROFILES = {
         },
         "providers": {
             "direct_http": {
-                "release_tag":   "v4.1_32m",
+                # Resolution of the ArcticDEM mosaic tiles to fetch.
+                # PGC publishes v4.1 at "2m", "10m", "32m", "100m", "500m";
+                # not every tile is available at every resolution (e.g. 2m
+                # is only over dense stereo-photogrammetry areas). "10m"
+                # is the sweet spot for most Arctic AOIs -- it matches
+                # Sentinel-2 native, is coarser than the actual per-pixel
+                # SETSM uncertainty over ice caps, and every tile that
+                # exists at 32m also exists at 10m. Override in a
+                # notebook via:
+                #     from geoai_datacubes.fetch import MISSION_PROFILES
+                #     MISSION_PROFILES["ArcticDEM"]["providers"]\
+                #                     ["direct_http"]["resolution"] = "10m"
+                "resolution":    "32m",
+                # release_tag composed dynamically from resolution below
+                "release_tag":   None,
                 "tile_callback": None,       # wired up below the dict
             },
         },
@@ -1505,19 +1519,56 @@ _ARCTICDEM_STEP_M   = 100000       # tile size (m) in EPSG:3413
 _ARCTICDEM_BASE_URL = (
     "https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1"
 )
-_ARCTICDEM_RES      = "32m"        # default; switch to "10m" or "2m" for higher-res
+_ARCTICDEM_VALID_RES = ("2m", "10m", "32m", "100m", "500m")
+
+
+def _arcticdem_current_resolution() -> str:
+    """Read the ArcticDEM tile resolution from the mission profile."""
+    res = (MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]
+           .get("resolution") or "32m")
+    if res not in _ARCTICDEM_VALID_RES:
+        raise ValueError(
+            f"ArcticDEM resolution {res!r} not in "
+            f"{_ARCTICDEM_VALID_RES}. Note: 2m and 100m/500m tiles are "
+            "not published for every grid cell; 10m and 32m are the "
+            "safest defaults."
+        )
+    return res
+
+
+def set_arcticdem_resolution(resolution: str) -> None:
+    """Set both ``resolution`` and ``release_tag`` on the ArcticDEM profile.
+
+    Use this instead of writing to the profile fields directly -- the
+    release_tag is what fetch_data.py uses to name the output folder,
+    and it must be updated at the same time as resolution or fetches
+    will land in stale-named directories. Valid values: "2m", "10m",
+    "32m", "100m", "500m" (not every value is available for every tile).
+    """
+    if resolution not in _ARCTICDEM_VALID_RES:
+        raise ValueError(
+            f"ArcticDEM resolution {resolution!r} not in "
+            f"{_ARCTICDEM_VALID_RES}."
+        )
+    cfg = MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]
+    cfg["resolution"] = resolution
+    cfg["release_tag"] = f"v4.1_{resolution}"
 
 
 def _arcticdem_tile_callback(roi, bands, time_range):
-    """Enumerate the ArcticDEM v4.1 32 m mosaic tiles intersecting an AOI.
+    """Enumerate the ArcticDEM v4.1 mosaic tiles intersecting an AOI.
 
     The AOI (WGS84 bbox) is projected to EPSG:3413 by transforming ALL
     FOUR corners (polar stereographic rotates a lat/lon bbox into a
     tilted quadrilateral; using just two opposite corners would clip
     the wrong pixels). Then the intersecting tile grid indices are
-    computed and one TileRef per tile is returned.
+    computed and one TileRef per tile is returned. The tile resolution
+    (2m / 10m / 32m / 100m / 500m) is read from the mission profile at
+    call time -- see ``_arcticdem_current_resolution``.
     """
     from pyproj import Transformer
+
+    res = _arcticdem_current_resolution()
 
     lon_min, lat_min, lon_max, lat_max = roi
     tf_fwd = Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
@@ -1546,8 +1597,8 @@ def _arcticdem_tile_callback(roi, bands, time_range):
     for row in range(row_min, row_max + 1):
         for col in range(col_min, col_max + 1):
             tile_name = f"{row:02d}_{col:02d}"
-            url = (f"{_ARCTICDEM_BASE_URL}/{_ARCTICDEM_RES}/{tile_name}/"
-                   f"{tile_name}_{_ARCTICDEM_RES}_v4.1_dem.tif")
+            url = (f"{_ARCTICDEM_BASE_URL}/{res}/{tile_name}/"
+                   f"{tile_name}_{res}_v4.1_dem.tif")
 
             # Tile bbox in EPSG:3413 -> WGS84 (four corners, then min/max).
             tx_lo = _ARCTICDEM_ORIGIN_M + col * _ARCTICDEM_STEP_M
@@ -1576,6 +1627,10 @@ def _arcticdem_tile_callback(roi, bands, time_range):
 MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]["tile_callback"] = (
     _arcticdem_tile_callback
 )
+# Prime resolution + release_tag with the default so downstream code
+# that reads either field before the first fetch call sees real values,
+# not None.
+set_arcticdem_resolution("32m")
 
 
 def get_profile(mission):
