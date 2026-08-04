@@ -22,7 +22,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Five
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Seven
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -45,8 +45,15 @@ documented here — only the host and the credentialing path.
 >   reader-kind** (multi-granule aggregation into one raster + a
 >   loss-less per-observation Parquet sidecar). First point/track
 >   mission wired; template for GEDI L4A next.
+> - **SWOT-HR** (250 m or 100 m KaRIn HR Raster surface water heights,
+>   NASA/CNES SWOT mission, PODAAC) — via `earthdata` provider raster
+>   path; NetCDF tiles with proper CRS metadata; delivers `wse`,
+>   `water_frac`, `sig0`.
+> - **CryoSat-RDEFT4** (25 km NH monthly sea-ice thickness, freeboard,
+>   snow depth from CryoSat-2, NSIDC) — via `earthdata` provider; NH
+>   sea ice only.
 >
-> All five have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All seven have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -427,6 +434,88 @@ ML training on optical -> topography retrievals. Notebook 05 uses
 Baffin Island as its default AOI; ATL06 coverage there is dense
 (500+ granules 2019-present) and stacks cleanly against NISAR L-band,
 Sentinel-1 C-band, and ArcticDEM in the same UTM cube.
+
+---
+
+## SWOT L2 KaRIn HR Raster *(v0.2 preview — this branch only)*
+
+**Mission name:** `SWOT-HR`
+**Product:** `SWOT_L2_HR_Raster_250m_2.0` (default) or
+`SWOT_L2_HR_Raster_100m_2.0` (finer), hosted by **PODAAC / JPL**.
+**Data model:** raster (single granule = one ~120 km UTM tile at
+native 100 m or 250 m).
+**Distribution:** NetCDF-4 with CF-compliant `crs` variable
+(`crs_wkt` attr carries the full WKT; typically `EPSG:326{zone}` N or
+`EPSG:327{zone}` S). Read directly by `xarray` (h5netcdf backend).
+
+**Bands:**
+- `wse` — water surface elevation, EGM2008-referenced meters. Only
+  populated over detected water; NaN over land. Suggested norm
+  `("linear", -100, 100)`.
+- `water_frac` — fractional water coverage per pixel in [0, 1]. Valid
+  everywhere, even over land (small ponds, river channels). Useful
+  demo band over mostly-land AOIs.
+- `sig0` — Ka-band backscatter (linear power). Valid over all
+  surfaces; roughness / surface-type proxy. Suggested norm
+  `("log_db", -30, 30)`.
+- Quality + uncertainty extras (`wse_qual`, `wse_uncert`, `sig0_qual`,
+  `sig0_uncert`, `water_area`, `dark_frac`, `ice_clim_flag`,
+  `ice_dyn_flag`) available via `extra_bands`.
+
+**Auth:** NASA Earthdata Login + PODAAC application approved. See
+[earthdata provider docs](providers/earthdata.md).
+
+**Coverage cadence:** SWOT flies a 21-day repeat orbit; typical AOIs
+in the mid-to-high latitudes see 2-4 passes per month. Some low-lat
+areas see fewer.
+
+**Switching resolution:** override the short_name at runtime:
+
+```python
+from geoai_datacubes.fetch import MISSION_PROFILES
+MISSION_PROFILES["SWOT-HR"]["providers"]["earthdata"]["short_name"] = (
+    "SWOT_L2_HR_Raster_100m_2.0"
+)
+```
+
+---
+
+## CryoSat-2 RDEFT4 sea-ice thickness *(v0.2 preview — this branch only)*
+
+**Mission name:** `CryoSat-RDEFT4`
+**Product:** `RDEFT4` (NASA GSFC monthly CryoSat-2 Arctic sea-ice
+thickness + freeboard + snow depth + ancillary), hosted by
+**NSIDC DAAC**.
+**Data model:** raster (monthly Northern-Hemisphere gridded
+NetCDF-4).
+**Native grid:** SSMI 25 km NH polar-stereographic (EPSG:3411),
+448 rows x 304 cols. Fixed; reader hard-codes the transform and
+asserts file shape matches.
+
+**Bands:**
+- `sea_ice_thickness` — meters. Range typically 0-6 m. Only populated
+  where the retrieval pipeline (freeboard + snow depth + roughness)
+  converged; NaN elsewhere even over ice.
+- `freeboard` — meters (sea-ice height above the ocean surface).
+  More robust than thickness; typical range 0-0.5 m.
+- `snow_depth` — meters. Typically 0-0.4 m; NaN where snow model
+  uncertain.
+- `snow_density` — kg/m^3, typical range 200-400.
+- `roughness` — meters, surface roughness proxy.
+- `ice_con` — sea-ice concentration in percent (0-100).
+
+**Auth:** NASA Earthdata Login + NSIDC application approved.
+
+**Coverage:** Northern Hemisphere sea ice only. Land pixels
+(Greenland, Baffin plateau, ice caps, ...) are always NaN across all
+bands. Pair with an **ocean AOI** (Baffin Bay, Beaufort Sea, Fram
+Strait, Chukchi Sea, ...) for meaningful data. For CryoSat land-ice
+altimetry over ice sheets, see the ESA CryoTEMPO Land Ice product
+(not yet wired -- needs an ESA-EO provider class).
+
+**Fill values:** RDEFT4 uses `-9999` and `-999` sentinels without a
+declared `_FillValue` attribute; our reader replaces any value <= -100
+with NaN so downstream fusion / stats work correctly.
 
 ---
 

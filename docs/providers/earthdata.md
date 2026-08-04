@@ -168,6 +168,8 @@ personal one.
 |---|---|---|---|---|---|---|
 | `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | raster (single granule) | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
 | `ICESat-2-ATL06` | `ATL06` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 40 m along-track segments (rasterized at user resolution) | `h_li` (land-ice height, m WGS84) |
+| `SWOT-HR` | `SWOT_L2_HR_Raster_250m_2.0` (default) or `..._100m_2.0` | raster (per-tile NetCDF) | PODAAC (JPL) | 2023-04-07 → present | 250 m or 100 m native | `wse`, `water_frac`, `sig0` (+ 8 quality/uncert extras) |
+| `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
 
 **NISAR-L notes:**
 
@@ -225,6 +227,52 @@ Reducers: `mean`, `median`, `robust_mean` (5-95 percentile trim),
 `reference_raster=<path>` (snap to an existing GeoTIFF), or `None`
 (auto-UTM). See `docs/data_layers.md` for the full track-missions story.
 
+**SWOT-HR notes:**
+
+- Bands are read directly from the granule NetCDF via `xarray`
+  (h5netcdf backend). The `crs` variable carries a CF-compliant WKT
+  from which we extract the EPSG code (typically `EPSG:326{zone}` N
+  or `EPSG:327{zone}` S); the reader windows on the file's own
+  ascending `x`/`y` coordinate arrays and reprojects via the
+  standard reproject step.
+- `wse` (water surface elevation) is EGM2008-referenced and only
+  populated over detected water; over land it is NaN. **This is
+  expected** -- use `water_frac` (fractional water per pixel) or
+  `sig0` (Ka-band backscatter) as demo-friendly bands over mostly-
+  land AOIs.
+- To switch from the 250 m default to 100 m (larger files, finer
+  detail), override the short_name in the mission profile:
+
+  ```python
+  from geoai_datacubes.fetch import MISSION_PROFILES
+  MISSION_PROFILES["SWOT-HR"]["providers"]["earthdata"]["short_name"] = (
+      "SWOT_L2_HR_Raster_100m_2.0"
+  )
+  ```
+
+**CryoSat-RDEFT4 notes:**
+
+- Product is Northern-Hemisphere-only monthly Arctic sea-ice thickness
+  + freeboard + snow depth + ancillary layers on the canonical **SSMI
+  25 km NH polar-stereographic grid** (EPSG:3411, 448 x 304). The
+  reader hard-codes this grid and asserts file shape matches, since
+  the grid is fixed and the file has no CRS variable / no x-y coords.
+- Sentinel fill values (`-9999` and `-999`, occasionally with
+  fractional variants like `-9999.066` from resampling) are not
+  declared as `_FillValue` in the NetCDF, so xarray does not auto-mask
+  them. Our reader replaces any value <= -100 with NaN.
+- **Coverage is sea ice, not land ice.** Over Greenland, Antarctica,
+  or ice caps like Baffin all bands come back NaN. Pair this mission
+  with an ocean AOI (Baffin Bay, Beaufort Sea, Fram Strait, ...) to
+  get meaningful data. For **land-ice altimetry from CryoSat**
+  (CryoTEMPO Land Ice, CS_OFFL_SIR_SIN_2), the product lives only on
+  the ESA science server and requires a new ESA-EO provider we
+  haven't wired.
+- Not every retrieval band is populated at every AOI: `freeboard` and
+  `ice_con` are more robust than `sea_ice_thickness` (which requires
+  the full snow-depth + roughness pipeline to converge). Expect some
+  bands NaN even over pack ice.
+
 **Planned next missions on this provider:**
 
 - **GEDI-L4A** (`GEDI04_A_002`) — footprint-level aboveground biomass,
@@ -235,6 +283,8 @@ Reducers: `mean`, `median`, `robust_mean` (5-95 percentile trim),
   `_earthdata.py`).
 - **SMAP L3 soil moisture** — natural companion to NISAR L-band for
   soil-moisture-under-vegetation work.
+- **CryoSat land-ice altimetry** (CryoTEMPO Land Ice, ESA) — needs a
+  new ESA-auth provider class; deferred.
 
 ## Quotas and cost
 
@@ -259,8 +309,8 @@ from the mission's `"reader"` config; the top-level
 readers through the multi-granule aggregation path.
 
 Recipe for a mission whose file format already has a reader in
-`_READERS` (currently: NISAR GCOV HDF5, ATL06 tracks, plus a stubbed
-generic GeoTIFF path):
+`_READERS` (currently: NISAR GCOV HDF5, ATL06 tracks, SWOT HR Raster
+NetCDF, RDEFT4 NetCDF, plus a stubbed generic GeoTIFF path):
 
 1. Add a profile stanza to `MISSION_PROFILES` in
    `geoai_datacubes/fetch/missions.py`:

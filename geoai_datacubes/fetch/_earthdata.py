@@ -363,6 +363,209 @@ def _read_geotiff_bands(
     )
 
 
+def _lazy_import_xarray():
+    try:
+        import xarray  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "NASA Earthdata NetCDF products (SWOT, CryoSat RDEFT4, ...) require "
+            "the 'xarray' package. It's part of the [earthdata] extra:\n"
+            "    mamba install -c conda-forge xarray h5netcdf"
+        ) from exc
+    return xarray
+
+
+def _epsg_from_wkt(wkt: str) -> Optional[int]:
+    """Extract the trailing AUTHORITY["EPSG","<n>"] code from a WKT string."""
+    m = re.search(r'AUTHORITY\s*\[\s*"EPSG"\s*,\s*"?(\d+)"?\s*\]\s*\]?\s*$', wkt)
+    return int(m.group(1)) if m else None
+
+
+def _read_swot_hr_raster_nc(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+) -> Tuple[Dict[str, np.ndarray], Any, str]:
+    """Windowed read of a SWOT L2 KaRIn HR Raster NetCDF over the AOI.
+
+    Each granule is one ~120 km UTM tile at 100 m or 250 m native, delivered
+    as a CF-compliant NetCDF-4 with a proper ``crs`` variable carrying the
+    full WKT (typically ``EPSG:326{zone}`` north or ``EPSG:327{zone}`` south).
+    We window on the file's own ``x``/``y`` coordinate arrays -- both are
+    ascending -- and hand the resulting per-band arrays plus a source
+    transform to the upstream reproject step. Requested bands that don't
+    exist in the file are skipped (returned dict is subset), matching the
+    NISAR reader's convention.
+    """
+    xr = _lazy_import_xarray()
+
+    with xr.open_dataset(fp, decode_times=False) as ds:
+        # SWOT ships an explicit CRS via the crs variable's crs_wkt attr.
+        # Fall back to the WKT stashed in `spatial_ref` if crs_wkt is missing.
+        crs_attrs = ds["crs"].attrs
+        wkt = crs_attrs.get("crs_wkt") or crs_attrs.get("spatial_ref")
+        if not wkt:
+            raise RuntimeError(
+                f"SWOT NetCDF at {fp} lacks a crs_wkt / spatial_ref attribute; "
+                f"cannot infer source CRS."
+            )
+        epsg = _epsg_from_wkt(wkt)
+        if epsg is None:
+            raise RuntimeError(
+                f"SWOT NetCDF at {fp}: could not extract EPSG code from "
+                f"crs_wkt {wkt!r}."
+            )
+        src_crs = f"EPSG:{epsg}"
+
+        x = ds["x"].values
+        y = ds["y"].values
+        px_w = float(abs(x[1] - x[0]))
+        px_h = float(abs(y[1] - y[0]))
+
+        aoi_src = transform_bounds("EPSG:4326", src_crs, *aoi_wgs84)
+        x_min_s, y_min_s, x_max_s, y_max_s = aoi_src
+
+        # SWOT x/y are both ascending in the files we've seen; searchsorted
+        # is fine for both. Guard against future descending-y variants.
+        i0 = max(0, int(np.searchsorted(x, x_min_s)) - 1)
+        i1 = min(len(x), int(np.searchsorted(x, x_max_s)) + 1)
+        if y[0] <= y[-1]:
+            j0 = max(0, int(np.searchsorted(y, y_min_s)) - 1)
+            j1 = min(len(y), int(np.searchsorted(y, y_max_s)) + 1)
+        else:
+            y_mask = (y >= y_min_s) & (y <= y_max_s)
+            if not y_mask.any():
+                raise RuntimeError(
+                    f"AOI {aoi_wgs84} does not overlap SWOT granule.")
+            j0 = int(np.argmax(y_mask))
+            j1 = int(len(y_mask) - np.argmax(y_mask[::-1]))
+        if i1 <= i0 or j1 <= j0:
+            raise RuntimeError(
+                f"AOI {aoi_wgs84} does not overlap SWOT granule "
+                f"(granule x range {x[0]:.0f}..{x[-1]:.0f}, "
+                f"y range {y[0]:.0f}..{y[-1]:.0f} in {src_crs}).")
+
+        band_arrays: Dict[str, np.ndarray] = {}
+        for ee_band in ee_bands:
+            if ee_band not in ds.variables:
+                continue
+            band_arrays[ee_band] = ds[ee_band].isel(
+                y=slice(j0, j1), x=slice(i0, i1)
+            ).values.astype(np.float32)
+
+        x_win = x[i0:i1]
+        y_win = y[j0:j1]
+        # rasterio.from_origin expects (west_edge, north_edge, pw, ph).
+        # SWOT y is ascending, so north_edge sits at y_win[-1] + px_h/2.
+        west = float(x_win[0]) - px_w / 2.0
+        north = float(y_win[-1] if y_win[0] < y_win[-1] else y_win[0]) + px_h / 2.0
+        # If y ascending, band arrays are S-to-N; flip to N-to-S for
+        # rasterio's northing-decreasing convention.
+        if y_win[0] < y_win[-1]:
+            for k in band_arrays:
+                band_arrays[k] = band_arrays[k][::-1, :]
+        src_transform = rasterio.transform.from_origin(west, north, px_w, px_h)
+
+        return band_arrays, src_transform, src_crs
+
+
+# NSIDC 25 km NH polar-stereographic grid (SSMI convention) used by
+# RDEFT4 and other NSIDC sea-ice products. Corner + step are canonical
+# and fixed; hard-coding is safer than parsing them from every granule.
+_NSIDC_NH_25KM_EPSG      = 3411
+_NSIDC_NH_25KM_ORIGIN_X  = -3850000.0
+_NSIDC_NH_25KM_ORIGIN_Y  =  5850000.0
+_NSIDC_NH_25KM_STEP_M    =  25000.0
+_NSIDC_NH_25KM_NROW      = 448
+_NSIDC_NH_25KM_NCOL      = 304
+
+
+def _read_rdeft4_nc(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+) -> Tuple[Dict[str, np.ndarray], Any, str]:
+    """Windowed read of a CryoSat-2 RDEFT4 monthly NetCDF over the AOI.
+
+    RDEFT4 (NASA GSFC CryoSat-2 monthly Arctic sea-ice thickness + freeboard
+    + snow + ancillary) ships as one NetCDF-4 file per month on the classic
+    SSMI 25 km NH polar-stereographic grid (EPSG:3411, 448 rows x 304 cols).
+    Unlike SWOT, there is no ``crs`` variable and no ``x``/``y`` coordinate
+    arrays in the file -- just 2-D ``lat`` / ``lon`` fields per pixel and
+    the projection described in a text attribute. Since the grid is
+    canonical and fixed, we hard-code the transform and CRS constants and
+    verify the file matches expected shape.
+    """
+    xr = _lazy_import_xarray()
+
+    with xr.open_dataset(fp) as ds:
+        # Sanity check: file shape must match the fixed SSMI NH grid.
+        first_band = None
+        for ee_band in ee_bands:
+            if ee_band in ds.variables:
+                first_band = ee_band
+                break
+        if first_band is None:
+            raise RuntimeError(
+                f"RDEFT4 file {fp} has none of the requested bands "
+                f"{list(ee_bands)}; available: {list(ds.data_vars)}.")
+
+        arr = ds[first_band]
+        if arr.shape != (_NSIDC_NH_25KM_NROW, _NSIDC_NH_25KM_NCOL):
+            raise RuntimeError(
+                f"RDEFT4 file {fp} shape {arr.shape} does not match the "
+                f"expected NSIDC NH 25 km SSMI grid "
+                f"({_NSIDC_NH_25KM_NROW} x {_NSIDC_NH_25KM_NCOL}); the "
+                f"reader hard-codes this grid and cannot handle other "
+                f"layouts.")
+
+        src_crs = f"EPSG:{_NSIDC_NH_25KM_EPSG}"
+        step = _NSIDC_NH_25KM_STEP_M
+        origin_x = _NSIDC_NH_25KM_ORIGIN_X
+        origin_y = _NSIDC_NH_25KM_ORIGIN_Y
+
+        # Project AOI to source CRS -> compute pixel window.
+        aoi_src = transform_bounds("EPSG:4326", src_crs, *aoi_wgs84)
+        x_min_s, y_min_s, x_max_s, y_max_s = aoi_src
+
+        i0 = max(0, int(np.floor((x_min_s - origin_x) / step)) - 1)
+        i1 = min(_NSIDC_NH_25KM_NCOL,
+                 int(np.ceil((x_max_s - origin_x) / step)) + 1)
+        # y decreases with row index: row 0 has y = origin_y - step/2.
+        # Window in row-index space: convert y_max_s -> j0, y_min_s -> j1.
+        j0 = max(0, int(np.floor((origin_y - y_max_s) / step)) - 1)
+        j1 = min(_NSIDC_NH_25KM_NROW,
+                 int(np.ceil((origin_y - y_min_s) / step)) + 1)
+        if i1 <= i0 or j1 <= j0:
+            raise RuntimeError(
+                f"AOI {aoi_wgs84} does not intersect the NSIDC NH 25 km "
+                f"SSMI grid (aoi in EPSG:{_NSIDC_NH_25KM_EPSG}: {aoi_src}).")
+
+        # RDEFT4 uses sentinel fill values (-9999 / -999 with occasional
+        # fractional variants like -9999.066) without a declared _FillValue
+        # attribute. Mask anything below -100 to NaN; real freeboard,
+        # thickness, snow depth, ice concentration all sit within [0, 100].
+        band_arrays: Dict[str, np.ndarray] = {}
+        for ee_band in ee_bands:
+            if ee_band not in ds.variables:
+                continue
+            if "y" in ds[ee_band].dims:
+                arr = ds[ee_band].isel(
+                    y=slice(j0, j1), x=slice(i0, i1)
+                ).values.astype(np.float32)
+            else:
+                arr = ds[ee_band].values[j0:j1, i0:i1].astype(np.float32)
+            arr[arr <= -100.0] = np.nan
+            band_arrays[ee_band] = arr
+
+        # Transform for the window (upper-left pixel corner).
+        west  = origin_x + i0 * step
+        north = origin_y - j0 * step
+        src_transform = rasterio.transform.from_origin(west, north, step, step)
+
+        return band_arrays, src_transform, src_crs
+
+
 # ATLAS Standard Data Product epoch (UTC). ATL06 `delta_time` is stored as
 # "GPS seconds since the ATLAS SDP epoch"; leap-second offset is ~18 s in
 # 2018, which we ignore -- that precision is irrelevant for AOI clipping,
@@ -466,21 +669,26 @@ def _read_atl06_tracks(
 
 
 _READERS: Dict[str, Callable] = {
-    "nisar_gcov_h5": _read_nisar_gcov_h5_window,
-    "geotiff":       _read_geotiff_bands,
-    "atl06_tracks":  _read_atl06_tracks,
+    "nisar_gcov_h5":      _read_nisar_gcov_h5_window,
+    "geotiff":            _read_geotiff_bands,
+    "atl06_tracks":       _read_atl06_tracks,
+    "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
+    "rdeft4_nc":          _read_rdeft4_nc,
 }
 
 # Reader kind decides which top-level flow handles the mission:
 #   - "raster" : single-best-granule download + windowed read + reproject
-#                (existing NISAR/GeoTIFF flow, `_fetch_via_earthdata`)
+#                (existing NISAR/GeoTIFF/SWOT/RDEFT4 flow,
+#                `_fetch_via_earthdata`)
 #   - "tracks" : multi-granule download + per-observation extract +
 #                bin-to-target-grid + Parquet sidecar (`_fetch_tracks`)
 # New file formats add themselves here alongside their reader entry.
 _READER_KINDS: Dict[str, str] = {
-    "nisar_gcov_h5": "raster",
-    "geotiff":       "raster",
-    "atl06_tracks":  "tracks",
+    "nisar_gcov_h5":      "raster",
+    "geotiff":            "raster",
+    "atl06_tracks":       "tracks",
+    "swot_hr_raster_nc":  "raster",
+    "rdeft4_nc":          "raster",
 }
 
 

@@ -76,6 +76,8 @@ PROVIDER_AUTO = {
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
     "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
     "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
+    "SWOT-HR":        "earthdata",          # PODAAC, KaRIn L2 HR Raster NetCDF (250 m default)
+    "CryoSat-RDEFT4": "earthdata",          # NSIDC DAAC, monthly NH sea-ice thickness (25 km)
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray

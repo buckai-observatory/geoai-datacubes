@@ -963,6 +963,132 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # SWOT L2 KaRIn HR Raster (NASA-CNES).
+    # PODAAC-hosted NetCDF-4 tiles from the Surface Water and Ocean
+    # Topography mission. Each granule is one ~120 km UTM tile at 100 m
+    # or 250 m native, delivered with a proper CF-compliant CRS variable
+    # (crs_wkt attr embeds the full EPSG:326xx / 327xx WKT). Bands
+    # exposed here:
+    #   wse         : water surface elevation (m, EGM2008-referenced) --
+    #                 the flagship product; NaN over land.
+    #   water_frac  : fractional water coverage per pixel [0,1] -- valid
+    #                 everywhere and useful even over land (small ponds,
+    #                 river channels).
+    #   sig0        : Ka-band backscatter (linear power) -- valid over
+    #                 all surfaces; roughness / surface-type proxy.
+    # Auth: NASA Earthdata Login (PODAAC application approved). The
+    # earthdata provider auto-handles this.
+    #
+    # HR Raster is published at two native resolutions on PODAAC. We
+    # default to 250 m for smaller downloads / better fit with the
+    # typical 30-100 m cube; users needing finer detail can override
+    # short_name in the mission profile:
+    #     MISSION_PROFILES["SWOT-HR"]["providers"]["earthdata"] \
+    #         ["short_name"] = "SWOT_L2_HR_Raster_100m_2.0"
+    # ============================================================
+    "SWOT-HR": {
+        "default_bands": ["wse", "water_frac", "sig0"],
+        "extra_bands":   ["wse_qual", "wse_uncert", "water_area",
+                          "sig0_qual", "sig0_uncert", "dark_frac",
+                          "ice_clim_flag", "ice_dyn_flag"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "wse":        {"kind": "altimetry", "units": "meters",
+                           "norm": ("linear", -100.0, 100.0)},
+            "water_frac": {"kind": "fraction",  "units": "1",
+                           "norm": ("passthrough",)},
+            "sig0":       {"kind": "sar",       "units": "linear",
+                           "norm": ("log_db", -30.0, 30.0)},
+            "wse_qual":   {"kind": "categorical", "norm": ("passthrough",)},
+            "wse_uncert": {"kind": "continuous",  "units": "meters",
+                           "norm": ("linear", 0.0, 5.0)},
+            "water_area": {"kind": "continuous",  "units": "m^2",
+                           "norm": ("linear", 0.0, 62500.0)},
+            "sig0_qual":  {"kind": "categorical", "norm": ("passthrough",)},
+            "sig0_uncert":{"kind": "continuous",  "norm": ("linear", 0.0, 5.0)},
+            "dark_frac":  {"kind": "fraction",    "norm": ("passthrough",)},
+            "ice_clim_flag": {"kind": "categorical", "norm": ("passthrough",)},
+            "ice_dyn_flag":  {"kind": "categorical", "norm": ("passthrough",)},
+        },
+        "providers": {
+            "earthdata": {
+                # 250 m default; override to _100m_2.0 for finer detail.
+                "short_name": "SWOT_L2_HR_Raster_250m_2.0",
+                "reader":     "swot_hr_raster_nc",
+                # SWOT band names match our EE-side names 1:1.
+                "band_map":   {
+                    "wse": "wse", "water_frac": "water_frac", "sig0": "sig0",
+                    "wse_qual": "wse_qual", "wse_uncert": "wse_uncert",
+                    "water_area": "water_area",
+                    "sig0_qual": "sig0_qual", "sig0_uncert": "sig0_uncert",
+                    "dark_frac": "dark_frac",
+                    "ice_clim_flag": "ice_clim_flag",
+                    "ice_dyn_flag":  "ice_dyn_flag",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # CryoSat-2 Level 4 Sea Ice Thickness (NASA GSFC / N. Kurtz).
+    # Product `RDEFT4`, hosted by NSIDC. Monthly Arctic sea-ice
+    # thickness + freeboard + snow depth + ancillary layers on the
+    # canonical SSMI NH 25 km polar-stereographic grid (EPSG:3411,
+    # 448 x 304). Auth: NASA EDL + NSIDC application approved.
+    #
+    # Coverage: Northern Hemisphere sea ice only (30 N to pole);
+    # land pixels are NaN. Meaningful over ocean AOIs -- Baffin Bay,
+    # Beaufort Sea, Fram Strait etc. Over land ice (Greenland,
+    # Antarctica, ice caps) all bands are NaN and this mission is the
+    # wrong tool -- pair it with a sea-ice AOI.
+    #
+    # For CryoSat land-ice altimetry (ice-sheet elevation, CryoTEMPO
+    # Land Ice), the product lives only on the ESA science server and
+    # requires an ESA-EO login; wiring that would need a new provider
+    # class. Track separately if / when needed.
+    # ============================================================
+    "CryoSat-RDEFT4": {
+        "default_bands": ["sea_ice_thickness"],
+        "extra_bands":   ["freeboard", "snow_depth", "snow_density",
+                          "roughness", "ice_con"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "sea_ice_thickness": {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 5.0)},
+            "freeboard":         {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.6)},
+            "snow_depth":        {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.5)},
+            "snow_density":      {"kind": "continuous", "units": "kg/m^3",
+                                   "norm": ("linear", 200.0, 400.0)},
+            "roughness":         {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.5)},
+            "ice_con":           {"kind": "fraction",   "units": "1",
+                                   "norm": ("passthrough",)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "RDEFT4",
+                "reader":     "rdeft4_nc",
+                "band_map":   {
+                    "sea_ice_thickness": "sea_ice_thickness",
+                    "freeboard":         "freeboard",
+                    "snow_depth":        "snow_depth",
+                    "snow_density":      "snow_density",
+                    "roughness":         "roughness",
+                    "ice_con":           "ice_con",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
     # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
     # ALOS PALSAR mosaic by JAXA. Single classified band per tile;
