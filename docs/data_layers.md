@@ -22,7 +22,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Eight
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Nine
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -44,7 +44,7 @@ documented here — only the host and the credentialing path.
 >   NSIDC DAAC) — via the `earthdata` provider's new **tracks
 >   reader-kind** (multi-granule aggregation into one raster + a
 >   loss-less per-observation Parquet sidecar). First point/track
->   mission wired; template for GEDI L4A next.
+>   mission wired; GEDI-L4A (see below) reuses the same flow.
 > - **SWOT-HR** (250 m or 100 m KaRIn HR Raster surface water heights,
 >   NASA/CNES SWOT mission, PODAAC) — via `earthdata` provider raster
 >   path; NetCDF tiles with proper CRS metadata; delivers `wse`,
@@ -57,8 +57,12 @@ documented here — only the host and the credentialing path.
 >   reader-kind** (one CMR search + one single-band COG downloaded per
 >   requested band). First per-band-COG mission; coverage capped at
 >   +/-52 deg latitude (GEDI's observation cap).
+> - **GEDI-L4A** (per-shot 25 m footprint aboveground biomass v2.1,
+>   NASA ORNL DAAC) — via the `earthdata` provider's tracks
+>   reader-kind. Same ±52 deg latitude cap as GEDI-L4B; loss-less
+>   per-shot Parquet sidecar alongside the aggregated raster.
 >
-> All eight have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All nine have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -194,6 +198,7 @@ product with documented per-class quality.
 | Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
 | JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
 | GEDI L4B Biomass *(v0.2 preview)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
+| GEDI L4A Biomass footprints *(v0.2 preview)* | `GEDI-L4A` | 25 m native (rasterised at user resolution) | 2019-04-18 → 2023-03-16 (V2.1) | agbd (per-shot AGBD, Mg/ha) | Loss-less per-shot Parquet sidecar + gridded raster; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap; 1-to-8 beams per granule |
 | GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
 
 ---
@@ -592,6 +597,92 @@ in `band_meta` map `MU` into `[0, 500] Mg/ha → [0, 1]`, `SE` into
 tropical AOIs where AGBD can exceed 400 Mg/ha, override at
 `apply_band_norm(..., override=("linear", 0, <local_max>))` time or
 edit `MISSION_PROFILES["GEDI-L4B"]["band_meta"]["MU"]["norm"]`.
+
+---
+
+## GEDI L4A Footprint-Level Aboveground Biomass Density *(v0.2 preview — this branch only)*
+
+**Mission name:** `GEDI-L4A`
+**Product:** `GEDI_L4A_AGB_Density_V2_1_2056` (Global 25 m footprint
+aboveground biomass density from GEDI, version 2.1), hosted by
+**NASA ORNL DAAC**.
+**Data model:** **tracks** (multi-granule aggregation into a gridded
+raster + a loss-less per-shot Parquet sidecar). L4A is the per-shot
+point-cloud upstream input to the 1 km gridded `GEDI-L4B`; wiring
+both under the same provider gives you the shot-level uncertainty
+budget when you need it and the pre-aggregated grid when you don't.
+**Native footprint:** 25 m diameter GEDI shot; rasterised at the
+user-set output resolution using the configured reducer
+(default `mean`).
+**Temporal coverage:** GEDI on-orbit archive, 2019-04-18 →
+2023-03-16 (V2.1 release). GEDI ceased science operations after
+the ISS shifted the instrument to stowage in 2023; no new shots
+land after this window until GEDI restarts.
+
+| Band | Kind | Units | Description |
+|---|---|---|---|
+| `agbd` | index | Mg/ha | Aboveground biomass density per GEDI shot |
+
+Defaults: `["agbd"]`. The tracks flow currently bins the primary
+value only; the per-shot Parquet sidecar preserves the full row so
+downstream code can extract the extras (`agbd_se`,
+`elev_lowestmode`, `sensitivity`, land-cover context) without
+re-fetching. Extending the raster to any of these is a one-line
+addition to `band_map` + the reader.
+
+**Distribution:** one HDF5 per ~90-minute orbit segment
+(~130-250 MB each). Top-level layout is 1-to-8 `BEAM{bbbb}` groups
+(four coverage beams `BEAM0000..BEAM0011` + four full-power beams
+`BEAM0101..BEAM1011`); the reader discovers them dynamically since
+a given granule may hold fewer than the nominal 8.
+
+**Quality filter:** the reader applies the canonical L4A usable-shot
+mask (`l4_quality_flag==1 & l2_quality_flag==1 & degrade_flag==0 &
+sensitivity>=0.9`) at read time. Users doing dense-tropical-forest
+work who want the stricter `sensitivity>=0.98` threshold from the
+L4A User Guide can post-filter the Parquet sidecar via
+`PointObservations(...).filter(...)` -- no re-fetch needed.
+
+**Time epoch:** 2018-01-01T00:00:00 UTC (plain UTC seconds, no
+GPS leap-second offset like ATL06 has). The epoch is documented in
+the source HDF5 only as a free-text `delta_time.attrs['description']`,
+so the reader hard-codes it. Numerically verified against a sample
+granule (`delta_time[0]=203291692.34 s -> 2024-06-10T21:54:52Z`,
+matching the granule's DOY-encoded filename).
+
+**Auth:** NASA Earthdata Login + the **ORNL DAAC** application must
+be authorized in the EDL profile (Applications → Authorized Apps →
+"ORNL DAAC production website"; same row as GEDI-L4B). See
+[`docs/providers/earthdata.md`](providers/earthdata.md#first-time-setup-on-a-laptop)
+for the full walkthrough.
+
+**Coverage:** **+/-52 deg latitude only** (GEDI flew on the ISS and
+never sampled higher latitudes). AOIs outside the cap return 0
+granules from CMR and raise a clean error from the tracks flow.
+For polar biomass proxies, pair with ICESat-2 ATL06 (altimetry) +
+NISAR / ALOS-PALSAR L-band SAR (backscatter) instead.
+
+**Product-version switch:** V2.1 is production-complete and the
+current pragmatic default. A newer V3 is live at
+`GEDI_L4A_AGB_Density_V3_2508` but is still being reprocessed and
+its coverage is sparse compared to V2.1 (verified: 0 vs 2 granules
+over a 5 km central-Amazon AOI, 2023-06 → 2024-06). Swap the
+short_name at call time once V3's coverage fills in:
+
+```python
+from geoai_datacubes.fetch import MISSION_PROFILES
+MISSION_PROFILES["GEDI-L4A"]["providers"]["earthdata"]["short_name"] = (
+    "GEDI_L4A_AGB_Density_V3_2508"
+)
+```
+
+**Normalisation for ML:** the default `("linear", 0, 500)` recipe
+maps 0-500 Mg/ha into [0, 1] and is a sensible starting point for
+mixed-biome AOIs. Tropical-forest AOIs where AGBD routinely exceeds
+400 Mg/ha are better served by an override at
+`apply_band_norm(..., override=("linear", 0, <local_max>))` time,
+or by editing
+`MISSION_PROFILES["GEDI-L4A"]["band_meta"]["agbd"]["norm"]`.
 
 ---
 

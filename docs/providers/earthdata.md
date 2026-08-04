@@ -171,6 +171,7 @@ personal one.
 | `SWOT-HR` | `SWOT_L2_HR_Raster_250m_2.0` (default) or `..._100m_2.0` | raster (per-tile NetCDF) | PODAAC (JPL) | 2023-04-07 → present | 250 m or 100 m native | `wse`, `water_frac`, `sig0` (+ 8 quality/uncert extras) |
 | `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
 | `GEDI-L4B` | `GEDI_L4B_Gridded_Biomass_V2_1_2299` | **raster (per-band COGs)** | ORNL DAAC | static (MW019–MW223, 2019-04-18 → 2023-03-16) | 1 km native (EASE-Grid 2.0, EPSG:6933) | `MU`, `SE` (defaults) + `V1`, `V2`, `PE`, `MI`, `QF`, `NS`, `NC`, `PS` |
+| `GEDI-L4A` | `GEDI_L4A_AGB_Density_V2_1_2056` | **tracks** (multi-granule aggregation) | ORNL DAAC | 2019-04-18 → 2023-03-16 (V2.1 archive) | 25 m native footprint (rasterized at user resolution) | `agbd` (aboveground biomass density, Mg/ha) |
 
 **NISAR-L notes:**
 
@@ -308,11 +309,60 @@ this provider (new `raster_per_band` reader-kind).
   a few MB per band. The cache under `<save_folder>/.GEDI-L4B_cache/`
   keeps subsequent fetches over the same or nearby AOIs fast.
 
+**GEDI-L4A notes** — the **second track mission** on this provider
+(after ICESat-2 ATL06). Distributed as one HDF5 per ~90-minute orbit
+segment (~130-250 MB each). The reader reuses the multi-granule
+`_fetch_tracks` flow that ATL06 introduced, so the on-disk contract
+(gridded `<mission>_full_size.tiff` + loss-less
+`<band>_observations.parquet` sidecar) is identical.
+
+- Per-shot fields extracted: `agbd` (Mg/ha), `lat_lowestmode` /
+  `lon_lowestmode` (deg WGS84), `delta_time` (seconds since
+  2018-01-01 UTC), plus the four quality fields listed below. Only
+  `agbd` is surfaced as a gridded band today; extending to `agbd_se`,
+  `elev_lowestmode`, `sensitivity`, or the land-cover context fields
+  is a one-line addition to `band_map` + the reader.
+- **Beam count is not fixed at 8.** A granule may hold anywhere from
+  1 to 8 top-level `BEAM{bbbb}` groups (the four coverage beams
+  `BEAM0000..BEAM0011` plus the four full-power beams
+  `BEAM0101..BEAM1011`) depending on which lasers were powered during
+  that orbit segment. The reader discovers the groups dynamically —
+  the sample granule used for the Amazon AOI verification held only
+  6 of the 8 beams.
+- **Canonical L4A usable-shot filter is applied at read time**:
+  `l4_quality_flag==1 & l2_quality_flag==1 & degrade_flag==0 &
+  sensitivity>=0.9`. Users doing dense-tropical-forest work who want
+  the stricter `sensitivity>=0.98` threshold from the L4A User Guide
+  can post-filter the Parquet sidecar via
+  `PointObservations(...).filter(...)` — no re-fetch needed.
+- **Time epoch is 2018-01-01T00:00:00 UTC** (plain UTC seconds, no
+  GPS leap-second offset). The epoch is documented in the HDF5 only
+  as a free-text `delta_time.attrs['description']`, so the reader
+  hard-codes it. Numerically verified against a sample granule.
+- **Product version.** The current production-complete collection is
+  V2.1 (`GEDI_L4A_AGB_Density_V2_1_2056`). A newer V3 is live at
+  `GEDI_L4A_AGB_Density_V3_2508` but is still being reprocessed and
+  its coverage is sparse compared to V2.1 (0 vs 2 granules over the
+  Amazon test AOI). Swap the short_name at call time to move to V3
+  once its coverage fills in:
+
+  ```python
+  from geoai_datacubes.fetch import MISSION_PROFILES
+  MISSION_PROFILES["GEDI-L4A"]["providers"]["earthdata"]["short_name"] = (
+      "GEDI_L4A_AGB_Density_V3_2508"
+  )
+  ```
+
+- **Coverage cap is ±52 deg latitude**, same as GEDI-L4B (GEDI flew
+  on the ISS which never rose above ~52 deg N or dropped below
+  ~52 deg S). AOIs outside the cap return 0 granules from CMR and
+  raise a clean error from the tracks flow.
+- Requires the same **ORNL DAAC** application authorization as
+  GEDI-L4B — the ORNL row in the DAAC-applications table already
+  covers this.
+
 **Planned next missions on this provider:**
 
-- **GEDI-L4A** (`GEDI04_A_002`) — footprint-level aboveground biomass,
-  will reuse the tracks reader-kind with a new `_read_gedi_l4a_tracks`
-  extractor. Same Parquet-sidecar contract.
 - **SMAP L3 soil moisture** — natural companion to NISAR L-band for
   soil-moisture-under-vegetation work.
 - **CryoSat land-ice altimetry** (CryoTEMPO Land Ice, ESA) — needs a
@@ -336,7 +386,7 @@ Three flavours: **raster missions** (one granule -> one scene, like
 NISAR-L / SWOT-HR / CryoSat-RDEFT4), **per-band raster missions** (one
 CMR search + one single-band COG downloaded per requested band, like
 GEDI-L4B), and **track missions** (many granules -> one aggregated
-raster + Parquet sidecar, like ICESat-2 ATL06). All three are
+raster + Parquet sidecar, like ICESat-2 ATL06 or GEDI-L4A). All three are
 dispatched from the mission's `"reader"` config; the top-level
 `_fetch_via_earthdata` looks up `_READER_KINDS[reader]` and routes
 `"raster"` readers through the single-scene window path,
@@ -345,7 +395,7 @@ dispatched from the mission's `"reader"` config; the top-level
 
 Recipe for a mission whose file format already has a reader in
 `_READERS` (currently: NISAR GCOV HDF5, single-band GeoTIFF,
-ATL06 tracks, SWOT HR Raster NetCDF, RDEFT4 NetCDF):
+ATL06 tracks, GEDI L4A tracks, SWOT HR Raster NetCDF, RDEFT4 NetCDF):
 
 1. Add a profile stanza to `MISSION_PROFILES` in
    `geoai_datacubes/fetch/missions.py`:

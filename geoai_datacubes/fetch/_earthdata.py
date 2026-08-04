@@ -45,6 +45,10 @@ config field. Currently supported:
 - ``"atl06_tracks"`` — ICESat-2 ATL06 HDF5, six-beam per-segment extract;
   handled by the multi-granule `_fetch_tracks` flow rather than the
   single-scene raster flow (see ``_READER_KINDS``).
+- ``"gedi_l4a_tracks"`` — GEDI L4A per-shot aboveground biomass density
+  HDF5 (ORNL DAAC). Dynamically discovers the 1-to-8 ``BEAM*`` groups
+  and applies the canonical L4A quality mask; routed through the same
+  `_fetch_tracks` flow as ATL06.
 
 Adding a new NASA product with an already-supported reader is a 5-line
 config addition to `MISSION_PROFILES`. Adding a new file format is one
@@ -722,10 +726,124 @@ def _read_atl06_tracks(
     return pd.concat(frames, ignore_index=True)
 
 
+# GEDI L4A per-shot delta_time epoch. Stored in the source HDF5 only as a
+# free-text `delta_time.attrs['description']` = "Time delta since Jan 1 00:00
+# 2018."; there is no METADATA anchor to parse. Verified numerically against
+# a sample granule (delta_time[0]=203291692.34 s -> 2024-06-10T21:54:52Z,
+# matching the granule's DOY-encoded filename). Plain UTC seconds, no
+# GPS leap-second offset like ATL06.
+_GEDI_L4A_EPOCH = np.datetime64("2018-01-01T00:00:00")
+
+# Canonical L4A usable-shot filter thresholds (L4A User Guide, ORNL DAAC).
+# Applied at read time so the returned DataFrame contains only shots the
+# L4A team considers valid for biomass estimation. Sensitivity >=0.9 is
+# the general-purpose threshold; dense tropical forest work typically
+# raises it to 0.98 -- users who want that can filter the Parquet
+# sidecar downstream via PointObservations.
+_GEDI_L4A_MIN_SENSITIVITY = 0.9
+
+
+def _read_gedi_l4a_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+):
+    """Extract per-shot aboveground biomass density from one GEDI L4A granule.
+
+    Discovers every top-level ``BEAM*`` group in the HDF5 (a granule
+    may hold anywhere from 1 to 8 beams depending on which lasers were
+    powered), reads the per-shot ``agbd`` / ``lat_lowestmode`` /
+    ``lon_lowestmode`` / ``delta_time`` arrays plus the canonical L4A
+    quality mask (``l4_quality_flag==1 & l2_quality_flag==1 &
+    degrade_flag==0 & sensitivity>=0.9``), clips to the AOI, and
+    concatenates all surviving beams into a single ``pandas.DataFrame``
+    with the ``TRACKS_CANONICAL_COLS`` schema. Missing beams (laser
+    off for that segment) are silently skipped rather than raised --
+    the sample granule for AOI verification held only 6 of the 8
+    possible beams.
+
+    Parameters
+    ----------
+    fp
+        Local path to one GEDI L4A HDF5 file.
+    ee_bands
+        Source-side band names to extract. GEDI L4A surfaces a single
+        biomass measurement (``agbd``); the parameter is kept for
+        interface parity with the raster reader dispatch and is not
+        checked -- L4A always returns agbd per shot.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; rows
+        outside are dropped before return.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    h5py = _lazy_import_h5py()
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+    frames = []
+
+    with h5py.File(fp, "r") as f:
+        # Dynamic beam discovery: the sample granule had 6 of 8 beams
+        # (missing BEAM1000, BEAM1011); never assume all 8 are present.
+        beams = sorted(k for k in f.keys() if k.startswith("BEAM"))
+        for beam in beams:
+            grp = f[beam]
+            required = ("agbd", "lat_lowestmode", "lon_lowestmode",
+                        "delta_time", "l4_quality_flag",
+                        "l2_quality_flag", "degrade_flag", "sensitivity")
+            if not all(k in grp for k in required):
+                continue
+
+            agbd  = grp["agbd"][:]
+            lat   = grp["lat_lowestmode"][:]
+            lon   = grp["lon_lowestmode"][:]
+            dt    = grp["delta_time"][:]
+            q4    = grp["l4_quality_flag"][:]
+            q2    = grp["l2_quality_flag"][:]
+            deg   = grp["degrade_flag"][:]
+            sens  = grp["sensitivity"][:]
+
+            # No _FillValue on agbd -- invalid shots are flagged only via
+            # the quality mask. AOI clip is folded into `valid` so we
+            # never materialise the ~60k-row-per-beam DataFrame just to
+            # throw most of it out.
+            valid = (
+                (q4 == 1) & (q2 == 1) & (deg == 0)
+                & (sens >= _GEDI_L4A_MIN_SENSITIVITY)
+                & np.isfinite(lat) & np.isfinite(lon)
+                & (lon >= lon_min) & (lon <= lon_max)
+                & (lat >= lat_min) & (lat <= lat_max)
+            )
+            if not valid.any():
+                continue
+
+            dt_valid = dt[valid]
+            utc = _GEDI_L4A_EPOCH + (dt_valid * 1e9).astype("timedelta64[ns]")
+
+            frames.append(pd.DataFrame({
+                "latitude":     lat[valid].astype(np.float64),
+                "longitude":    lon[valid].astype(np.float64),
+                "value":        agbd[valid].astype(np.float32),
+                "datetime":     pd.to_datetime(utc),
+                "beam_id":      beam,
+                "granule_id":   granule_id,
+                # l4_quality_flag is always 1 for valid rows after masking;
+                # kept in the schema slot so the Parquet sidecar stays
+                # column-compatible with ATL06 for downstream tools.
+                "quality_flag": q4[valid].astype(np.int8),
+            }))
+
+    if not frames:
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+    return pd.concat(frames, ignore_index=True)
+
+
 _READERS: Dict[str, Callable] = {
     "nisar_gcov_h5":      _read_nisar_gcov_h5_window,
     "geotiff":            _read_geotiff_bands,
     "atl06_tracks":       _read_atl06_tracks,
+    "gedi_l4a_tracks":    _read_gedi_l4a_tracks,
     "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
     "rdeft4_nc":          _read_rdeft4_nc,
 }
@@ -746,6 +864,7 @@ _READER_KINDS: Dict[str, str] = {
     "nisar_gcov_h5":      "raster",
     "geotiff":            "raster_per_band",
     "atl06_tracks":       "tracks",
+    "gedi_l4a_tracks":    "tracks",
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",
 }

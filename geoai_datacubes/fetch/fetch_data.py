@@ -79,6 +79,7 @@ PROVIDER_AUTO = {
     "SWOT-HR":        "earthdata",          # PODAAC, KaRIn L2 HR Raster NetCDF (250 m default)
     "CryoSat-RDEFT4": "earthdata",          # NSIDC DAAC, monthly NH sea-ice thickness (25 km)
     "GEDI-L4B":       "earthdata",          # ORNL DAAC, 1 km global gridded biomass (EASE-Grid 2.0)
+    "GEDI-L4A":       "earthdata",          # ORNL DAAC, per-shot 25 m footprint biomass (tracks flow)
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray

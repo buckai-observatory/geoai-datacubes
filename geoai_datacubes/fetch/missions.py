@@ -963,6 +963,67 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # GEDI L4A Footprint-Level Aboveground Biomass Density (NASA / ORNL DAAC).
+    #
+    # Per-shot AGBD (Mg/ha) at the native 25-m GEDI footprint, distributed
+    # as one HDF5 per ~90-minute orbit segment (~130-250 MB each). Sibling
+    # of the 1-km gridded GEDI-L4B product wired through the raster_per_band
+    # flow; L4A is the loss-less point-cloud upstream input, so it belongs
+    # on the tracks reader-kind alongside ICESat-2 ATL06.
+    #
+    # File layout: 1-to-8 top-level ``BEAM{bbbb}`` groups (four coverage
+    # beams + four full-power beams; the reader discovers them dynamically
+    # because a given granule may hold fewer than 8). Per-beam rank-1
+    # arrays keyed to ``shot_number``: ``agbd`` (Mg/ha), ``lat_lowestmode``,
+    # ``lon_lowestmode``, ``delta_time`` (seconds since 2018-01-01 UTC),
+    # ``l4_quality_flag``, ``l2_quality_flag``, ``degrade_flag``,
+    # ``sensitivity``. The reader applies the canonical L4A usable-shot
+    # filter (l4_quality==1 & l2_quality==1 & degrade==0 & sensitivity>=0.9)
+    # at read time, so the Parquet sidecar contains only shots the L4A
+    # team considers valid.
+    #
+    # Product version: V2.1 (production-complete). A newer V3 is live at
+    # ``GEDI_L4A_AGB_Density_V3_2508`` but its reprocessing is still
+    # sparse (0 granules over the test AOI vs 2 for V2.1), so V2.1 is
+    # the pragmatic default. Swap the short_name at call time to move to
+    # V3 once its coverage fills in:
+    #
+    #     MISSION_PROFILES["GEDI-L4A"]["providers"]["earthdata"] \
+    #         ["short_name"] = "GEDI_L4A_AGB_Density_V3_2508"
+    #
+    # Coverage cap: ±52 deg latitude, same as GEDI-L4B (GEDI flew on
+    # the ISS which never reached higher latitudes). AOIs outside the
+    # cap will produce 0 granules from CMR and raise a clean error from
+    # the tracks flow's post-search guard.
+    # ============================================================
+    "GEDI-L4A": {
+        "default_bands": ["agbd"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "agbd": {
+                "kind":  "index",
+                "units": "Mg/ha",
+                "norm":  ("linear", 0, 500),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                # Trailing _2056 is the ORNL DAAC collection id and is
+                # required; the shorter "GEDI_L4A_AGB_Density_V2_1"
+                # returns zero hits from CMR.
+                "short_name":      "GEDI_L4A_AGB_Density_V2_1_2056",
+                "reader":          "gedi_l4a_tracks",
+                "band_map":        {"agbd": "agbd"},
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
     # SWOT L2 KaRIn HR Raster (NASA-CNES).
     # PODAAC-hosted NetCDF-4 tiles from the Surface Water and Ocean
     # Topography mission. Each granule is one ~120 km UTM tile at 100 m
