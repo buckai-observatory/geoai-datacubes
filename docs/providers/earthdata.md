@@ -170,6 +170,7 @@ personal one.
 | `ICESat-2-ATL06` | `ATL06` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 40 m along-track segments (rasterized at user resolution) | `h_li` (land-ice height, m WGS84) |
 | `SWOT-HR` | `SWOT_L2_HR_Raster_250m_2.0` (default) or `..._100m_2.0` | raster (per-tile NetCDF) | PODAAC (JPL) | 2023-04-07 → present | 250 m or 100 m native | `wse`, `water_frac`, `sig0` (+ 8 quality/uncert extras) |
 | `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
+| `GEDI-L4B` | `GEDI_L4B_Gridded_Biomass_V2_1_2299` | **raster (per-band COGs)** | ORNL DAAC | static (MW019–MW223, 2019-04-18 → 2023-03-16) | 1 km native (EASE-Grid 2.0, EPSG:6933) | `MU`, `SE` (defaults) + `V1`, `V2`, `PE`, `MI`, `QF`, `NS`, `NC`, `PS` |
 
 **NISAR-L notes:**
 
@@ -273,14 +274,45 @@ Reducers: `mean`, `median`, `robust_mean` (5-95 percentile trim),
   the full snow-depth + roughness pipeline to converge). Expect some
   bands NaN even over pack ice.
 
+**GEDI-L4B notes** — the **first per-band-COG mission** wired through
+this provider (new `raster_per_band` reader-kind).
+
+- The product is one **static** global grid on **EASE-Grid 2.0 Global**
+  (EPSG:6933, 34704 x 14616 px, 1000.90 m nominal), covering GEDI
+  mission weeks 19–223 (2019-04-18 → 2023-03-16). Because it is a
+  single mission-week aggregate, `time_range` is a no-op for CMR
+  filtering and can be passed as `None`.
+- Distribution is **one Cloud-Optimized GeoTIFF per data layer** rather
+  than the NISAR / SWOT / RDEFT4 pattern of one multi-band granule per
+  scene. The new `raster_per_band` dispatch does one CMR search + N
+  band-suffix-filtered downloads and merges the per-band reads into
+  the standard output stack — from the caller's side, it is identical
+  to any other raster fetch.
+- Ten bands are surfaced: `MU` (mean AGBD, Mg/ha) and `SE` (its
+  standard error, Mg/ha) are the defaults; extras cover the full
+  uncertainty budget (`V1`, `V2`, `PE`), the categorical strata (`MI`
+  mode-of-inference, `PS` prediction stratum), the coverage counts
+  (`NS` shots, `NC` clusters), and the quality mask (`QF`, 1 = usable).
+- **Coverage cap is +/-52 deg latitude.** GEDI does not observe above
+  this cap; the provider raises a clean `RuntimeError` before hitting
+  CMR for any AOI outside the cap (mission cap check in
+  `_fetch_raster_per_band`). AOIs at higher latitudes should pair with
+  ICESat-2 ATL06 (polar altimetry) instead.
+- Requires the **ORNL DAAC** application to be authorized in the EDL
+  profile (see the [First-time setup](#first-time-setup-on-a-laptop)
+  section above; the ORNL row in the DAAC-applications table already
+  covers this).
+- Total on-disk size for the ten global COGs is ~2.5 GB; a single-AOI
+  fetch downloads only the requested-band COGs (not all ten) and reads
+  a small window from each via rasterio, so the actual per-run cost is
+  a few MB per band. The cache under `<save_folder>/.GEDI-L4B_cache/`
+  keeps subsequent fetches over the same or nearby AOIs fast.
+
 **Planned next missions on this provider:**
 
 - **GEDI-L4A** (`GEDI04_A_002`) — footprint-level aboveground biomass,
   will reuse the tracks reader-kind with a new `_read_gedi_l4a_tracks`
   extractor. Same Parquet-sidecar contract.
-- **GEDI-L4B** (`GEDI_L4B_Gridded_Biomass_V2_1`) — gridded biomass,
-  will use the `"geotiff"` raster reader path (already sketched in
-  `_earthdata.py`).
 - **SMAP L3 soil moisture** — natural companion to NISAR L-band for
   soil-moisture-under-vegetation work.
 - **CryoSat land-ice altimetry** (CryoTEMPO Land Ice, ESA) — needs a
@@ -300,17 +332,20 @@ addition when the cloud-cost story becomes relevant.
 
 ## Adding another Earthdata mission
 
-Two flavours: **raster missions** (one granule -> one scene, like
-NISAR-L) and **track missions** (many granules -> one aggregated
-raster + Parquet sidecar, like ICESat-2 ATL06). Both are dispatched
-from the mission's `"reader"` config; the top-level
+Three flavours: **raster missions** (one granule -> one scene, like
+NISAR-L / SWOT-HR / CryoSat-RDEFT4), **per-band raster missions** (one
+CMR search + one single-band COG downloaded per requested band, like
+GEDI-L4B), and **track missions** (many granules -> one aggregated
+raster + Parquet sidecar, like ICESat-2 ATL06). All three are
+dispatched from the mission's `"reader"` config; the top-level
 `_fetch_via_earthdata` looks up `_READER_KINDS[reader]` and routes
-`"raster"` readers through the single-scene window path, `"tracks"`
-readers through the multi-granule aggregation path.
+`"raster"` readers through the single-scene window path,
+`"raster_per_band"` readers through the per-band download loop, and
+`"tracks"` readers through the multi-granule aggregation path.
 
 Recipe for a mission whose file format already has a reader in
-`_READERS` (currently: NISAR GCOV HDF5, ATL06 tracks, SWOT HR Raster
-NetCDF, RDEFT4 NetCDF, plus a stubbed generic GeoTIFF path):
+`_READERS` (currently: NISAR GCOV HDF5, single-band GeoTIFF,
+ATL06 tracks, SWOT HR Raster NetCDF, RDEFT4 NetCDF):
 
 1. Add a profile stanza to `MISSION_PROFILES` in
    `geoai_datacubes/fetch/missions.py`:

@@ -16,8 +16,9 @@ the NASA DAACs and requires a NASA Earthdata Login (EDL) token:
   observation Parquet sidecar. First mission wired through the tracks
   reader-kind dispatch.
 - **GEDI-L4B** (ORNL DAAC) — global 1 km gridded aboveground biomass,
-  natural next fit for this provider; currently a documented stub in
-  `MISSION_PROFILES`.
+  wired through the ``geotiff`` reader and the ``raster_per_band``
+  dispatch (one CMR search, one single-band COG downloaded per requested
+  logical band, then merged into the standard output stack).
 - **SMAP, VIIRS** etc. — same auth path once wired.
 
 Auth priority (lazy, at first fetch call), mirrors our `_earth_engine.py`:
@@ -38,7 +39,9 @@ config field. Currently supported:
 
 - ``"nisar_gcov_h5"`` — NISAR L2 GCOV HDF5, windowed read via h5py, source
   CRS varies (polar-stereographic near the poles, UTM in mid-latitudes).
-- ``"geotiff"`` — plain single-band GeoTIFF (GEDI-L4B pattern, planned).
+- ``"geotiff"`` — single-band GeoTIFF (GEDI-L4B pattern). Routed via the
+  ``raster_per_band`` reader-kind flow: one CMR search, one COG download
+  per logical band, merged into the standard output stack.
 - ``"atl06_tracks"`` — ICESat-2 ATL06 HDF5, six-beam per-segment extract;
   handled by the multi-granule `_fetch_tracks` flow rather than the
   single-scene raster flow (see ``_READER_KINDS``).
@@ -349,18 +352,69 @@ def _read_geotiff_bands(
     ee_bands: Sequence[str],
     aoi_wgs84: Sequence[float],
 ) -> Tuple[Dict[str, np.ndarray], Any, str]:
-    """Windowed read of a single-band or multi-band GeoTIFF over the AOI.
+    """Windowed read of a single-band GeoTIFF over the AOI.
 
     For products where the DAAC-hosted file is one COG per band (GEDI-L4B
     pattern), each ``ee_band`` here is the *filename stem* of the band; the
-    caller has already resolved which granule/file maps to which logical
-    band. This reader path is minimally sketched today -- add the full
-    implementation when the first GeoTIFF-based Earthdata mission is wired.
+    caller (``_fetch_raster_per_band``) has already resolved which file maps
+    to which logical band and invokes this reader once per file with
+    ``ee_bands=[<that band>]``. The reader opens the (single-band) COG, does
+    a windowed read for the AOI, and returns ``{ee_band: array}``.
+
+    Nodata handling: the file's declared nodata is respected, and the
+    convention ``value <= -9999`` maps to NaN (GEDI's float layers use
+    ``-9999.0``; the uint8 flag layers MI/QF/PS declare ``0`` as nodata
+    which the header path already picks up).
     """
-    raise NotImplementedError(
-        "geotiff reader is a stub; wire it when un-stubbing GEDI-L4B (see "
-        "docs/providers/earthdata.md for the design sketch)."
-    )
+    from rasterio.windows import Window, from_bounds as window_from_bounds
+
+    with rasterio.open(fp) as src:
+        src_crs = src.crs.to_string() if src.crs else None
+        if not src_crs:
+            raise RuntimeError(f"GeoTIFF at {fp} has no CRS; cannot reproject.")
+
+        # AOI in the file's own CRS, then convert to a pixel window and clip
+        # to the file's extent so we never ask for out-of-bounds rows/cols.
+        aoi_src = transform_bounds("EPSG:4326", src_crs, *aoi_wgs84)
+        win = window_from_bounds(*aoi_src, transform=src.transform)
+        win = win.round_offsets().round_lengths()
+        full = Window(0, 0, src.width, src.height)
+        win = win.intersection(full)
+        if win.width <= 0 or win.height <= 0:
+            raise RuntimeError(
+                f"AOI {aoi_wgs84} does not overlap GeoTIFF {fp} "
+                f"(file bbox in {src_crs}: {src.bounds}).")
+
+        src_transform = src.window_transform(win)
+        descs = src.descriptions or ()
+
+        band_arrays: Dict[str, np.ndarray] = {}
+        for i, ee_band in enumerate(ee_bands):
+            # Prefer matching by GDAL band description (multi-band COGs with
+            # named bands); otherwise treat the file as single-band per the
+            # per-band-file convention.
+            band_idx = next(
+                (j for j, d in enumerate(descs, start=1) if d == ee_band),
+                None,
+            )
+            if band_idx is None:
+                if src.count == 1 and len(ee_bands) == 1:
+                    band_idx = 1
+                elif i < src.count:
+                    band_idx = i + 1
+                else:
+                    continue
+
+            arr = src.read(band_idx, window=win).astype(np.float32)
+            nodata = src.nodatavals[band_idx - 1] if src.nodatavals else None
+            if nodata is not None and np.isfinite(nodata):
+                arr[arr == np.float32(nodata)] = np.nan
+            # GEDI L4B float layers carry a -9999.0 sentinel that some
+            # exports leave off the header; catch it regardless.
+            arr[arr <= -9999.0] = np.nan
+            band_arrays[ee_band] = arr
+
+        return band_arrays, src_transform, src_crs
 
 
 def _lazy_import_xarray():
@@ -677,15 +731,20 @@ _READERS: Dict[str, Callable] = {
 }
 
 # Reader kind decides which top-level flow handles the mission:
-#   - "raster" : single-best-granule download + windowed read + reproject
-#                (existing NISAR/GeoTIFF/SWOT/RDEFT4 flow,
-#                `_fetch_via_earthdata`)
-#   - "tracks" : multi-granule download + per-observation extract +
-#                bin-to-target-grid + Parquet sidecar (`_fetch_tracks`)
+#   - "raster"          : single-best-granule download + windowed read +
+#                         reproject (NISAR/SWOT/RDEFT4 flow,
+#                         `_fetch_via_earthdata`)
+#   - "raster_per_band" : one CMR search, one download per requested band
+#                         (each band is its own single-band COG); merge the
+#                         per-band reads into a single output stack
+#                         (`_fetch_raster_per_band`). GEDI-L4B pattern.
+#   - "tracks"          : multi-granule download + per-observation extract +
+#                         bin-to-target-grid + Parquet sidecar
+#                         (`_fetch_tracks`).
 # New file formats add themselves here alongside their reader entry.
 _READER_KINDS: Dict[str, str] = {
     "nisar_gcov_h5":      "raster",
-    "geotiff":            "raster",
+    "geotiff":            "raster_per_band",
     "atl06_tracks":       "tracks",
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",
@@ -788,6 +847,22 @@ def _fetch_via_earthdata(
             filters=filters,
             scene_tag=scene_tag,
             default_reducer=default_reducer,
+        )
+    if kind == "raster_per_band":
+        return _fetch_raster_per_band(
+            earthaccess,
+            mission=mission,
+            bands=bands,
+            time_range=time_range,
+            roi=roi,
+            resolution=resolution,
+            save_folder=save_root,
+            short_name=short_name,
+            band_map=band_map,
+            reader=reader,
+            band_meta=band_meta,
+            filters=filters,
+            scene_tag=scene_tag,
         )
 
     # Resolve requested bands.
@@ -1160,3 +1235,238 @@ def _fetch_tracks(
 
     print(f"OK {mission} written to {out_tiff}")
     return [stack[i] for i in range(len(logical_bands))], logical_bands
+
+
+# ============================================================
+# One-search-per-band raster flow (GEDI-L4B pattern)
+# ============================================================
+
+def _search_and_download_geotiff_per_band(
+    earthaccess,
+    short_name: str,
+    roi: Sequence[float],
+    time_range: Optional[Tuple[str, str]],
+    cache_dir: Path,
+    ee_bands: Sequence[str],
+    filters: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Search once, then download one granule per requested band.
+
+    Some DAAC products deliver each data layer as its own COG (GEDI-L4B:
+    ``..._MU.tif``, ``..._SE.tif``, ``..._V1.tif``, ...) rather than the
+    NISAR/SWOT pattern of one multi-band granule. This helper does a single
+    CMR ``search_data`` call, then for each requested source-side band picks
+    the granule whose ``native-id`` ends with ``_<band>.tif`` and downloads
+    it. Returns two dicts keyed by ``ee_band``: the selected granule
+    metadata and the local file path.
+    """
+    kwargs: Dict[str, Any] = {
+        "short_name": short_name,
+        "bounding_box": tuple(roi),
+        "count": 100,
+    }
+    if time_range is not None:
+        kwargs["temporal"] = tuple(time_range)
+    if filters:
+        kwargs.update(filters)
+
+    results = earthaccess.search_data(**kwargs)
+    if not results:
+        raise RuntimeError(
+            f"No {short_name} granules found for AOI {roi} in {time_range}. "
+            "For GEDI L4B this usually means the AOI is outside the mission's "
+            "+/-52 deg latitude cap -- GEDI does not observe higher latitudes."
+        )
+    print(f"  granules found: {len(results)}")
+
+    picked: Dict[str, Any] = {}
+    to_download: List[Any] = []
+    for band in ee_bands:
+        suffix = f"_{band}.tif"
+        match = next(
+            (g for g in results
+             if str(g.get("meta", {}).get("native-id", "")).endswith(suffix)),
+            None,
+        )
+        if match is None:
+            print(f"  WARN no granule with suffix {suffix} in search results; "
+                  f"skipping band")
+            continue
+        picked[band] = match
+        to_download.append(match)
+
+    if not to_download:
+        raise RuntimeError(
+            f"None of the requested bands {list(ee_bands)} matched a granule "
+            f"in the {short_name} search results.")
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    # earthaccess.download returns .tif + .sha256 pairs for ORNL granules,
+    # so the returned file count is typically 2x the granule count.
+    files = earthaccess.download(to_download, local_path=str(cache_dir))
+    print(f"  downloaded {len(to_download)} granules "
+          f"({len(files)} files incl. checksums) in {time.time()-t0:.1f}s")
+
+    files_by_band: Dict[str, str] = {}
+    for band in picked:
+        suffix = f"_{band}.tif"
+        for fp in files:
+            if Path(fp).name.endswith(suffix):
+                files_by_band[band] = fp
+                break
+    return picked, files_by_band
+
+
+def _fetch_raster_per_band(
+    earthaccess,
+    *,
+    mission: str,
+    bands: Sequence[str],
+    time_range: Optional[Tuple[str, str]],
+    roi: Sequence[float],
+    resolution: float,
+    save_folder: Path,
+    short_name: str,
+    band_map: Dict[str, str],
+    reader: str,
+    band_meta: Optional[Dict[str, Dict]] = None,
+    filters: Optional[Dict[str, Any]] = None,
+    scene_tag: Optional[str] = None,
+) -> Tuple[List[np.ndarray], List[str]]:
+    """Per-band raster flow: one CMR search, N single-band-COG downloads.
+
+    See ``_fetch_via_earthdata`` for the on-disk contract; this function
+    exists because a handful of DAAC products (GEDI-L4B being the first
+    wired) publish each data layer as a separate single-band COG rather
+    than packaging N bands into one granule. Same output shape, same
+    downstream fusion / tiling story.
+    """
+    logical_bands = list(bands)
+    unknown = [b for b in logical_bands if b not in band_map]
+    if unknown:
+        raise ValueError(
+            f"{mission}: bands not in band_map: {unknown!r}. "
+            f"Available: {list(band_map)!r}")
+    ee_bands = [band_map[b] for b in logical_bands]
+
+    # GEDI L4B is observed only within +/-52 deg latitude; fail cleanly
+    # before hitting CMR (which returns 0 granules with no diagnostic).
+    # Generalize to a per-mission `lat_cap` field if a second per-band
+    # mission with a coverage cap lands.
+    if mission == "GEDI-L4B":
+        _lon_min, lat_min, _lon_max, lat_max = roi
+        if lat_min > 52.0 or lat_max < -52.0:
+            raise RuntimeError(
+                f"{mission}: AOI latitude range ({lat_min:.2f}, {lat_max:.2f}) "
+                "is outside the mission's +/-52 deg observation cap. GEDI does "
+                "not sample this AOI; try one within the tropics or "
+                "mid-latitudes.")
+
+    dst_crs = _aoi_utm_crs(roi)
+    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+
+    print(f"Earthdata per-band fetch: {mission} / {short_name}")
+    print(f"  bands  : {logical_bands}  -> {ee_bands}")
+    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
+
+    cache_dir = save_folder / f".{mission}_cache"
+    picked, files_by_band = _search_and_download_geotiff_per_band(
+        earthaccess, short_name, roi, time_range, cache_dir, ee_bands,
+        filters=filters,
+    )
+
+    reader_fn = _READERS[reader]
+    band_arrays_src: Dict[str, np.ndarray] = {}
+    src_transform = None
+    src_crs = None
+    for ee_band in ee_bands:
+        fp = files_by_band.get(ee_band)
+        if fp is None:
+            continue
+        arrs, xf, crs = reader_fn(fp, [ee_band], roi)
+        if ee_band in arrs:
+            band_arrays_src[ee_band] = arrs[ee_band]
+            if src_transform is None:
+                src_transform, src_crs = xf, crs
+
+    if not band_arrays_src:
+        raise RuntimeError(
+            f"{mission}: no bands were successfully read from the downloaded "
+            f"granules ({list(files_by_band)}). The reader either failed or "
+            "the AOI does not overlap the file extent.")
+    print(f"  source CRS: {src_crs}, {len(band_arrays_src)} band(s) read")
+
+    out_stack = np.full((len(logical_bands), out_h, out_w), np.nan, dtype=np.float32)
+    for i, (logical, ee_band) in enumerate(zip(logical_bands, ee_bands)):
+        if ee_band not in band_arrays_src:
+            print(f"  [{logical:6s}] not present in downloads; filling with NaN")
+            continue
+        src_arr = band_arrays_src[ee_band]
+        kind = (band_meta or {}).get(logical, {}).get("kind", "index")
+        resamp = _RESAMPLING_FOR_KIND.get(kind, Resampling.bilinear)
+        buf = np.full((out_h, out_w), np.nan, dtype=np.float32)
+        reproject(
+            source=src_arr, destination=buf,
+            src_transform=src_transform, src_crs=src_crs,
+            dst_transform=dst_transform, dst_crs=dst_crs,
+            resampling=resamp,
+            src_nodata=np.nan, dst_nodata=np.nan,
+        )
+        out_stack[i] = buf
+        finite_frac = float(np.isfinite(buf).mean())
+        print(f"  [{logical:6s}] reprojected {src_arr.shape} -> {buf.shape}  "
+              f"({100*finite_frac:.1f}% valid pixels)")
+
+    any_data = any(np.isfinite(out_stack[i]).any() for i in range(len(logical_bands)))
+    if not any_data:
+        raise RuntimeError(
+            f"{mission}: none of the requested bands had valid data in the "
+            "downloaded granules after reprojection. Check AOI / time range.")
+
+    # Scene tag: for GEDI's static mission-week product, use the mission-week
+    # span embedded in the granule id (e.g. MW019MW223) as the date token.
+    if scene_tag is None:
+        first_gid = next(iter(picked.values())).get("meta", {}).get("native-id", "")
+        m = re.search(r"(MW\d{3}MW\d{3})", first_gid)
+        tag = m.group(1) if m else "static"
+        scene_tag = f"{mission}_{tag}_earthdata"
+    scene_dir = save_folder / scene_tag
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    out_tiff = scene_dir / f"{mission}_full_size.tiff"
+
+    with rasterio.open(
+        out_tiff, "w",
+        driver="GTiff",
+        height=out_h, width=out_w, count=len(logical_bands),
+        dtype=np.float32,
+        crs=dst_crs, transform=dst_transform,
+        compress="DEFLATE", predictor=2, tiled=True,
+        nodata=np.nan,
+    ) as dst:
+        dst.write(out_stack.astype(np.float32))
+        dst.descriptions = tuple(logical_bands)
+
+    sidecar = {
+        "mission":     mission,
+        "provider":    "earthdata",
+        "short_name":  short_name,
+        "reader":      reader,
+        "reader_kind": "raster_per_band",
+        "granules":    {b: g.get("meta", {}).get("native-id")
+                        for b, g in picked.items()},
+        "time_range":  list(time_range) if time_range else None,
+        "roi":         list(roi),
+        "resolution":  resolution,
+        "crs":         dst_crs,
+        "src_crs":     src_crs,
+        "bands":       logical_bands,
+        "band_map":    {b: band_map[b] for b in logical_bands},
+    }
+    (scene_dir / "userdata.json").write_text(json.dumps(sidecar, indent=2))
+
+    print(f"OK {mission} written to {out_tiff}")
+    return [out_stack[i] for i in range(len(logical_bands))], logical_bands

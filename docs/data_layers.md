@@ -22,7 +22,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Seven
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Eight
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -52,8 +52,13 @@ documented here — only the host and the credentialing path.
 > - **CryoSat-RDEFT4** (25 km NH monthly sea-ice thickness, freeboard,
 >   snow depth from CryoSat-2, NSIDC) — via `earthdata` provider; NH
 >   sea ice only.
+> - **GEDI-L4B** (1 km global gridded aboveground biomass v2.1, NASA
+>   ORNL DAAC) — via the `earthdata` provider's new **`raster_per_band`
+>   reader-kind** (one CMR search + one single-band COG downloaded per
+>   requested band). First per-band-COG mission; coverage capped at
+>   +/-52 deg latitude (GEDI's observation cap).
 >
-> All seven have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All eight have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -188,7 +193,7 @@ product with documented per-class quality.
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
 | Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
 | JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
-| GEDI L4B Biomass *(stub)* | `GEDI-L4B` | 1 km | static (v2.1) | AGBD, SE, MODE, QF | Mg/ha; needs NASA Earthdata Login |
+| GEDI L4B Biomass *(v0.2 preview)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
 | GEBCO Global Bathymetry *(stub)* | `GEBCO` | ~463 m (15 arc-sec) | static (2024 release) | elevation, tid | global elevation + bathymetry; needs download-and-unzip |
 
 ---
@@ -516,6 +521,77 @@ altimetry over ice sheets, see the ESA CryoTEMPO Land Ice product
 **Fill values:** RDEFT4 uses `-9999` and `-999` sentinels without a
 declared `_FillValue` attribute; our reader replaces any value <= -100
 with NaN so downstream fusion / stats work correctly.
+
+---
+
+## GEDI L4B Gridded Aboveground Biomass Density *(v0.2 preview — this branch only)*
+
+**Mission name:** `GEDI-L4B`
+**Product:** `GEDI_L4B_Gridded_Biomass_V2_1_2299` (Global gridded
+aboveground biomass density from GEDI, version 2.1), hosted by
+**NASA ORNL DAAC**. DOI: [10.3334/ORNLDAAC/2299](https://doi.org/10.3334/ORNLDAAC/2299).
+**Data model:** raster — but distributed as **one Cloud-Optimized
+GeoTIFF per data layer** rather than one multi-band granule. Wired
+through the `earthdata` provider's new `raster_per_band` reader-kind
+(one CMR search + one COG download per requested band).
+**Native grid:** EASE-Grid 2.0 Global (**EPSG:6933**, WGS 84 / NSIDC
+EASE-Grid 2.0 Global, cylindrical equal-area). 34704 columns x 14616
+rows at 1000.90 m nominal pixel.
+**Temporal coverage:** **static** — a single mission-week aggregate
+covering GEDI weeks 019–223 (2019-04-18 → 2023-03-16). No time filter
+is applied; `time_range=None` is fine.
+
+| Band | Kind | Units | Description |
+|---|---|---|---|
+| `MU` | index | Mg/ha | Mean aboveground biomass density |
+| `SE` | index | Mg/ha | Standard error of `MU` |
+| `V1` | index | (Mg/ha)² | Sampling variance component |
+| `V2` | index | (Mg/ha)² | Residual / prediction variance component |
+| `PE` | index | % | `SE` expressed as a percentage of `MU` |
+| `MI` | categorical | — | Mode of inference (1 = hybrid, 2 = ratio, 3 = post-stratified) |
+| `QF` | qa | — | Quality flag (1 = usable, 2 = unusable) |
+| `NS` | index | shots | Number of GEDI shots per grid cell |
+| `NC` | index | clusters | Number of clusters (PSUs) per grid cell |
+| `PS` | categorical | — | Prediction stratum ID |
+
+Defaults: `["MU", "SE"]` — the mean AGBD plus its standard error,
+giving every user a value + uncertainty pair from the first fetch.
+
+**Value ranges:**
+- `MU`: 0 – ~500 Mg/ha over vegetated land; ocean / desert / permanent
+  ice are NaN.
+- `SE`: 0 – ~200 Mg/ha; typical relative uncertainty (`PE`) is 10 – 40 %
+  in vegetated cells.
+- Fill: float layers use `-9999` (mapped to NaN by the reader). Uint8
+  flag layers (`MI`, `QF`, `PS`) declare `0` as the nodata value.
+
+**Auth:** NASA Earthdata Login + the **ORNL DAAC** application must be
+authorized in the EDL profile (Applications → Authorized Apps →
+"ORNL DAAC production website"). See [`docs/providers/earthdata.md`](providers/earthdata.md#first-time-setup-on-a-laptop)
+for the full walkthrough.
+
+**Coverage:** **+/-52 deg latitude only.** GEDI was flown on the ISS
+which never rose above ~52 deg N or dropped below ~52 deg S; any grid
+cell outside that band is nodata. The provider raises a clean
+`RuntimeError` before touching CMR for AOIs above the cap (e.g. Baffin
+Island at 71.6 deg N), rather than silently returning all-NaN. For
+polar biomass / altimetry over ice sheets, pair with ICESat-2 ATL06
+(NSIDC) instead.
+
+**Distribution size vs. fetched size:** the ten global COGs on ORNL
+DAAC total ~2.5 GB (MU 503 MB, V1 506 MB, V2 536 MB, SE 503 MB,
+PE 100 MB, NS 210 MB, NC 88 MB, PS 23 MB, QF 15 MB, MI 14 MB); a
+per-AOI fetch downloads only the requested-band files (not all ten)
+and reads a small window from each via rasterio, so the actual per-run
+cost is a few MB per band. Subsequent fetches over the same or nearby
+AOIs are served from `<save_folder>/.GEDI-L4B_cache/`.
+
+**Normalisation for ML:** the default linear-in-mission-range recipes
+in `band_meta` map `MU` into `[0, 500] Mg/ha → [0, 1]`, `SE` into
+`[0, 200] Mg/ha → [0, 1]`, and `PE` into `[0, 100] % → [0, 1]`. For
+tropical AOIs where AGBD can exceed 400 Mg/ha, override at
+`apply_band_norm(..., override=("linear", 0, <local_max>))` time or
+edit `MISSION_PROFILES["GEDI-L4B"]["band_meta"]["MU"]["norm"]`.
 
 ---
 

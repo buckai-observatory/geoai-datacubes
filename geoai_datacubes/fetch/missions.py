@@ -1462,30 +1462,74 @@ MISSION_PROFILES = {
 
     # ============================================================
     # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
-    # STUB ONLY -- ORNL hosts the four global COGs (mean, SE, mode, QF)
-    # at https://daac.ornl.gov/daacdata/cms/GEDI_L4B_Gridded_Biomass_V2_1/
-    # but requires NASA Earthdata Login (.netrc auth). The direct_http
-    # provider supports anonymous fetches today; Earthdata-Login flow is
-    # a follow-up.
     #
-    # When wired up, this will be the canonical raster biomass mission
-    # in the pipeline -- 1 km global, EASE-Grid 2.0 (EPSG:6933), Mg/ha.
+    # Global gridded mean aboveground biomass density (AGBD) from GEDI's
+    # first four years of on-orbit lidar sampling (mission weeks 19-223,
+    # 2019-04-18 to 2023-03-16), aggregated onto the EASE-Grid 2.0 Global
+    # (EPSG:6933) 1 km grid (34704 x 14616 pixels, +/-52 deg latitude).
+    # Distributed as ten single-band Cloud-Optimized GeoTIFFs -- one per
+    # data layer -- rather than one multi-band granule; first mission
+    # wired through the ``raster_per_band`` reader-kind (one CMR search +
+    # one download per requested logical band).
+    #
+    # Bands surfaced:
+    #   MU  -- mean AGBD                                  Mg/ha,       float32
+    #   SE  -- standard error of MU                       Mg/ha,       float32
+    #   V1  -- sampling variance component                (Mg/ha)^2,   float32
+    #   V2  -- residual variance component                (Mg/ha)^2,   float32
+    #   PE  -- SE as a percentage of MU                   %,           float32
+    #   MI  -- mode of inference (1/2/3)                  categorical, uint8
+    #   QF  -- quality flag (1 = usable)                  qa,          uint8
+    #   NS  -- number of GEDI shots per cell              count,       int32
+    #   NC  -- number of clusters (PSUs) per cell         count,       int32
+    #   PS  -- prediction stratum ID                      categorical, uint8
+    # Float layers use -9999 as the fill value; uint8 flag layers use 0.
+    # Coverage cap is +/-52 deg latitude; AOIs above 52 deg N or below
+    # 52 deg S fail cleanly in _fetch_raster_per_band rather than
+    # silently returning NaN.
+    #
+    # DOI: 10.3334/ORNLDAAC/2299. Auth: NASA Earthdata Login + the ORNL
+    # DAAC application must be authorized in the EDL profile.
     # ============================================================
     "GEDI-L4B": {
-        "default_bands": ["AGBD"],
-        "extra_bands":   ["SE", "MODE", "QF"],
+        "default_bands": ["MU", "SE"],
+        "extra_bands":   ["V1", "V2", "PE", "MI", "QF", "NS", "NC", "PS"],
         "cloud_filter":  False,
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,
-        "_needs_earthdata_login": True,
         "band_meta": {
-            "AGBD": {"kind": "index", "norm": ("linear", 0, 500)},   # Mg/ha
-            "SE":   {"kind": "index", "norm": ("linear", 0, 200)},
-            "MODE": {"kind": "categorical", "norm": ("passthrough",)},
-            "QF":   {"kind": "qa",          "norm": ("passthrough",)},
+            "MU": {"kind": "index",       "units": "Mg/ha",
+                   "norm": ("linear", 0, 500)},
+            "SE": {"kind": "index",       "units": "Mg/ha",
+                   "norm": ("linear", 0, 200)},
+            "V1": {"kind": "index",       "units": "(Mg/ha)^2",
+                   "norm": ("linear", 0, 40000)},
+            "V2": {"kind": "index",       "units": "(Mg/ha)^2",
+                   "norm": ("linear", 0, 40000)},
+            "PE": {"kind": "index",       "units": "%",
+                   "norm": ("linear", 0, 100)},
+            "MI": {"kind": "categorical", "norm": ("passthrough",)},
+            "QF": {"kind": "qa",          "norm": ("passthrough",)},
+            "NS": {"kind": "index",       "units": "shots",
+                   "norm": ("linear", 0, 1000)},
+            "NC": {"kind": "index",       "units": "clusters",
+                   "norm": ("linear", 0, 100)},
+            "PS": {"kind": "categorical", "norm": ("passthrough",)},
         },
-        "providers": {},   # intentionally empty until Earthdata auth lands
+        "providers": {
+            "earthdata": {
+                # Trailing _2299 is the ORNL DAAC collection id and is required;
+                # the shorter "GEDI_L4B_Gridded_Biomass_V2_1" returns zero hits.
+                "short_name": "GEDI_L4B_Gridded_Biomass_V2_1_2299",
+                "reader":     "geotiff",
+                # Logical band == source-side filename suffix, 1:1. The reader
+                # kind (see _READER_KINDS) routes to _fetch_raster_per_band,
+                # which downloads one granule per suffix.
+                "band_map": {b: b for b in ("MU", "SE", "V1", "V2", "PE",
+                                            "MI", "QF", "NS", "NC", "PS")},
+            },
+        },
     },
 
     # ============================================================
