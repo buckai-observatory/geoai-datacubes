@@ -57,6 +57,14 @@ config field. Currently supported:
   band name so a single fetch surfaces either the terrain elevation
   (default) or the canopy top height; multi-band-per-fetch is a follow-
   up when ``_fetch_tracks`` grows per-band value columns.
+- ``"atl13_tracks"`` — ICESat-2 ATL13 Inland Water Surface Height along-
+  track segments (NSIDC DAAC). Same six ATLAS beams and SDP epoch as
+  ATL06 / ATL08, but the physical variables live directly under
+  ``/gt{beam}/`` (no ``land_segments`` sub-group), and geolocation
+  columns are named ``segment_lat`` / ``segment_lon`` rather than
+  ``latitude`` / ``longitude``. Two heights are dispatchable per fetch:
+  ``ht_water_surf`` (default, water surface WGS84 ellipsoid m) and
+  ``ht_ortho`` (orthometric height above the segment_geoid, m).
 
 Adding a new NASA product with an already-supported reader is a 5-line
 config addition to `MISSION_PROFILES`. Adding a new file format is one
@@ -1131,11 +1139,143 @@ def _read_atl08_tracks(
     return pd.concat(frames, ignore_index=True)
 
 
+# ATL13 reuses ATL06's SDP epoch and six-beam layout, but the physical
+# variables live directly under /gt{beam}/ (no land_segments sub-group),
+# geolocation is ``segment_lat`` / ``segment_lon`` (not ``latitude`` /
+# ``longitude``), and the standard quality flag is ``qf_bias_em`` (EM
+# height-bias flag, -3..4 valid, 127 fill). Two dispatchable heights:
+# ``ht_water_surf`` (water surface, WGS84 ellipsoid m -- the ATL13
+# headline variable) and ``ht_ortho`` (orthometric height above the
+# segment geoid, m). Both carry the ATL06-style float32-max fill.
+_ATL13_SUPPORTED_BANDS = {
+    "ht_water_surf": "ht_water_surf",
+    "ht_ortho":      "ht_ortho",
+}
+
+
+def _read_atl13_tracks(
+    fp: str,
+    ee_bands: Sequence[str],
+    aoi_wgs84: Sequence[float],
+):
+    """Extract per-segment inland-water heights from one ATL13 granule.
+
+    Iterates the six ATLAS beams (``gt1l``..``gt3r``), reads
+    ``segment_lat`` / ``segment_lon`` / ``delta_time`` / ``qf_bias_em``
+    plus one of two altimetric datasets living directly under
+    ``/gt{beam}/`` (``ht_water_surf`` -- water surface height, WGS84
+    ellipsoid m, the ATL13 headline variable; ``ht_ortho`` -- orthometric
+    height above the per-segment geoid model, m). Which dataset is read
+    is decided by the first entry in ``ee_bands``: ``"ht_water_surf"``
+    picks the ellipsoidal water surface, ``"ht_ortho"`` picks the
+    orthometric height. Rows with the ATL13 float32-max ``_FillValue``
+    (3.4028235e+38), NaN geolocation, or coordinates outside the AOI
+    are dropped before concatenating all surviving beams into a single
+    ``pandas.DataFrame`` with the canonical ``TRACKS_CANONICAL_COLS``
+    schema. Missing beams (laser off) are silently skipped rather than
+    raised.
+
+    ``quality_flag`` carries the ATL13 ``qf_bias_em`` electromagnetic
+    height-bias flag (valid range -3..4, where 0 means the estimated EM
+    bias fell into the canonical "acceptable" band; negative values
+    indicate progressively lower thresholds; positive values indicate
+    progressively higher thresholds and 4 flags an invalid bias
+    estimate). The 127 ``_FillValue`` on qf_bias_em wraps to int8 ``-1``
+    under the modular cast; users who need to distinguish it from a
+    genuine ``-1`` should re-read the source HDF5 rather than rely on
+    the sidecar.
+
+    Parameters
+    ----------
+    fp
+        Local path to one ATL13 HDF5 file.
+    ee_bands
+        Source-side band names to extract. Must be a single-element
+        sequence containing one of ``"ht_water_surf"`` (default, water
+        surface ellipsoidal height) or ``"ht_ortho"`` (orthometric
+        water height). A multi-band per-fetch request raises
+        ``NotImplementedError``; wiring per-band value columns is a
+        planned follow-up shared with ATL08.
+    aoi_wgs84
+        ``(lon_min, lat_min, lon_max, lat_max)`` clip window; rows
+        outside are dropped before return.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    h5py = _lazy_import_h5py()
+
+    if len(ee_bands) != 1:
+        raise NotImplementedError(
+            "ATL13 reader currently returns one physical variable per fetch "
+            f"(got ee_bands={list(ee_bands)!r}). Request either "
+            "['ht_water_surf'] (water surface ellipsoidal height) or "
+            "['ht_ortho'] (orthometric height) in isolation; per-band value "
+            "columns in the tracks flow are a planned follow-up."
+        )
+    ee_band = ee_bands[0]
+    if ee_band not in _ATL13_SUPPORTED_BANDS:
+        raise ValueError(
+            f"ATL13 reader does not know source band {ee_band!r}. "
+            f"Supported: {sorted(_ATL13_SUPPORTED_BANDS)}. Additional ATL13 "
+            "fields (stdev_water_surf, water_depth, inland_water_body_type, "
+            "significant_wave_ht, ...) can be wired by extending "
+            "_ATL13_SUPPORTED_BANDS."
+        )
+    dataset_name = _ATL13_SUPPORTED_BANDS[ee_band]
+
+    lon_min, lat_min, lon_max, lat_max = aoi_wgs84
+    granule_id = Path(fp).name
+    frames = []
+
+    with h5py.File(fp, "r") as f:
+        for beam in _ATL06_BEAMS:
+            if beam not in f:
+                continue
+            grp = f[beam]
+            if dataset_name not in grp:
+                continue
+
+            h    = grp[dataset_name][:]
+            lat  = grp["segment_lat"][:]
+            lon  = grp["segment_lon"][:]
+            dt   = grp["delta_time"][:]
+            qual = grp["qf_bias_em"][:]
+
+            valid = (
+                (h < 1e38)
+                & np.isfinite(lat) & np.isfinite(lon)
+                & (lon >= lon_min) & (lon <= lon_max)
+                & (lat >= lat_min) & (lat <= lat_max)
+            )
+            if not valid.any():
+                continue
+
+            dt_valid = dt[valid]
+            utc = _ATL06_SDP_EPOCH + (dt_valid * 1e9).astype("timedelta64[ns]")
+
+            frames.append(pd.DataFrame({
+                "latitude":     lat[valid].astype(np.float64),
+                "longitude":    lon[valid].astype(np.float64),
+                "value":        h[valid].astype(np.float32),
+                "datetime":     pd.to_datetime(utc),
+                "beam_id":      beam,
+                "granule_id":   granule_id,
+                # qf_bias_em == 127 (fill) wraps to int8 -1 under the
+                # modular cast; documented in the docstring.
+                "quality_flag": qual[valid].astype(np.int8),
+            }))
+
+    if not frames:
+        return pd.DataFrame({c: [] for c in TRACKS_CANONICAL_COLS})
+    return pd.concat(frames, ignore_index=True)
+
+
 _READERS: Dict[str, Callable] = {
     "nisar_gcov_h5":      _read_nisar_gcov_h5_window,
     "geotiff":            _read_geotiff_bands,
     "atl06_tracks":       _read_atl06_tracks,
     "atl08_tracks":       _read_atl08_tracks,
+    "atl13_tracks":       _read_atl13_tracks,
     "gedi_l4a_tracks":    _read_gedi_l4a_tracks,
     "swot_hr_raster_nc":  _read_swot_hr_raster_nc,
     "rdeft4_nc":          _read_rdeft4_nc,
@@ -1159,6 +1299,7 @@ _READER_KINDS: Dict[str, str] = {
     "geotiff":            "raster_per_band",
     "atl06_tracks":       "tracks",
     "atl08_tracks":       "tracks",
+    "atl13_tracks":       "tracks",
     "gedi_l4a_tracks":    "tracks",
     "swot_hr_raster_nc":  "raster",
     "rdeft4_nc":          "raster",

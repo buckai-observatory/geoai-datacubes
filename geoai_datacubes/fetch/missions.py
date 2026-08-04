@@ -1047,6 +1047,100 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ICESat-2 ATL13 Along-Track Inland Water Surface Height (NASA / NSIDC DAAC).
+    #
+    # Sibling of ATL06 / ATL08: same ICESat-2 platform, same six ATLAS
+    # beams, same GPS-SDP epoch. Where ATL06 delivers 40 m land-*ice*
+    # heights and ATL08 delivers 100 m land + vegetation heights, ATL13
+    # delivers per-segment (nominally ~100 signal photons per segment)
+    # water surface heights over classified inland water bodies -- lakes,
+    # rivers, reservoirs, ephemeral water, estuaries, and coastal water.
+    # This is the ICESat-2 hydrology / limnology product; the natural
+    # partner for SWOT-HR + GEBCO-2024 in the hydrographic stack.
+    #
+    # File layout: physical variables live *directly* under ``/gt{beam}/``
+    # -- there is no ``land_ice_segments`` or ``land_segments`` sub-group
+    # like ATL06 / ATL08. Coordinates are ``segment_lat`` and
+    # ``segment_lon`` (not ``latitude`` / ``longitude``), and the quality
+    # flag is ``qf_bias_em`` (electromagnetic height-bias flag, -3..4
+    # valid, 127 fill). Two dispatchable heights per fetch:
+    #   ``ht_water_surf`` -- water surface, WGS84 ellipsoid m (headline)
+    #   ``ht_ortho``      -- orthometric water height above segment geoid
+    # Both have the ATL06-style float32-max _FillValue (3.4028235e+38);
+    # the reader filters on ``h < 1e38`` in the same one-line pattern.
+    #
+    # Distribution: one HDF5 per ~90-min ICESat-2 orbit (~55-150 MB each,
+    # typical ~90k segments per beam per granule for global RGT coverage).
+    # Reuses the multi-granule _fetch_tracks flow ATL06 introduced, so
+    # the on-disk contract (gridded <mission>_full_size.tiff + loss-less
+    # <band>_observations.parquet sidecar) is identical.
+    #
+    # Per-fetch single-band caveat: same limitation as ATL08 -- the tracks
+    # flow today writes the same ``value`` column into every requested
+    # band's grid, so a request for both ``ht_water_surf`` AND
+    # ``ht_ortho`` in one fetch would produce two identical grids. The
+    # reader guards with a NotImplementedError until per-band value
+    # columns land. Default here is ``ht_water_surf`` (the headline
+    # variable and the one most directly comparable to SWOT-HR water
+    # surface elevations); ``ht_ortho`` is documented as an
+    # ``extra_band`` and users switch by requesting
+    # ``bands=["ht_ortho"]`` at call time.
+    #
+    # Coverage note: unlike ATL06 (glaciers) and ATL08 (vegetated land),
+    # ATL13 is masked to the ATL13 inland-water-body reference layer at
+    # production time -- a granule spans the full orbit but only carries
+    # segments over classified water bodies. Expect sparse AOIs over
+    # arid or heavily-glaciated regions and dense AOIs over lake-rich
+    # boreal / arctic terrain. Baffin sample AOI (71.6 N, -72.75 W,
+    # 5 km bbox, 2023-06 to 2023-07) intersects 3 granules covering
+    # coastal / small inland water pixels.
+    #
+    # Quality: ``qf_bias_em`` (EM height-bias flag). Values -3..3 are
+    # progressively narrower "acceptable" bins (0 is the canonical
+    # centre); 4 flags an invalid retrieval; 127 fill wraps to int8 -1
+    # in the sidecar under the modular cast.
+    #
+    # Value ranges (verified empirically against the Baffin sample):
+    #   ht_water_surf: [-69, 4586] m WGS84 across a full pole-to-pole
+    #                  RGT (Dead Sea to Andean lakes) -- linear norm
+    #                  [-500, 5000] mirrors ATL06 / ATL08 with headroom.
+    #   ht_ortho:      [-2, 4617] m orthometric above the segment geoid
+    #                  -- same norm works; the difference is one geoid-
+    #                  undulation term (~+30 to -100 m globally).
+    # ============================================================
+    "ICESat-2-ATL13": {
+        "default_bands": ["ht_water_surf"],
+        "extra_bands":   ["ht_ortho"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "ht_water_surf": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+            "ht_ortho": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL13",
+                "reader":          "atl13_tracks",
+                "band_map":        {
+                    "ht_water_surf": "ht_water_surf",
+                    "ht_ortho":      "ht_ortho",
+                },
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
     # GEDI L4A Footprint-Level Aboveground Biomass Density (NASA / ORNL DAAC).
     #
     # Per-shot AGBD (Mg/ha) at the native 25-m GEDI footprint, distributed

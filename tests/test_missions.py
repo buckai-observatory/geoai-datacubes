@@ -27,6 +27,7 @@ _EXPECTED_MISSIONS = (
     "NISAR-L",
     "ICESat-2-ATL06",
     "ICESat-2-ATL08",
+    "ICESat-2-ATL13",
     "SWOT-HR",
     "CryoSat-RDEFT4",
     "PlanetScope-4b", "PlanetScope-8b",

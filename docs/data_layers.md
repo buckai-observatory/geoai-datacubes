@@ -23,7 +23,7 @@ branch as a v0.2 preview), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Twelve
+> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Thirteen
 > additional missions are fetchable via two new provider classes and are
 > *not* part of the reviewed v0.1.0 release currently under JOSS review
 > (openjournals/joss-reviews#11034):
@@ -52,6 +52,14 @@ documented here — only the host and the credentialing path.
 >   canopy top height (`h_canopy`, extra) jointly derived from the
 >   ATL03 photon cloud. Complements ATL06's ice-only coverage with
 >   global land + vegetation heights up to +/-88 deg latitude.
+> - **ICESat-2 ATL13** (along-track inland water surface heights,
+>   NASA NSIDC DAAC) — third ATLAS-beam mission on the tracks flow
+>   after ATL06 / ATL08; delivers water surface height on WGS84
+>   ellipsoid (`ht_water_surf`, default) and orthometric water
+>   height above the segment geoid (`ht_ortho`, extra) for
+>   classified lakes, rivers, reservoirs, estuaries, and coastal
+>   waters. Natural partner for SWOT-HR + GEBCO-2024 in the
+>   hydrographic stack.
 > - **SWOT-HR** (250 m or 100 m KaRIn HR Raster surface water heights,
 >   NASA/CNES SWOT mission, PODAAC) — via `earthdata` provider raster
 >   path; NetCDF tiles with proper CRS metadata; delivers `wse`,
@@ -79,7 +87,7 @@ documented here — only the host and the credentialing path.
 >   coverage including ocean bathymetry; graduates the previous
 >   `GEBCO` stub to a first-class mission.
 >
-> All twelve have full sections further down, tagged "v0.2 preview". MODIS_SR
+> All thirteen have full sections further down, tagged "v0.2 preview". MODIS_SR
 > and MODIS_LST also gain the `earth_engine` provider on this branch,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
@@ -201,6 +209,7 @@ product with documented per-class quality.
 | NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
 | SMAP L3 soil moisture *(v0.2 preview)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
 | ICESat-2 ATL08 land + vegetation *(v0.2 preview)* | `ICESat-2-ATL08` | 100 m along-track (rasterized at user resolution) | 2018-10-14 → present | h_te_best_fit (terrain height, default) + h_canopy (canopy top height, extra) | ATL06 sibling on the tracks flow; six ATLAS beams; global up to ±88° latitude; NASA Earthdata Login (NSIDC application) |
+| ICESat-2 ATL13 inland water surface heights *(v0.2 preview)* | `ICESat-2-ATL13` | along-track segments (~100 signal photons each; rasterized at user resolution) | 2018-10-14 → present | ht_water_surf (water surface, WGS84 ellipsoid, default) + ht_ortho (orthometric water height, extra) | Third ATLAS-beam mission on the tracks flow after ATL06 / ATL08; six ATLAS beams; segments limited to classified lakes / rivers / reservoirs / estuaries / coastal water; NASA Earthdata Login (NSIDC application) |
 
 ## Quick reference — derived products
 
@@ -527,6 +536,87 @@ terrain / vegetation surveys where ATL06 only covers land ice, and to
 the ±52° GEDI cap. Combines with `Sentinel-2` optical + `Copernicus-DEM`
 for the standard "optical → altimetric truth → DEM residual" ML
 training stack.
+
+---
+
+## ICESat-2 ATL13 inland water surface heights *(v0.2 preview — this branch only)*
+
+**Mission name:** `ICESat-2-ATL13`
+**Product:** `ATL13` (Along-Track Inland Water Surface Height,
+Version 006/007 depending on segment), hosted by **NSIDC DAAC**.
+**Distribution:** one HDF5 per ~90 min ICESat-2 orbit (~55-150 MB each);
+each file carries per-segment (nominally ~100 signal photons per
+segment) water surface heights along the **six ATLAS laser beams**
+(`gt1l`, `gt1r`, `gt2l`, `gt2r`, `gt3l`, `gt3r`) — but *only* over
+segments the ATL13 production algorithm classifies as inland water
+bodies from its reference layer (lakes, rivers, reservoirs, ephemeral
+water, estuaries, coastal water). A single sub-orbit granule may hold
+~90k segments per beam when its ground-track crosses lake-dense terrain
+or a few dozen when it runs over glaciated or arid land.
+**Data model:** **tracks** — third ATLAS-beam mission on the shared
+multi-granule aggregation path after ATL06 and ATL08. A fetch downloads
+every intersecting granule in the AOI + time-window, extracts
+per-segment `(segment_lat, segment_lon, value, delta_time, qf_bias_em)`
+across all beams, and emits the standard tracks pair:
+
+1. A gridded raster (`ICESat-2-ATL13_full_size.tiff`, default reducer
+   `mean`) ready for the fusion pipeline.
+2. A **loss-less Parquet sidecar**
+   (`<band>_observations.parquet`, one row per surviving segment
+   across all beams and granules).
+
+Note that ATL13 puts its physical variables *directly* under
+`/gt{beam}/` — there is no `land_segments` sub-group like ATL06 /
+ATL08 — and its geolocation columns are named `segment_lat` /
+`segment_lon` rather than `latitude` / `longitude`. The reader
+adapts; downstream Parquet columns follow the canonical
+`latitude` / `longitude` names that all tracks readers emit.
+
+**Bands:**
+- `ht_water_surf` (default) — water surface height, WGS84 ellipsoid,
+  meters. Recommended norm `("linear", -500, 5000)` covers Dead Sea
+  to high Andean lakes; tighten per AOI.
+- `ht_ortho` (extra) — orthometric water height above the segment's
+  geoid model, meters. Recommended norm `("linear", -500, 5000)`
+  mirrors `ht_water_surf`; the difference is one geoid-undulation
+  term (~+30 to -100 m globally).
+
+**Quality flag** (Parquet `quality_flag` column): the ATL13 `qf_bias_em`
+electromagnetic height-bias flag — valid range `-3..4` where `0` is
+the canonical "acceptable" EM bias band; negative values indicate
+progressively lower thresholds; positive values indicate progressively
+higher thresholds, and `4` flags an invalid bias estimate. The `127`
+fill wraps to int8 `-1` under the modular cast; filter it out
+downstream if you need to distinguish it from a genuine `-1`.
+
+**Single-band-per-fetch caveat.** Same limitation as ATL08 — the
+shared `_fetch_tracks` binning writes the same `value` column into
+every requested band's grid, so a request for both `ht_water_surf`
+and `ht_ortho` in one fetch would produce two identical rasters. The
+ATL13 reader guards against that with a clean `NotImplementedError`.
+Fetch one band per call for now; per-band value columns in the tracks
+flow are a planned follow-up shared with ATL08.
+
+**Coverage.** ICESat-2 observes globally between +/-88 deg latitude,
+same as ATL06 / ATL08. Unlike ATL06 (glaciers) and ATL08 (vegetated
+land), ATL13 segments are restricted to the ATL13 inland-water-body
+reference layer, so expect **sparse AOIs over arid or heavily
+glaciated regions and dense AOIs over lake-rich boreal / arctic
+terrain**. Baffin sample AOI (71.6 N, -72.75 W, 5 km bbox, June-July
+2023) intersects 3-4 granules; only one had segments landing inside
+the AOI.
+
+**Auth:** NASA Earthdata Login + NSIDC DAAC application (same row as
+ATL06 / ATL08 / CryoSat-RDEFT4 / SMAP-L3; no extra approval needed
+once ATL06 is set up). See the
+[earthdata provider docs](providers/earthdata.md).
+
+**Use case:** ICESat-2's hydrology / limnology product; the natural
+partner for `SWOT-HR` and `GEBCO-2024` in the hydrographic stack.
+Ideal for lake / river level monitoring, cross-mission altimetry
+validation against SWOT KaRIn water-surface elevations, and building
+polar / high-latitude water-body training sets where SWOT coverage
+is sparse.
 
 ---
 

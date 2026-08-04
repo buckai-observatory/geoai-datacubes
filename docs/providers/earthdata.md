@@ -169,6 +169,7 @@ personal one.
 | `NISAR-L` | `NISAR_L2_GCOV_PROVISIONAL_V1` | raster (single granule) | Alaska Satellite Facility | 2026-06-17 → present | ~20 m native (fetched at user resolution) | `HH`, `HV`, `VH`, `VV` (whichever the granule contains) |
 | `ICESat-2-ATL06` | `ATL06` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 40 m along-track segments (rasterized at user resolution) | `h_li` (land-ice height, m WGS84) |
 | `ICESat-2-ATL08` | `ATL08` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | 100 m along-track segments (rasterized at user resolution) | `h_te_best_fit` (terrain, m WGS84) + `h_canopy` (canopy top, m above terrain) |
+| `ICESat-2-ATL13` | `ATL13` | **tracks** (multi-granule aggregation) | NSIDC | 2018-10-14 → present | along-track segments over classified inland water bodies (rasterized at user resolution) | `ht_water_surf` (water surface, m WGS84) + `ht_ortho` (orthometric water height, m above segment geoid) |
 | `SWOT-HR` | `SWOT_L2_HR_Raster_250m_2.0` (default) or `..._100m_2.0` | raster (per-tile NetCDF) | PODAAC (JPL) | 2023-04-07 → present | 250 m or 100 m native | `wse`, `water_frac`, `sig0` (+ 8 quality/uncert extras) |
 | `CryoSat-RDEFT4` | `RDEFT4` | raster (monthly NH gridded) | NSIDC | 2010-11 → present | 25 km native, NH only | `sea_ice_thickness`, `freeboard`, `snow_depth`, `snow_density`, `roughness`, `ice_con` |
 | `GEDI-L4B` | `GEDI_L4B_Gridded_Biomass_V2_1_2299` | **raster (per-band COGs)** | ORNL DAAC | static (MW019–MW223, 2019-04-18 → 2023-03-16) | 1 km native (EASE-Grid 2.0, EPSG:6933) | `MU`, `SE` (defaults) + `V1`, `V2`, `PE`, `MI`, `QF`, `NS`, `NC`, `PS` |
@@ -279,6 +280,58 @@ biomass / cryosphere fusion.
 - **Auth** is the same NSIDC DAAC application authorization as
   ATL06 / CryoSat-RDEFT4 / SMAP-L3; no additional approval needed
   once ATL06 is set up.
+
+**ICESat-2 ATL13 notes** — third ATLAS-beam mission on the tracks
+flow after ATL06 and ATL08. Same platform (ATLAS on ICESat-2), same
+six laser beams, same GPS-SDP epoch (2018-01-01 UTC). Where ATL06
+delivers land-ice heights and ATL08 delivers land + vegetation
+heights, ATL13 delivers **water surface heights over classified
+inland water bodies** -- lakes, rivers, reservoirs, ephemeral water,
+estuaries, and coastal water. This is the ICESat-2 hydrology /
+limnology product; the natural partner for `SWOT-HR` and
+`GEBCO-2024` in the hydrographic stack.
+
+- File layout: physical variables live *directly* under `/gt{beam}/`
+  -- there is no `land_ice_segments` (ATL06) or `land_segments`
+  (ATL08) sub-group. Geolocation columns are `segment_lat` and
+  `segment_lon` (not `latitude` / `longitude`); the quality flag is
+  `qf_bias_em` (EM height-bias flag, valid `-3..4`, `127` fill).
+  Two dispatchable heights per fetch: `ht_water_surf` (water surface,
+  m WGS84 ellipsoid -- the headline variable, most directly
+  comparable to SWOT-HR water surface elevations) and `ht_ortho`
+  (orthometric height above the segment geoid, m). Both carry the
+  ATL06-style float32-max `_FillValue` (3.4028235e+38); the reader
+  filters on `h < 1e38` in the same one-line pattern.
+- **Default vs extra band:** `ht_water_surf` is the default;
+  `ht_ortho` is listed as an `extra_band` and users switch by
+  requesting `bands=["ht_ortho"]` at call time. Same single-band-
+  per-fetch limitation as ATL08 -- the shared `_fetch_tracks`
+  binning writes the same `value` column into every requested
+  band's grid, so requesting both simultaneously would produce two
+  identical rasters; the ATL13 reader guards against that with a
+  clean `NotImplementedError`. Per-band value columns in the tracks
+  flow are a planned follow-up shared with ATL08.
+- **`qf_bias_em` semantics** in the Parquet `quality_flag` column:
+  valid range `-3..4` where `0` is the canonical "acceptable" EM
+  bias band; negative values indicate progressively lower
+  thresholds; positive values indicate progressively higher
+  thresholds and `4` flags an invalid bias estimate. The `127` fill
+  wraps to int8 `-1` under the modular cast; filter it out
+  downstream if you need to distinguish it from a genuine `-1`.
+- **Coverage:** ICESat-2 observes globally between +/-88 deg
+  latitude, same as ATL06 / ATL08. Unlike them, ATL13 segments are
+  restricted to the ATL13 inland-water-body reference layer, so
+  expect **sparse AOIs over arid or heavily glaciated regions and
+  dense AOIs over lake-rich boreal / arctic terrain**. Baffin AOI
+  test (71.6 N, -72.75 W, 5-km bbox, 2023-06 to 2023-07) with
+  `bands=["ht_water_surf"]`: 4 granules found, 2163 valid
+  observations across 2 beams from 1 granule, gridded at 100 m in
+  UTM zone 18N to 205 / 10816 valid pixels (1.9%) with values in
+  `[2.47, 2.79]` m -- consistent with the coastal water body
+  intersecting the AOI at Baffin sea level.
+- **Auth** is the same NSIDC DAAC application authorization as
+  ATL06 / ATL08 / CryoSat-RDEFT4 / SMAP-L3; no additional approval
+  needed once ATL06 is set up.
 
 **SWOT-HR notes:**
 
