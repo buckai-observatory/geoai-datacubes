@@ -43,7 +43,90 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ## What it does
 
-- **26 missions** in a unified registry (v0.1.0; **+14 v0.2-preview additions on this branch** — Dynamic World, JRC GFC2020, NISAR L-band SAR, ArcticDEM v4.1, ICESat-2 ATL03, ICESat-2 ATL06, ICESat-2 ATL08, ICESat-2 ATL13, SWOT-HR, CryoSat-RDEFT4, GEDI L4B biomass, GEDI L4A biomass footprints, SMAP L3 soil moisture, GEBCO 2024 global bathymetry — for 40 total). Sentinel-1 / 2, Landsat, NAIP, PlanetScope, MODIS, HLS, ALOS, Copernicus DEM, 3DEP, ESA WorldCover, JRC-GSW, USDA-CDL, Hansen-GFC, and more. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
+- **38 missions in a unified registry, grouped by data modality below.** 23 released in v0.1.0 (under JOSS review) + **15 new v0.2-preview additions on this branch, marked †**. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
+
+  <details>
+  <summary><b>Optical (multispectral)</b> — 9 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Sentinel-2` / `Sentinel-2-L1C` | 10 m | earthsearch | 4 vis+NIR @ 10 m, 6 red-edge/SWIR @ 20 m; L2A (BOA) and L1C (TOA) |
+  | `Landsat` (8 / 9 C2L2) | 30 m | planetary_computer | Long time series; thermal @ 100 m |
+  | `NAIP` | 1 m | planetary_computer | US aerial imagery |
+  | `MODIS_SR` (Terra / Aqua) | 500 m | earth_engine | Daily global; sinusoidal tile seams resolved via EE |
+  | `HLS_S30` / `HLS_L30` | 30 m | planetary_computer | Harmonized Sentinel-2 + Landsat |
+  | `PlanetScope-4b` / `PlanetScope-8b` | ~3.5 m | planet | Commercial daily global; API key required |
+  </details>
+
+  <details>
+  <summary><b>SAR</b> — 3 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Sentinel-1` | 10 m | planetary_computer | C-band, RTC analysis-ready |
+  | `NISAR-L` † | ~20 m | earthdata | NASA-ISRO L-band; public since 2026-07-20 |
+  | `ALOS-PALSAR` | 25 m | planetary_computer | Annual L-band mosaic |
+  </details>
+
+  <details>
+  <summary><b>LIDAR / altimetry (photons, waveforms, radar)</b> — 6 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `ICESat-2-ATL06` † | 40 m segments, 6 beams | earthdata | Land-ice heights |
+  | `ICESat-2-ATL08` † | 100 m segments | earthdata | Land + canopy heights |
+  | `ICESat-2-ATL13` † | per-water-body segments | earthdata | Inland water surface heights |
+  | `ICESat-2-ATL03` † | per-photon (capped) | earthdata | Raw geolocated photons |
+  | `GEDI-L4A` † | 25 m footprint | earthdata | Aboveground biomass per shot (±52° lat) |
+  | `SWOT-HR` † | 100 m or 250 m | earthdata | KaRIn Ka-band water surface heights |
+  </details>
+
+  <details>
+  <summary><b>Elevation (DEMs) and bathymetry</b> — 5 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Copernicus-DEM` / `Copernicus-DEM-90` | 30 m / 90 m | earthsearch / planetary_computer | Global TanDEM-X-derived |
+  | `ArcticDEM` † | 2 / 10 / 32 m | direct_http | PGC / OSU (>60° N); resolution configurable |
+  | `3DEP` | 10 / 1 m | planetary_computer | US high-res LIDAR-derived |
+  | `GEBCO-2024` † | 15 arc-s (~450 m) | direct_http | Global bathymetry + topography |
+  </details>
+
+  <details>
+  <summary><b>Land cover / land use</b> — 6 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `ESA-WorldCover` | 10 m | planetary_computer | Static 11-class global (2020, 2021) |
+  | `USDA-CDL` | 30 m | planetary_computer | US annual crop-type raster |
+  | `LCMAP-CONUS` | 30 m | planetary_computer | US annual (NLCD substitute) |
+  | `IO-LULC` | 10 m | planetary_computer | Annual global 10-class |
+  | `Dynamic-World` † | 10 m | earth_engine | Per-Sentinel-2-scene 9-class LULC |
+  | `JRC-GFC2020` † | 10 m | earth_engine | EUDR-compliant forest-cover baseline |
+  </details>
+
+  <details>
+  <summary><b>Biomass / forest structure and change</b> — 4 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `GEDI-L4B` † | 1 km | earthdata | Gridded global aboveground biomass (±52° lat) |
+  | `Chloris-Biomass` | ~4.6 km | planetary_computer | Annual global biomass |
+  | `ALOS-FNF` | 25 m | planetary_computer | Annual forest / non-forest |
+  | `Hansen-GFC` | 30 m | direct_http | Annual forest-change v1.11 |
+  </details>
+
+  <details>
+  <summary><b>Thermal · hydrology · cryosphere · atmosphere · soil</b> — 5 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `MODIS_LST` | 1 km | earth_engine | Daily land-surface temperature |
+  | `JRC-GSW` | 30 m | planetary_computer | Static global surface water (Pekel 2016) |
+  | `CryoSat-RDEFT4` † | 25 km | earthdata | Monthly NH sea-ice thickness + freeboard |
+  | `Sentinel-5P-NO2` † | 7 km | earthdata | Tropospheric NO₂ (extendable to CO, CH₄, O₃, ...) |
+  | `SMAP-L3` † | 9 km | earthdata | Daily enhanced soil moisture |
+  </details>
 - **Four interchangeable STAC providers** (Earth Search, Microsoft Planetary Computer, Planet Orders, Sentinel Hub) plus a `direct_http` path for non-STAC datasets. **On this v0.2-preview branch: two additional providers — `earth_engine` (Google Earth Engine, unlocks Dynamic World, JRC GFC2020, and MODIS with server-side reprojection) and `earthdata` (NASA Earthdata Login, unlocks NISAR L-band, GEDI biomass, SMAP, ICESat-2, and the wider NASA DAAC catalogue).** All seven unified behind one dispatcher; the default `PROVIDER = "auto"` routes each mission to its best free host. See [`docs/providers.md`](docs/providers.md) for the trade-offs, capability matrices, and routing table.
 - **Declarative per-band metadata.** Every band carries a `kind` and a normalisation recipe; `apply_band_norm` + `get_band_norm` produce ML-ready features in one call without hiding the scale factors.
 - **Multi-mission fusion** onto a common UTM grid via `fuse_response_tiffs(...)` with mission-prefixed band descriptions so provenance survives. See [`docs/fusion.md`](docs/fusion.md).
