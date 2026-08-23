@@ -1,4 +1,5 @@
-"""Fetch one mission, validate the result, write a JSON log.
+"""Fetch one mission, validate the result against per-mission acceptance
+criteria, and write a JSON log.
 
 Reads three env vars set by _common.sh:
 
@@ -9,9 +10,24 @@ Reads three env vars set by _common.sh:
 Usage:
     python smoke-tests/_run_fetch.py <Mission> [--bands B04,B08 ...]
 
-If <Mission> needs a credential that isn't available (PlanetScope
-without ``PL_API_KEY``), the script writes a ``skipped`` log entry and
-exits 0 -- a skip is not a failure.
+Statuses (see ``check_acceptance`` for the pass/fail logic):
+
+    passed             fetch succeeded and every hard criterion held
+    known_limitation   fetch succeeded but a hard criterion failed AND the
+                       ACCEPTANCE table declares the AOI unfit for a fair
+                       check on this mission (e.g. tile-edge coverage,
+                       out-of-range latitude); the run is NOT a pass but
+                       is documented so it does not clog "did we break the
+                       fetcher?" review of the logs.
+    failed             fetch threw, no scene folder was written, no
+                       .tif was found, or a hard acceptance criterion
+                       failed unexpectedly.
+    skipped            a pre-fetch skip rule applies (missing credential,
+                       documented stub).
+
+If <Mission> needs a credential that is not available (PlanetScope without
+``PL_API_KEY``), the script writes a ``skipped`` log entry and exits 0 --
+a skip is not a failure.
 """
 from __future__ import annotations
 
@@ -23,6 +39,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import rasterio
@@ -110,6 +127,201 @@ TIGHT_AOI_MISSIONS = {"NAIP", "PlanetScope-4b", "PlanetScope-8b"}
 
 
 # --------------------------------------------------------------------------
+# Per-mission acceptance criteria
+# --------------------------------------------------------------------------
+# Opened in response to JOSS review comment openjournals/joss-reviews#11034
+# and repo issue #19: "Add mission-specific validity criteria to smoke
+# tests". Previously the harness marked any fetch as passed once the
+# GeoTIFF opened, hiding results where up to 94% of the sampled output
+# was NaN.
+#
+# Each entry supports these optional keys:
+#
+# Mission-level (apply to every band unless a per-band override applies):
+#
+#   band_count            int     -- must match src.count exactly
+#   max_nan_fraction      float   -- upper bound on the *center-window*
+#                                    NaN fraction; hard fail above
+#   value_range           (lo,hi) -- finite pixels must all land in
+#                                    [lo, hi] (continuous bands)
+#   categorical_values    set|None -- if set, every finite pixel must
+#                                    round to one of these codes;
+#                                    ``None`` means "categorical but
+#                                    codes intentionally unspecified"
+#                                    (e.g. USDA-CDL has ~250 codes) and
+#                                    only checks integer-valued dtype
+#   bands                 dict    -- per-band criteria overrides, keyed
+#                                    by band description as it appears
+#                                    in the output GeoTIFF. Each entry
+#                                    supports value_range,
+#                                    categorical_values, and
+#                                    max_nan_fraction. Used for missions
+#                                    that mix band types (spectral
+#                                    reflectance + categorical QA like
+#                                    Sentinel-2 B04+SCL).
+#   known_limitation      str     -- if a hard criterion fails AND this
+#                                    key is set, status becomes
+#                                    ``known_limitation`` (not
+#                                    ``failed``) with the string
+#                                    recorded as the reason. Use for
+#                                    AOIs where the product genuinely
+#                                    can't provide clean coverage
+#                                    (tile-edge SAR, out-of-range lat)
+#                                    -- documents "why this doesn't
+#                                    pass" instead of hiding it.
+#
+# Missing entries default to a permissive floor (see DEFAULT_ACCEPTANCE)
+# so newly-wired missions don't silently regress old ones' review
+# quality but also don't hard-fail before someone chooses good
+# thresholds. Any mission the smoke suite actually runs SHOULD get an
+# explicit entry.
+# --------------------------------------------------------------------------
+
+DEFAULT_ACCEPTANCE: Dict[str, Any] = {
+    "max_nan_fraction": 0.50,   # loose default -- override per mission
+}
+
+ACCEPTANCE: Dict[str, Dict[str, Any]] = {
+    # ---- Optical multispectral (reflectance 0..1; some noise + cloud) ----
+    # Sentinel-2 / Landsat / HLS: spectral bands are reflectance (0..1
+    # with a small allowance for BOA overshoot). SCL / BQA / Fmask are
+    # categorical QA and get band-specific overrides so they aren't
+    # rejected for being out of the reflectance range.
+    "Sentinel-2": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "bands": {
+            # SCL codes 0..11 (see Sentinel-2 L2A PUG).
+            "SCL": {"categorical_values": set(range(0, 12)), "value_range": None},
+        },
+    },
+    "Sentinel-2-L1C": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+    },
+    "Landsat": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "bands": {
+            # BQA is a packed bitfield; only sanity-check that it's an
+            # integer band with a plausible upper bound.
+            "BQA": {"categorical_values": None, "value_range": None},
+        },
+    },
+    "HLS_S30": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "bands": {
+            "Fmask": {"categorical_values": None, "value_range": None},
+        },
+    },
+    "HLS_L30": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "bands": {
+            "Fmask": {"categorical_values": None, "value_range": None},
+        },
+    },
+    "MODIS_SR":       {"max_nan_fraction": 0.20, "value_range": (0.0, 1.5)},
+    "NAIP":           {"max_nan_fraction": 0.05, "value_range": (0.0, 260.0)},
+    "PlanetScope-4b": {"max_nan_fraction": 0.20, "value_range": (0.0, 20000.0)},
+    "PlanetScope-8b": {"max_nan_fraction": 0.20, "value_range": (0.0, 20000.0)},
+
+    # ---- Thermal (Kelvin) ----
+    "MODIS_LST":      {"max_nan_fraction": 0.30, "value_range": (200.0, 340.0)},
+
+    # ---- DEMs (metres, permit sub-sea-level) ----
+    "Copernicus-DEM":    {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
+    "Copernicus-DEM-90": {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
+    "3DEP":              {"max_nan_fraction": 0.05, "value_range": (-500.0, 5000.0)},
+
+    # ---- Hydrology (percent occurrence 0..100) ----
+    "JRC-GSW":        {"max_nan_fraction": 0.02, "value_range": (0.0, 100.0)},
+
+    # ---- SAR (linear-power, wide dynamic range) ----
+    # Sentinel-1 RTC in Columbus urban is generally clean.
+    "Sentinel-1":     {"max_nan_fraction": 0.20, "value_range": (0.0, 1e4)},
+    # ALOS-PALSAR annual mosaic: L-band DN units, and the current Columbus
+    # AOI sits near a tile boundary where the JAXA mosaic returns very
+    # sparse coverage. Documenting as known_limitation rather than pushing
+    # a permissive threshold that would hide a real bug elsewhere.
+    "ALOS-PALSAR":    {
+        "max_nan_fraction": 0.20, "value_range": (0.0, 1e5),
+        "known_limitation": (
+            "ALOS-PALSAR PC mosaic is sparse over this Columbus OH AOI "
+            "(N41W084 tile edge); real coverage checks need a mid-tile "
+            "rural AOI. Kept as known_limitation until the smoke suite "
+            "gets a separate rural-Midwest AOI for L-band SAR."
+        ),
+    },
+
+    # ---- Forest / biomass / cover ----
+    "Hansen-GFC": {
+        "max_nan_fraction": 0.02,
+        "bands": {
+            # treecover2000: percent 0-100; lossyear: 0-24 encoding
+            # year of loss; datamask: 0-2 categorical.
+            "treecover2000": {"value_range": (0.0, 100.0)},
+            "lossyear":      {"value_range": (0.0, 30.0)},
+            "datamask":      {"categorical_values": {0, 1, 2}, "value_range": None},
+        },
+    },
+    "Chloris-Biomass": {"max_nan_fraction": 0.10, "value_range": (0.0, 1000.0)},
+
+    # ---- Categorical land cover ----
+    "ESA-WorldCover": {"max_nan_fraction": 0.02,
+                        "categorical_values": {10, 20, 30, 40, 50, 60, 70,
+                                                80, 90, 95, 100}},
+    "ALOS-FNF":       {"max_nan_fraction": 0.02,
+                        "categorical_values": {0, 1, 2, 3}},
+    "IO-LULC":        {
+        "max_nan_fraction": 0.30,   # 10 m tiles have visible edges in mosaics
+        "categorical_values": {1, 2, 4, 5, 7, 8, 9, 10, 11},
+    },
+    "LCMAP-CONUS": {
+        "max_nan_fraction": 0.05,
+        "bands": {
+            # lcpri: primary class 1-8; lcpconf: 0-100 confidence.
+            "lcpri":   {"categorical_values": {1, 2, 3, 4, 5, 6, 7, 8}, "value_range": None},
+            "lcpconf": {"value_range": (0.0, 100.0)},
+        },
+    },
+    # USDA-CDL has ~250 codes; do the integer-valued check but not the
+    # per-value enumeration.
+    "USDA-CDL": {
+        "max_nan_fraction": 0.05,
+        "bands": {
+            "cropland":   {"categorical_values": None, "value_range": None},
+            "confidence": {"value_range": (0.0, 100.0)},
+        },
+    },
+}
+
+
+def _acceptance_for(mission: str) -> Dict[str, Any]:
+    """Merge DEFAULT_ACCEPTANCE with the per-mission entry (if any)."""
+    return {**DEFAULT_ACCEPTANCE, **ACCEPTANCE.get(mission, {})}
+
+
+def _looks_integer_valued(x, tol: float = 1e-4) -> bool:
+    """True if ``x`` is within ``tol`` of an integer. Used to detect
+    categorical bands that were up-cast to float during reprojection."""
+    try:
+        return abs(float(x) - round(float(x))) < tol
+    except Exception:
+        return False
+
+
+def _jsonify_acceptance(crit: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy the criteria dict with sets -> sorted lists so it lands in the
+    log JSON without a TypeError."""
+    def conv(x):
+        if isinstance(x, set):
+            return sorted(x)
+        if isinstance(x, dict):
+            return {k: conv(v) for k, v in x.items()}
+        if isinstance(x, tuple):
+            return list(x)
+        return x
+    return conv(crit)
+
+
+# --------------------------------------------------------------------------
 # Skip rules: when a mission requires a credential we don't have
 # --------------------------------------------------------------------------
 def skip_reason(mission: str) -> str | None:
@@ -123,13 +335,18 @@ def skip_reason(mission: str) -> str | None:
 
 # --------------------------------------------------------------------------
 # Validation: open the written GeoTIFF and report shape / band / NaN stats
+# + per-band value ranges (needed by the acceptance check).
 # --------------------------------------------------------------------------
-def validate_geotiff(path: Path) -> dict:
-    """Open the fetched cube and return a compact summary."""
+def validate_geotiff(path: Path) -> Dict[str, Any]:
+    """Open the fetched cube and return a compact per-band summary.
+
+    Reads a centre window (256x256 max) rather than the full image --
+    the fetch itself has already exercised the whole raster; this is
+    just for a snapshot summary big enough to be representative but
+    small enough to keep the smoke test fast.
+    """
     with rasterio.open(path) as src:
         descs = list(src.descriptions or [])
-        # Read a centre window (faster than reading the whole image just
-        # for a NaN-fraction estimate). Cap at 256x256.
         max_side = 256
         h = min(src.height, max_side)
         w = min(src.width,  max_side)
@@ -139,15 +356,135 @@ def validate_geotiff(path: Path) -> dict:
             (src.height - h) // 2,
             w, h,
         )
-        arr = src.read(window=win).astype(np.float32)
-        nan_frac = float(np.isnan(arr).mean()) if arr.size else 1.0
+        arr = src.read(window=win)          # keep native dtype
+        arr_f = arr.astype(np.float32)
+        nan_frac_overall = (
+            float(np.isnan(arr_f).mean()) if arr_f.size else 1.0
+        )
+
+        # Per-band summary drives the acceptance check.
+        per_band: List[Dict[str, Any]] = []
+        for i in range(arr.shape[0]):
+            band = arr_f[i]
+            finite = band[np.isfinite(band)]
+            b_desc = descs[i] if i < len(descs) else None
+            b_nan  = float(np.isnan(band).mean()) if band.size else 1.0
+            if finite.size:
+                b_min  = float(finite.min())
+                b_max  = float(finite.max())
+                b_mean = float(finite.mean())
+            else:
+                b_min = b_max = b_mean = float("nan")
+            per_band.append({
+                "index":              i + 1,
+                "description":        b_desc,
+                "nan_fraction":       round(b_nan, 4),
+                "min":                None if not np.isfinite(b_min) else b_min,
+                "max":                None if not np.isfinite(b_max) else b_max,
+                "mean":               None if not np.isfinite(b_mean) else b_mean,
+                "native_dtype":       str(src.dtypes[i]),
+            })
+
         return {
             "shape": [src.height, src.width, src.count],
             "bands": descs,
-            "crs":   str(src.crs),
-            "nan_fraction_centre_window": round(nan_frac, 4),
+            "crs":   str(src.crs) if src.crs else None,
+            "transform_present": src.transform is not None,
+            "nan_fraction_centre_window": round(nan_frac_overall, 4),
+            "per_band": per_band,
             "size_bytes": path.stat().st_size,
         }
+
+
+# --------------------------------------------------------------------------
+# Acceptance: compare validate_geotiff's summary against the per-mission
+# criteria dict. Returns (verdict, violations, warnings) where verdict is
+# "passed" | "known_limitation" | "failed".
+# --------------------------------------------------------------------------
+def check_acceptance(
+    mission: str,
+    requested_bands: List[str],
+    summary: Dict[str, Any],
+) -> Tuple[str, List[str], List[str]]:
+    crit = _acceptance_for(mission)
+    violations: List[str] = []
+    warnings:   List[str] = []
+
+    # ---- Structural checks ----
+    if not summary.get("crs"):
+        violations.append("no CRS in output GeoTIFF")
+    if not summary.get("transform_present"):
+        violations.append("no georeferencing transform in output GeoTIFF")
+
+    if "band_count" in crit:
+        actual = summary["shape"][2]
+        if actual != crit["band_count"]:
+            violations.append(
+                f"band_count expected {crit['band_count']}, got {actual}"
+            )
+
+    got_bands = summary.get("bands") or []
+    missing = [b for b in requested_bands if b not in got_bands]
+    if missing:
+        violations.append(f"missing requested bands: {missing}")
+
+    # ---- Per-band checks ----
+    per_band = summary.get("per_band", [])
+    band_overrides = crit.get("bands", {})
+
+    for pb in per_band:
+        tag = pb.get("description") or f"band{pb['index']}"
+
+        # Merge mission-level defaults with any per-band override. An
+        # override key with value ``None`` explicitly disables the
+        # corresponding check (used for QA bands that are ints not
+        # reflectance).
+        ov = band_overrides.get(tag, {})
+        max_nan = ov.get("max_nan_fraction", crit.get("max_nan_fraction"))
+        vrange  = ov["value_range"]        if "value_range"        in ov else crit.get("value_range")
+        cats    = ov["categorical_values"] if "categorical_values" in ov else crit.get("categorical_values", "unset")
+
+        if max_nan is not None and pb["nan_fraction"] > max_nan:
+            violations.append(
+                f"{tag}: nan_fraction {pb['nan_fraction']} exceeds "
+                f"cap {max_nan}"
+            )
+        # Value-range and categorical checks skipped for all-NaN bands
+        # (the NaN violation above already flags them).
+        if pb["min"] is None:
+            continue
+        if vrange is not None:
+            lo, hi = vrange
+            if pb["min"] < lo or pb["max"] > hi:
+                violations.append(
+                    f"{tag}: value range [{pb['min']:.3g}, {pb['max']:.3g}] "
+                    f"outside expected [{lo}, {hi}]"
+                )
+        if cats != "unset" and cats is not None:
+            # Our fusion pipeline writes float32 for every band (to
+            # carry NaN through), so we do not warn on non-int dtype
+            # -- categorical bands come back as integer-valued float32
+            # after reprojection. We only sanity-check that the sampled
+            # min/max round to codes in the declared set.
+            if _looks_integer_valued(pb["min"]) and _looks_integer_valued(pb["max"]):
+                for edge, name in [(pb["min"], "min"), (pb["max"], "max")]:
+                    if int(round(edge)) not in cats:
+                        warnings.append(
+                            f"{tag}: {name}={edge} not in declared "
+                            f"categorical set {sorted(cats)[:8]}..."
+                        )
+            else:
+                warnings.append(
+                    f"{tag}: categorical mission but sampled min/max "
+                    f"({pb['min']}, {pb['max']}) are not integer-valued"
+                )
+
+    # ---- Verdict ----
+    if not violations:
+        return ("passed", [], warnings)
+    if crit.get("known_limitation"):
+        return ("known_limitation", violations, warnings)
+    return ("failed", violations, warnings)
 
 
 # --------------------------------------------------------------------------
@@ -169,7 +506,7 @@ def main():
     log_path = logdir / f"{name}.json"
 
     started = datetime.datetime.now().isoformat(timespec="seconds")
-    record = {
+    record: Dict[str, Any] = {
         "test":       name,
         "mission":    mission,
         "started_at": started,
@@ -212,6 +549,7 @@ def main():
     record.update(
         aoi=aoi, bands_requested=bands, time_range=list(dates),
         resolution_m=res, save_folder=str(save_folder),
+        acceptance=_jsonify_acceptance(_acceptance_for(mission)),
     )
 
     t0 = time.time()
@@ -262,11 +600,25 @@ def main():
 
     summary = validate_geotiff(tif)
     record["geotiff"] = {"path": str(tif), **summary}
-    record["status"]  = "passed"
+
+    verdict, violations, warnings = check_acceptance(mission, bands, summary)
+    record["status"] = verdict
+    if violations:
+        record["violations"] = violations
+    if warnings:
+        record["warnings"] = warnings
+    if verdict == "known_limitation":
+        record["known_limitation_reason"] = (
+            _acceptance_for(mission).get("known_limitation", "")
+        )
     record["finished_at"] = datetime.datetime.now().isoformat(timespec="seconds")
 
     log_path.write_text(json.dumps(record, indent=2))
     print(json.dumps(record, indent=2))
+    # Exit 1 for a real failure so a CI wrapper can detect it; 0 for
+    # passed / known_limitation / skipped.
+    if verdict == "failed":
+        sys.exit(1)
 
 
 if __name__ == "__main__":
