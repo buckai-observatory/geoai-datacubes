@@ -37,11 +37,13 @@ jobs:
           cache: pip
 
       - name: Install the package + test deps
-        # `pip install -e .[dev]` brings in pytest + ruff + pre-commit on
-        # top of the core dependencies (numpy, rasterio, pystac, ...).
+        # `[dev]` = pytest + ruff + pre-commit.
+        # `[earthdata]` = earthaccess + h5py + xarray + h5netcdf -- needed
+        #   for the tracks-reader tests (test_atl06_reader, test_tracks)
+        #   that unit-test the earthdata provider without hitting network.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,earthdata]"
 
       - name: Run the test suite
         run: pytest -v --color=yes

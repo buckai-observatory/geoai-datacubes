@@ -228,6 +228,63 @@ MISSION_PROFILES = {
         },
     },
 
+    # ============================================================
+    # ArcticDEM v4.1 (Polar Geospatial Center, U. of Minnesota;
+    # PI Ian Howat, Ohio State University).
+    #
+    # Time-series digital elevation model of the Arctic (>60N) built
+    # from sub-metre commercial optical stereo (WorldView-1/2/3,
+    # GeoEye-1) via SETSM. Different from Copernicus DEM in every way
+    # that matters over polar targets:
+    #   * 32 m mosaic here (also 10 m / 2 m available on the same bucket)
+    #   * Arctic-only (>60N) coverage
+    #   * Time-series (mosaic versions v1 -> v4.1 span 2015-present),
+    #     not a single static snapshot
+    #   * Optical stereo -> real surface elevation of ice + rock;
+    #     Copernicus is Tandem-X InSAR-derived and lags on fast-changing
+    #     surfaces like glacier tongues.
+    #
+    # Hosting: publicly on AWS Open Data at
+    # s3://pgc-opendata-dems/arcticdem/mosaics/v4.1/<res>/<row>_<col>/
+    # as anonymous COGs. Native EPSG:3413 polar-stereographic; 100 km x
+    # 100 km tile grid indexed as (row, col) with the origin (row=0,
+    # col=0) placed at EPSG:3413 (x=-4100000, y=-4100000). Tile
+    # (R, C) covers x in [(C-41)e5, (C-40)e5], y in [(R-41)e5, (R-40)e5].
+    # Wired through the direct_http provider using the tile-callback
+    # pattern already used by Hansen-GFC.
+    # ============================================================
+    "ArcticDEM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,             # single mosaic release (v4.1)
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "direct_http": {
+                # Resolution of the ArcticDEM mosaic tiles to fetch.
+                # PGC publishes v4.1 at "2m", "10m", "32m", "100m", "500m";
+                # not every tile is available at every resolution (e.g. 2m
+                # is only over dense stereo-photogrammetry areas). "10m"
+                # is the sweet spot for most Arctic AOIs -- it matches
+                # Sentinel-2 native, is coarser than the actual per-pixel
+                # SETSM uncertainty over ice caps, and every tile that
+                # exists at 32m also exists at 10m. Override in a
+                # notebook via:
+                #     from geoai_datacubes.fetch import MISSION_PROFILES
+                #     MISSION_PROFILES["ArcticDEM"]["providers"]\
+                #                     ["direct_http"]["resolution"] = "10m"
+                "resolution":    "32m",
+                # release_tag composed dynamically from resolution below
+                "release_tag":   None,
+                "tile_callback": None,       # wired up below the dict
+            },
+        },
+    },
+
     "ESA-WorldCover": {
         "default_bands": ["LULC"],
         "extra_bands":   [],
@@ -423,14 +480,16 @@ MISSION_PROFILES = {
     # period) and leave `properties.datetime` = None; the fetcher's date
     # helper falls back to start_datetime so this works transparently.
     #
-    # KNOWN LIMITATION (tile seams): each STAC item is a single sinusoidal
-    # tile (e.g. h11v04 covers the Great Lakes region; h11v05 covers most of
-    # the central US). An AOI that straddles a seam will see large NaN holes
-    # in the returned array because the single-scene fetcher reads only one
-    # tile per date. Cross-tile mosaicking (similar to JRC-GSW / 3DEP) is
-    # tracked as a follow-up Issue. As a guard, the fetcher emits a loud
-    # warning at runtime when the NaN fraction of the final array exceeds
-    # 25% so the failure mode is never silent.
+    # TILE-SEAM NOTE (Issue #10, fixed): each PC STAC item is a single
+    # sinusoidal tile (h11v04 covers the Great Lakes region; h11v05 covers
+    # most of the central US). The old PC-only path returned ~50% NaN for
+    # AOIs straddling a seam (e.g. Columbus at 40N crosses h11v04/h11v05).
+    # This is now handled by the earth_engine provider variant declared
+    # below -- EE mosaics tiles and reprojects out of sinusoidal into the
+    # requested CRS server-side, so the seam is invisible. PROVIDER_AUTO
+    # routes MODIS_SR to earth_engine by default; the planetary_computer
+    # entry stays for users who explicitly pass provider="planetary_computer"
+    # (and still triggers the >25% NaN warning as a safety guard).
     # ============================================================
     "MODIS_SR": {
         "default_bands": ["B01", "B02"],            # Red, NIR (MODIS convention)
@@ -468,6 +527,32 @@ MISSION_PROFILES = {
                     "DOY":   "sur_refl_day_of_year",
                 },
             },
+            # Google Earth Engine variant. Preferred over PC because EE
+            # handles the sinusoidal tile-seam problem transparently
+            # (server-side mosaic + reproject out of sinusoidal into the
+            # requested CRS). PROVIDER_AUTO routes MODIS_SR here by default.
+            "earth_engine": {
+                "collection": "MODIS/061/MOD09A1",
+                "band_map": {
+                    "B01":   "sur_refl_b01",
+                    "B02":   "sur_refl_b02",
+                    "B03":   "sur_refl_b03",
+                    "B04":   "sur_refl_b04",
+                    "B05":   "sur_refl_b05",
+                    "B06":   "sur_refl_b06",
+                    "B07":   "sur_refl_b07",
+                    "QC":    "QA",
+                    "STATE": "StateQA",
+                    "DOY":   "DayOfYear",
+                },
+                "reducer_groups": [
+                    {"bands": ["sur_refl_b01", "sur_refl_b02", "sur_refl_b03",
+                               "sur_refl_b04", "sur_refl_b05", "sur_refl_b06",
+                               "sur_refl_b07"],
+                     "reducer": "mean"},
+                    {"bands": ["QA", "StateQA", "DayOfYear"], "reducer": "mode"},
+                ],
+            },
         },
     },
 
@@ -476,8 +561,9 @@ MISSION_PROFILES = {
     # PC collection: "modis-11A1-061". Single-band COGs for LST_Day_1km,
     # LST_Night_1km, plus QC and view-angle sidecars.
     #
-    # Same sinusoidal tile-seam caveat as MODIS_SR -- see the note above
-    # for details and the runtime NaN warning the fetcher emits.
+    # Same sinusoidal tile-seam caveat as MODIS_SR -- Issue #10. Fixed
+    # for the default path by routing PROVIDER_AUTO to the earth_engine
+    # provider (see the entry below).
     # ============================================================
     "MODIS_LST": {
         "default_bands": ["LST_Day", "LST_Night"],
@@ -503,6 +589,34 @@ MISSION_PROFILES = {
                     "QC_Night":    "QC_Night",
                     "Emis_31":     "Emis_31",
                     "Emis_32":     "Emis_32",
+                },
+            },
+            # Google Earth Engine variant. LST_Day_1km / LST_Night_1km are
+            # stored as raw uint16 with an 0.02 scale factor that converts
+            # to Kelvin -- we apply that server-side via scale_factors so
+            # the downstream `kelvin_to_celsius_norm` recipe sees actual
+            # Kelvin values. Preferred over PC because EE handles the
+            # sinusoidal tile-seam problem (Issue #10).
+            "earth_engine": {
+                "collection": "MODIS/061/MOD11A1",
+                "band_map": {
+                    "LST_Day":    "LST_Day_1km",
+                    "LST_Night":  "LST_Night_1km",
+                    "QC_Day":     "QC_Day",
+                    "QC_Night":   "QC_Night",
+                    "Emis_31":    "Emis_31",
+                    "Emis_32":    "Emis_32",
+                },
+                "reducer_groups": [
+                    {"bands": ["LST_Day_1km", "LST_Night_1km",
+                               "Emis_31", "Emis_32"],
+                     "reducer": "mean"},
+                    {"bands": ["QC_Day", "QC_Night"], "reducer": "mode"},
+                ],
+                # Raw DN -> physical units. Keys are LOGICAL band names.
+                "scale_factors": {
+                    "LST_Day":   0.02,   # -> Kelvin
+                    "LST_Night": 0.02,   # -> Kelvin
                 },
             },
         },
@@ -749,6 +863,690 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # NISAR L-band Geocoded Polarimetric Covariance (NASA / ISRO).
+    #
+    # Product: NISAR_L2_GCOV_PROVISIONAL_V1 (Alaska Satellite Facility DAAC).
+    # NISAR launched 2024 and its public L-band archive opened 2026-07-20;
+    # this is the first proper open archive of L-band SAR since ALOS PALSAR
+    # (2006-2011). Data is dual-frequency (L + S) but the S-band leg is
+    # ISRO-operated and currently email-request only via Bhoonidhi.
+    #
+    # Bands: covariance-matrix diagonal terms in whatever polarizations
+    # were acquired -- single-pol (HHHH), dual-pol (HHHH+HVHV or
+    # VVVV+VHVH), or full quad-pol (all four). The fetcher silently
+    # skips missing polarizations rather than raising, so ``bands=["HH","HV"]``
+    # on a single-pol HH scene returns HH-only + NaN for HV.
+    #
+    # Provider: earthdata (NASA CMR + ASF DAAC via earthaccess, requires
+    # an Earthdata Login and approved ASF DAAC application). See
+    # docs/providers/earthdata.md.
+    #
+    # Value range: sigma0 linear intensity (float32). Norm recipe:
+    # ("log_db", -30, 5) puts most agriculture / vegetation / ice in
+    # the [0, 1] band for CNN input; adjust for very dark (calm ocean)
+    # or very bright (urban) AOIs.
+    # ============================================================
+    "NISAR-L": {
+        "default_bands": ["HH", "HV"],
+        "extra_bands":   ["VH", "VV"],
+        "cloud_filter":  False,    # SAR sees through cloud
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "HH": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "HV": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "VH": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+            "VV": {"kind": "sar", "norm": ("log_db", -30.0, 5.0)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "NISAR_L2_GCOV_PROVISIONAL_V1",
+                "reader":     "nisar_gcov_h5",
+                # Logical band -> covariance-matrix diagonal term in the
+                # HDF5 file. Off-diagonal complex terms (HHHV, HHVV, HVVV)
+                # are available in the source but not surfaced yet -- add
+                # here + in _read_nisar_gcov_h5_window if needed.
+                "band_map": {
+                    "HH": "HHHH",
+                    "HV": "HVHV",
+                    "VH": "VHVH",
+                    "VV": "VVVV",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # ICESat-2 ATL03 Global Geolocated Photon Data (NASA / NSIDC DAAC).
+    #
+    # Per-photon rather than per-segment: the foundational L2 product
+    # every other ATLAS product (ATL06 land ice, ATL08 land + vegetation,
+    # ATL13 inland water) is derived from. Each ``/gt{beam}/heights/``
+    # group carries tens of millions of geolocated photon events -- one
+    # row per photon return with h_ph (WGS84 ellipsoidal height, m),
+    # lat_ph / lon_ph (float64), delta_time (seconds since the ATLAS SDP
+    # epoch, same as ATL06), and signal_conf_ph (int8 array of shape
+    # [N_photons, 5] over the land / ocean / sea_ice / land_ice /
+    # inland_water surface types; values -2..4 where 3=medium and 4=high
+    # are the ATBD "signal" bands and 0=noise / 1=buffer / 2=low are the
+    # non-signal bands).
+    #
+    # Distribution: one HDF5 per ~90-min ICESat-2 orbit but MUCH bigger
+    # than the derived products. Verified against a June 2023 Baffin
+    # granule: 6.4 GB, 6 beams, 42-58 M photons per beam, ~290 M photon
+    # events total. A raw six-beam concat would blow up laptop memory
+    # long before hitting the AOI clip; the ATL03 reader is therefore
+    # the first mission in the tracks flow to expose reader-side tuning
+    # knobs via the provider's ``reader_kwargs`` field:
+    #   * ``max_points_per_granule`` (default 100_000) -- uniform random
+    #     subsample cap applied AFTER the AOI + signal-conf filter so
+    #     the retained photons stay representative of the surviving-
+    #     signal population. Set to ``None`` to disable (only over very
+    #     small AOIs where the AOI clip alone brings the count into
+    #     manageable range; expect gigabyte-scale Parquet otherwise).
+    #   * ``min_signal_conf`` (default 3, medium+high) -- row-wise-max
+    #     across the 5 signal_conf_ph surface columns, so a photon
+    #     classified as signal for ANY surface type survives the filter.
+    #     Lower to 2 to include low-confidence returns; raise to 4 for
+    #     only the highest-confidence photons (useful for calibration /
+    #     validation work).
+    #
+    # Reuses the multi-granule _fetch_tracks flow ATL06 introduced, so
+    # the on-disk contract (gridded <mission>_full_size.tiff + loss-less
+    # <band>_observations.parquet sidecar with the canonical
+    # TRACKS_CANONICAL_COLS schema) is identical. ``quality_flag``
+    # carries the per-photon best-across-surfaces signal_conf_ph value
+    # (0..4 after the min_signal_conf filter drops the -2/-1/0/1 tiers).
+    #
+    # Downstream use case: bathymetric extraction (e.g. Parrish et al.
+    # 2019 shallow-water CoastNet), custom canopy analyses that go
+    # beyond ATL08's h_canopy, ice-shelf grounding-line studies, and
+    # anything else where the derived product's segment-scale averaging
+    # loses signal the raw photon cloud preserves. Because the sidecar
+    # keeps loss-less lat/lon/h_ph/delta_time per photon, users can
+    # re-grid at any resolution or run per-photon regressions without a
+    # re-fetch. Note that the DEFAULT downsample cap of 100k is far too
+    # aggressive for bathymetric work over even a small lake -- users
+    # doing photon-level analyses should override
+    # ``reader_kwargs["max_points_per_granule"]`` (e.g. to 5_000_000)
+    # at the mission-profile or fetch-call level.
+    #
+    # Value range: WGS84 ellipsoid heights of individual photons; land
+    # returns cluster near the local terrain, ocean/lake returns near
+    # sea level, and noise / instrument-effect photons can sit hundreds
+    # to thousands of metres above or below (mostly filtered by the
+    # signal_conf_ph mask, but the raw h_ph range is wide). Linear norm
+    # [-1000, 5000] covers the vast majority of Earth-surface land + ice
+    # returns; deep-sea or airborne noise photons will clip.
+    # ============================================================
+    "ICESat-2-ATL03": {
+        "default_bands": ["h_ph"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_ph": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -1000, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL03",
+                "reader":          "atl03_tracks",
+                "band_map":        {"h_ph": "h_ph"},
+                "default_reducer": "mean",
+                # ATL03 reader knobs; see the reader docstring in
+                # _earthdata.py::_read_atl03_tracks for the full contract.
+                # The defaults keep a per-granule Parquet under ~5 MB for
+                # a typical Baffin AOI; users doing per-photon bathymetric
+                # or canopy work should override these at fetch time by
+                # editing the profile.
+                "reader_kwargs": {
+                    "max_points_per_granule": 100_000,
+                    "min_signal_conf":        3,
+                },
+                # ATL03 granules are 500 MB - 2 GB each. Cap hard so a
+                # too-wide time_range doesn't accidentally pull a TB.
+                # Bump for real photon-level workflows over a target AOI.
+                "max_granules":    10,
+                "max_download_gb": 15.0,
+            },
+        },
+    },
+
+    # ============================================================
+    # ICESat-2 ATL06 Land Ice Height Segments (NASA / NSIDC DAAC).
+    #
+    # Along-track altimetry rather than raster imagery: each granule is
+    # one ~2000 km ATLAS sub-orbit HDF5 with six laser beams; every
+    # ``land_ice_segments`` sub-group carries per-40-m-segment h_li
+    # heights plus latitude/longitude/delta_time/quality flags. First
+    # mission wired through the multi-granule "tracks" reader-kind
+    # dispatch in ``_earthdata._fetch_tracks``: an AOI + time-range
+    # fetch discovers every intersecting granule, aggregates all six
+    # beams per granule, concatenates across granules, and bins the
+    # point cloud onto a UTM raster at the requested resolution using
+    # the configured reducer (default: mean of h_li per pixel). A loss-
+    # less ``<band>_observations.parquet`` sidecar is written next to
+    # the raster so downstream code can re-grid at a different
+    # resolution or run per-observation regressions without a re-fetch.
+    #
+    # Value range: WGS84 ellipsoid heights, mostly in [-100, 5000] m
+    # over land ice; the linear norm is set to [-500, 5000] to cover
+    # ocean corrections and interior Antarctic / Greenland ice caps.
+    # ============================================================
+    "ICESat-2-ATL06": {
+        "default_bands": ["h_li"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_li": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL06",
+                "reader":          "atl06_tracks",
+                "band_map":        {"h_li": "h_li"},
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
+    # ICESat-2 ATL08 Land and Vegetation Height (NASA / NSIDC DAAC).
+    #
+    # Sibling of ATL06: same platform, same six ATLAS beams, same GPS-SDP
+    # epoch. Where ATL06 delivers 40 m along-track land-*ice* heights,
+    # ATL08 delivers 100 m along-track land + vegetation heights over
+    # non-ice terrain -- terrain elevation and canopy top height jointly
+    # derived from the ATL03 photon cloud. The two products complement:
+    # ATL06 covers Greenland / Antarctica / high-latitude glaciers; ATL08
+    # covers everything else where ICESat-2 has land / vegetation returns.
+    #
+    # File layout: /gt{beam}/land_segments/{latitude, longitude,
+    # delta_time, terrain_flg} for the segment-level metadata, plus two
+    # child sub-groups carrying the physical variables --
+    # /land_segments/terrain/h_te_best_fit (best-fit terrain elevation
+    # over the segment, m WGS84) and /land_segments/canopy/h_canopy
+    # (98th-percentile canopy relative height above the estimated terrain
+    # surface, m). Both have the ATL06-style float32-max _FillValue
+    # (3.4028235e+38) on invalid segments; the reader filters on
+    # ``h < 1e38`` in the same one-line pattern as ATL06.
+    #
+    # Distribution: one HDF5 per ~2000 km sub-orbit (~100-150 MB each),
+    # 5 granules over the Baffin test AOI (71.6 N, -72.75 W, 5 km bbox,
+    # 2023-06 to 2023-07). Reuses the multi-granule _fetch_tracks flow
+    # ATL06 introduced, so the on-disk contract (gridded
+    # <mission>_full_size.tiff + loss-less <band>_observations.parquet
+    # sidecar) is identical.
+    #
+    # Per-fetch single-band caveat: the tracks flow today writes the
+    # same ``value`` column into every requested band's grid, so a
+    # request for both h_te_best_fit AND h_canopy in one fetch would
+    # produce two identical grids. The reader guards with a
+    # NotImplementedError until per-band value columns land. Default
+    # here is h_te_best_fit (dense over non-forested Arctic terrain);
+    # h_canopy is documented as an ``extra_band`` and users switch by
+    # requesting ``bands=["h_canopy"]`` at call time.
+    #
+    # Quality: ``terrain_flg`` (0 = below-threshold agreement with the
+    # reference DEM, canonical "good"; 1 = above-threshold deviation,
+    # kept for downstream filtering because on glaciers / recent-change
+    # AOIs a DEM disagreement is often the real signal; 255 = undetermined,
+    # wraps to int8 -1 in the Parquet ``quality_flag`` column).
+    #
+    # Value ranges (verified empirically against the Baffin sample):
+    #   h_te_best_fit: [-100, 5500] m WGS84 (Arctic terrain to Andes /
+    #                  Himalaya peaks) -- linear norm [-500, 5000] mirrors
+    #                  ATL06 with a modest bump below sea-level for
+    #                  bathymetric returns.
+    #   h_canopy:      [0, 130] m above terrain (tallest observed
+    #                  vegetation; typical global forest <60 m) -- linear
+    #                  norm [0, 60] fits most cases.
+    # ============================================================
+    "ICESat-2-ATL08": {
+        "default_bands": ["h_te_best_fit"],
+        "extra_bands":   ["h_canopy"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "h_te_best_fit": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+            "h_canopy": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", 0, 60),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL08",
+                "reader":          "atl08_tracks",
+                "band_map":        {
+                    "h_te_best_fit": "h_te_best_fit",
+                    "h_canopy":      "h_canopy",
+                },
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
+    # ICESat-2 ATL13 Along-Track Inland Water Surface Height (NASA / NSIDC DAAC).
+    #
+    # Sibling of ATL06 / ATL08: same ICESat-2 platform, same six ATLAS
+    # beams, same GPS-SDP epoch. Where ATL06 delivers 40 m land-*ice*
+    # heights and ATL08 delivers 100 m land + vegetation heights, ATL13
+    # delivers per-segment (nominally ~100 signal photons per segment)
+    # water surface heights over classified inland water bodies -- lakes,
+    # rivers, reservoirs, ephemeral water, estuaries, and coastal water.
+    # This is the ICESat-2 hydrology / limnology product; the natural
+    # partner for SWOT-HR + GEBCO-2024 in the hydrographic stack.
+    #
+    # File layout: physical variables live *directly* under ``/gt{beam}/``
+    # -- there is no ``land_ice_segments`` or ``land_segments`` sub-group
+    # like ATL06 / ATL08. Coordinates are ``segment_lat`` and
+    # ``segment_lon`` (not ``latitude`` / ``longitude``), and the quality
+    # flag is ``qf_bias_em`` (electromagnetic height-bias flag, -3..4
+    # valid, 127 fill). Two dispatchable heights per fetch:
+    #   ``ht_water_surf`` -- water surface, WGS84 ellipsoid m (headline)
+    #   ``ht_ortho``      -- orthometric water height above segment geoid
+    # Both have the ATL06-style float32-max _FillValue (3.4028235e+38);
+    # the reader filters on ``h < 1e38`` in the same one-line pattern.
+    #
+    # Distribution: one HDF5 per ~90-min ICESat-2 orbit (~55-150 MB each,
+    # typical ~90k segments per beam per granule for global RGT coverage).
+    # Reuses the multi-granule _fetch_tracks flow ATL06 introduced, so
+    # the on-disk contract (gridded <mission>_full_size.tiff + loss-less
+    # <band>_observations.parquet sidecar) is identical.
+    #
+    # Per-fetch single-band caveat: same limitation as ATL08 -- the tracks
+    # flow today writes the same ``value`` column into every requested
+    # band's grid, so a request for both ``ht_water_surf`` AND
+    # ``ht_ortho`` in one fetch would produce two identical grids. The
+    # reader guards with a NotImplementedError until per-band value
+    # columns land. Default here is ``ht_water_surf`` (the headline
+    # variable and the one most directly comparable to SWOT-HR water
+    # surface elevations); ``ht_ortho`` is documented as an
+    # ``extra_band`` and users switch by requesting
+    # ``bands=["ht_ortho"]`` at call time.
+    #
+    # Coverage note: unlike ATL06 (glaciers) and ATL08 (vegetated land),
+    # ATL13 is masked to the ATL13 inland-water-body reference layer at
+    # production time -- a granule spans the full orbit but only carries
+    # segments over classified water bodies. Expect sparse AOIs over
+    # arid or heavily-glaciated regions and dense AOIs over lake-rich
+    # boreal / arctic terrain. Baffin sample AOI (71.6 N, -72.75 W,
+    # 5 km bbox, 2023-06 to 2023-07) intersects 3 granules covering
+    # coastal / small inland water pixels.
+    #
+    # Quality: ``qf_bias_em`` (EM height-bias flag). Values -3..3 are
+    # progressively narrower "acceptable" bins (0 is the canonical
+    # centre); 4 flags an invalid retrieval; 127 fill wraps to int8 -1
+    # in the sidecar under the modular cast.
+    #
+    # Value ranges (verified empirically against the Baffin sample):
+    #   ht_water_surf: [-69, 4586] m WGS84 across a full pole-to-pole
+    #                  RGT (Dead Sea to Andean lakes) -- linear norm
+    #                  [-500, 5000] mirrors ATL06 / ATL08 with headroom.
+    #   ht_ortho:      [-2, 4617] m orthometric above the segment geoid
+    #                  -- same norm works; the difference is one geoid-
+    #                  undulation term (~+30 to -100 m globally).
+    # ============================================================
+    "ICESat-2-ATL13": {
+        "default_bands": ["ht_water_surf"],
+        "extra_bands":   ["ht_ortho"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "ht_water_surf": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+            "ht_ortho": {
+                "kind":  "altimetry",
+                "units": "meters",
+                "norm":  ("linear", -500, 5000),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "ATL13",
+                "reader":          "atl13_tracks",
+                "band_map":        {
+                    "ht_water_surf": "ht_water_surf",
+                    "ht_ortho":      "ht_ortho",
+                },
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
+    # GEDI L4A Footprint-Level Aboveground Biomass Density (NASA / ORNL DAAC).
+    #
+    # Per-shot AGBD (Mg/ha) at the native 25-m GEDI footprint, distributed
+    # as one HDF5 per ~90-minute orbit segment (~130-250 MB each). Sibling
+    # of the 1-km gridded GEDI-L4B product wired through the raster_per_band
+    # flow; L4A is the loss-less point-cloud upstream input, so it belongs
+    # on the tracks reader-kind alongside ICESat-2 ATL06.
+    #
+    # File layout: 1-to-8 top-level ``BEAM{bbbb}`` groups (four coverage
+    # beams + four full-power beams; the reader discovers them dynamically
+    # because a given granule may hold fewer than 8). Per-beam rank-1
+    # arrays keyed to ``shot_number``: ``agbd`` (Mg/ha), ``lat_lowestmode``,
+    # ``lon_lowestmode``, ``delta_time`` (seconds since 2018-01-01 UTC),
+    # ``l4_quality_flag``, ``l2_quality_flag``, ``degrade_flag``,
+    # ``sensitivity``. The reader applies the canonical L4A usable-shot
+    # filter (l4_quality==1 & l2_quality==1 & degrade==0 & sensitivity>=0.9)
+    # at read time, so the Parquet sidecar contains only shots the L4A
+    # team considers valid.
+    #
+    # Product version: V2.1 (production-complete). A newer V3 is live at
+    # ``GEDI_L4A_AGB_Density_V3_2508`` but its reprocessing is still
+    # sparse (0 granules over the test AOI vs 2 for V2.1), so V2.1 is
+    # the pragmatic default. Swap the short_name at call time to move to
+    # V3 once its coverage fills in:
+    #
+    #     MISSION_PROFILES["GEDI-L4A"]["providers"]["earthdata"] \
+    #         ["short_name"] = "GEDI_L4A_AGB_Density_V3_2508"
+    #
+    # Coverage cap: ±52 deg latitude, same as GEDI-L4B (GEDI flew on
+    # the ISS which never reached higher latitudes). AOIs outside the
+    # cap will produce 0 granules from CMR and raise a clean error from
+    # the tracks flow's post-search guard.
+    # ============================================================
+    "GEDI-L4A": {
+        "default_bands": ["agbd"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "agbd": {
+                "kind":  "index",
+                "units": "Mg/ha",
+                "norm":  ("linear", 0, 500),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                # Trailing _2056 is the ORNL DAAC collection id and is
+                # required; the shorter "GEDI_L4A_AGB_Density_V2_1"
+                # returns zero hits from CMR.
+                "short_name":      "GEDI_L4A_AGB_Density_V2_1_2056",
+                "reader":          "gedi_l4a_tracks",
+                "band_map":        {"agbd": "agbd"},
+                "default_reducer": "mean",
+            },
+        },
+    },
+
+    # ============================================================
+    # SWOT L2 KaRIn HR Raster (NASA-CNES).
+    # PODAAC-hosted NetCDF-4 tiles from the Surface Water and Ocean
+    # Topography mission. Each granule is one ~120 km UTM tile at 100 m
+    # or 250 m native, delivered with a proper CF-compliant CRS variable
+    # (crs_wkt attr embeds the full EPSG:326xx / 327xx WKT). Bands
+    # exposed here:
+    #   wse         : water surface elevation (m, EGM2008-referenced) --
+    #                 the flagship product; NaN over land.
+    #   water_frac  : fractional water coverage per pixel [0,1] -- valid
+    #                 everywhere and useful even over land (small ponds,
+    #                 river channels).
+    #   sig0        : Ka-band backscatter (linear power) -- valid over
+    #                 all surfaces; roughness / surface-type proxy.
+    # Auth: NASA Earthdata Login (PODAAC application approved). The
+    # earthdata provider auto-handles this.
+    #
+    # HR Raster is published at two native resolutions on PODAAC. We
+    # default to 250 m for smaller downloads / better fit with the
+    # typical 30-100 m cube; users needing finer detail can override
+    # short_name in the mission profile:
+    #     MISSION_PROFILES["SWOT-HR"]["providers"]["earthdata"] \
+    #         ["short_name"] = "SWOT_L2_HR_Raster_100m_2.0"
+    # ============================================================
+    "SWOT-HR": {
+        "default_bands": ["wse", "water_frac", "sig0"],
+        "extra_bands":   ["wse_qual", "wse_uncert", "water_area",
+                          "sig0_qual", "sig0_uncert", "dark_frac",
+                          "ice_clim_flag", "ice_dyn_flag"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "wse":        {"kind": "altimetry", "units": "meters",
+                           "norm": ("linear", -100.0, 100.0)},
+            "water_frac": {"kind": "fraction",  "units": "1",
+                           "norm": ("passthrough",)},
+            "sig0":       {"kind": "sar",       "units": "linear",
+                           "norm": ("log_db", -30.0, 30.0)},
+            "wse_qual":   {"kind": "categorical", "norm": ("passthrough",)},
+            "wse_uncert": {"kind": "continuous",  "units": "meters",
+                           "norm": ("linear", 0.0, 5.0)},
+            "water_area": {"kind": "continuous",  "units": "m^2",
+                           "norm": ("linear", 0.0, 62500.0)},
+            "sig0_qual":  {"kind": "categorical", "norm": ("passthrough",)},
+            "sig0_uncert":{"kind": "continuous",  "norm": ("linear", 0.0, 5.0)},
+            "dark_frac":  {"kind": "fraction",    "norm": ("passthrough",)},
+            "ice_clim_flag": {"kind": "categorical", "norm": ("passthrough",)},
+            "ice_dyn_flag":  {"kind": "categorical", "norm": ("passthrough",)},
+        },
+        "providers": {
+            "earthdata": {
+                # 250 m default; override to _100m_2.0 for finer detail.
+                "short_name": "SWOT_L2_HR_Raster_250m_2.0",
+                "reader":     "swot_hr_raster_nc",
+                # SWOT band names match our EE-side names 1:1.
+                "band_map":   {
+                    "wse": "wse", "water_frac": "water_frac", "sig0": "sig0",
+                    "wse_qual": "wse_qual", "wse_uncert": "wse_uncert",
+                    "water_area": "water_area",
+                    "sig0_qual": "sig0_qual", "sig0_uncert": "sig0_uncert",
+                    "dark_frac": "dark_frac",
+                    "ice_clim_flag": "ice_clim_flag",
+                    "ice_dyn_flag":  "ice_dyn_flag",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # CryoSat-2 Level 4 Sea Ice Thickness (NASA GSFC / N. Kurtz).
+    # Product `RDEFT4`, hosted by NSIDC. Monthly Arctic sea-ice
+    # thickness + freeboard + snow depth + ancillary layers on the
+    # canonical SSMI NH 25 km polar-stereographic grid (EPSG:3411,
+    # 448 x 304). Auth: NASA EDL + NSIDC application approved.
+    #
+    # Coverage: Northern Hemisphere sea ice only (30 N to pole);
+    # land pixels are NaN. Meaningful over ocean AOIs -- Baffin Bay,
+    # Beaufort Sea, Fram Strait etc. Over land ice (Greenland,
+    # Antarctica, ice caps) all bands are NaN and this mission is the
+    # wrong tool -- pair it with a sea-ice AOI.
+    #
+    # For CryoSat land-ice altimetry (ice-sheet elevation, CryoTEMPO
+    # Land Ice), the product lives only on the ESA science server and
+    # requires an ESA-EO login; wiring that would need a new provider
+    # class. Track separately if / when needed.
+    # ============================================================
+    "CryoSat-RDEFT4": {
+        "default_bands": ["sea_ice_thickness"],
+        "extra_bands":   ["freeboard", "snow_depth", "snow_density",
+                          "roughness", "ice_con"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "sea_ice_thickness": {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 5.0)},
+            "freeboard":         {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.6)},
+            "snow_depth":        {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.5)},
+            "snow_density":      {"kind": "continuous", "units": "kg/m^3",
+                                   "norm": ("linear", 200.0, 400.0)},
+            "roughness":         {"kind": "continuous", "units": "meters",
+                                   "norm": ("linear", 0.0, 0.5)},
+            "ice_con":           {"kind": "fraction",   "units": "1",
+                                   "norm": ("passthrough",)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "RDEFT4",
+                "reader":     "rdeft4_nc",
+                "band_map":   {
+                    "sea_ice_thickness": "sea_ice_thickness",
+                    "freeboard":         "freeboard",
+                    "snow_depth":        "snow_depth",
+                    "snow_density":      "snow_density",
+                    "roughness":         "roughness",
+                    "ice_con":           "ice_con",
+                },
+            },
+        },
+    },
+
+    # ============================================================
+    # SMAP L3 Enhanced Soil Moisture -- Global Daily 9 km EASE-Grid
+    # V006 (NASA / NSIDC DAAC).
+    #
+    # Product: SPL3SMP_E (CMR concept-id C2938664763-NSIDC_CPRD,
+    # ECS VersionID 006, Composite Release ID R19240). Daily
+    # composite from the SMAP L-band radiometer with the Enhanced
+    # 9 km posting (the standard SPL3SMP is 36 km); global daily
+    # coverage, so a CMR search returns 2 granules per calendar day
+    # (one file per composite) regardless of AOI.
+    #
+    # Distribution: NSIDC DAAC (Cumulus S3-backed) via NASA
+    # Earthdata Login -- the same auth path already wired for
+    # NISAR / ICESat-2 / GEDI. Each daily granule is HDF5, ~697 MB.
+    #
+    # File layout: FOUR sibling grid groups per file --
+    #   /Soil_Moisture_Retrieval_Data_AM         (6 AM descending)
+    #   /Soil_Moisture_Retrieval_Data_PM         (6 PM ascending;
+    #                                             field names carry
+    #                                             a `_pm` suffix)
+    #   /Soil_Moisture_Retrieval_Data_Polar_AM   (N09km EASE2 polar,
+    #                                             2000x2000, EPSG:6931)
+    #   /Soil_Moisture_Retrieval_Data_Polar_PM   (same, PM)
+    # We wire the AM global group as canonical (1624 x 3856 on the
+    # EASE-Grid 2.0 Global M09km grid, EPSG:6933). The PM /
+    # Polar_* groups are reachable by extending the reader (a
+    # `smap_group` kwarg is already plumbed through).
+    #
+    # Value ranges: soil_moisture 0.02-0.5 cm3/cm3 (volumetric);
+    # vegetation_water_content 0-5 kg/m2 over most land (file
+    # valid_max is 20 but 0-5 covers the usable range); brightness
+    # temperatures 150-300 K. retrieval_qual_flag is a uint16 bit
+    # field (0 = best; 7 / 15 = "retrieval not attempted" over
+    # frozen ground / snow / permanent water) -- surfaced as a
+    # default band so users can distinguish "no data" from "not
+    # retrieved" (see the Arctic-coverage caveat below).
+    #
+    # Fill values: TWO sentinels coexist in one file -- -9999.0 for
+    # the float32 physical variables (soil_moisture,
+    # vegetation_water_content, surface_temperature, tb_*,
+    # freeze_thaw_fraction, latitude, longitude) and 65534 for the
+    # uint16 flag / index fields (retrieval_qual_flag,
+    # EASE_row_index, EASE_column_index, surface_flag). The reader
+    # consults each dataset's `_FillValue` attribute rather than
+    # assuming a single sentinel.
+    #
+    # Coverage caveat: SMAP retrievals are inhibited whenever the
+    # ground is frozen, snow-covered, or a permanent water body.
+    # Empirical Baffin test (71.6 N, -72.75 W, +/-1 deg):
+    #   * 2024-06-15: 144 pixels in the bbox, ZERO valid
+    #     soil_moisture (all retrieval_qual_flag == 7 or 15 --
+    #     retrieval-not-attempted, frozen / snow-covered)
+    #   * 2024-08-01: 91/186 valid pixels in the 0.20-0.68
+    #     cm3/cm3 range
+    # Arctic users should expect valid soil-moisture pixels only in
+    # roughly June-September; winter frames will look empty over
+    # land AND ocean. Users of this cube should surface
+    # retrieval_qual_flag alongside soil_moisture to distinguish
+    # "no data" from "not retrieved".
+    #
+    # Version note: V007 does NOT yet exist for the Enhanced
+    # product -- V006 is genuinely the current version. The 36-km
+    # standard product (SPL3SMP) is on V009 and uses a different
+    # version numbering track.
+    # ============================================================
+    "SMAP-L3": {
+        "default_bands": ["soil_moisture", "vegetation_water_content",
+                          "retrieval_qual_flag"],
+        "extra_bands":   ["soil_moisture_error", "surface_temperature",
+                          "tb_h_corrected", "tb_v_corrected",
+                          "freeze_thaw_fraction"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "soil_moisture":            {"kind": "continuous",  "units": "cm^3/cm^3",
+                                          "norm": ("linear", 0.02, 0.5)},
+            "vegetation_water_content": {"kind": "continuous",  "units": "kg/m^2",
+                                          "norm": ("linear", 0.0, 5.0)},
+            # Bit-field flag; passthrough so users can decode bits and /
+            # or supply a categorical colormap. Do NOT norm as continuous.
+            "retrieval_qual_flag":      {"kind": "qa",           "norm": ("passthrough",)},
+            "soil_moisture_error":      {"kind": "continuous",  "units": "cm^3/cm^3",
+                                          "norm": ("linear", 0.0, 0.1)},
+            "surface_temperature":      {"kind": "temperature", "units": "K",
+                                          "norm": ("linear", 240.0, 320.0)},
+            "tb_h_corrected":           {"kind": "continuous",  "units": "K",
+                                          "norm": ("linear", 150.0, 300.0)},
+            "tb_v_corrected":           {"kind": "continuous",  "units": "K",
+                                          "norm": ("linear", 150.0, 300.0)},
+            "freeze_thaw_fraction":     {"kind": "fraction",    "units": "1",
+                                          "norm": ("linear", 0.0, 1.0)},
+        },
+        "providers": {
+            "earthdata": {
+                "short_name": "SPL3SMP_E",
+                "reader":     "smap_l3_sm_h5",
+                # Logical band == source dataset name inside the AM
+                # global group (1:1). PM / Polar variants are reachable
+                # by extending the reader with a group override; not
+                # exposed as separate bands here to keep the default
+                # cube shape simple.
+                "band_map": {
+                    "soil_moisture":            "soil_moisture",
+                    "vegetation_water_content": "vegetation_water_content",
+                    "retrieval_qual_flag":      "retrieval_qual_flag",
+                    "soil_moisture_error":      "soil_moisture_error",
+                    "surface_temperature":      "surface_temperature",
+                    "tb_h_corrected":           "tb_h_corrected",
+                    "tb_v_corrected":           "tb_v_corrected",
+                    "freeze_thaw_fraction":     "freeze_thaw_fraction",
+                },
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Forest / Non-Forest Mosaic (JAXA).
     # PC collection "alos-fnf-mosaic". Annual mosaic, derived from the
     # ALOS PALSAR mosaic by JAXA. Single classified band per tile;
@@ -954,6 +1752,82 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # Dynamic World V1 (Brown et al. 2022; Google + WRI). Per-Sentinel-2-scene
+    # 9-class LULC + per-class softmax probabilities at 10 m, updated every
+    # 2-5 days globally since 2015-06-27. First mission wired through the
+    # new ``earth_engine`` provider class -- the canonical distribution is
+    # Google Earth Engine (``GOOGLE/DYNAMICWORLD/V1``); there is no AWS or
+    # PC mirror.
+    #
+    # Nine class probability bands (float, softmax outputs in [0, 1]):
+    #   water, trees, grass, flooded_vegetation, crops,
+    #   shrub_and_scrub, built, bare, snow_and_ice
+    # Plus one hard-classified label band with integer class IDs 0..8 in
+    # the same class order. In EE this band is called ``label``; we surface
+    # it as ``LULC`` to match ESA-WorldCover / IO-LULC / LCMAP conventions
+    # and so ``preprocessing.fusion._NEAREST_BANDS`` picks nearest-neighbour
+    # resampling out of the box.
+    #
+    # Reducers:
+    #   * probability bands  --> ``mean`` across the time window (soft LULC)
+    #   * label band         --> ``mode``  (most-frequent hard class)
+    # Time-averaged probabilities are the recommended input to downstream
+    # models; the mode label band is convenient for visualisation and for
+    # coarse train/test splits.
+    #
+    # Licence CC-BY-4.0; cite Brown et al. 2022 (Sci Data 9:251).
+    # ============================================================
+    "Dynamic-World": {
+        "default_bands": ["LULC"],
+        "extra_bands":   ["water", "trees", "grass", "flooded_vegetation",
+                          "crops", "shrub_and_scrub", "built", "bare",
+                          "snow_and_ice"],
+        "cloud_filter":  False,   # DW is already per-scene cloud-conditioned server-side
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,   # per-Sentinel-2-scene collection
+        "band_meta": {
+            "water":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "trees":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "grass":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "flooded_vegetation": {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "crops":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "shrub_and_scrub":    {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "built":              {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "bare":               {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            "snow_and_ice":       {"kind": "spectral", "norm": ("linear", 0.0, 1.0)},
+            # Integer class IDs 0..8; one_hot over that range.
+            "LULC":               {"kind": "categorical",
+                                   "norm": ("one_hot", (0, 1, 2, 3, 4, 5, 6, 7, 8))},
+        },
+        "providers": {
+            "earth_engine": {
+                "collection": "GOOGLE/DYNAMICWORLD/V1",
+                # logical band -> EE band name inside the collection
+                "band_map": {
+                    "water":              "water",
+                    "trees":              "trees",
+                    "grass":              "grass",
+                    "flooded_vegetation": "flooded_vegetation",
+                    "crops":              "crops",
+                    "shrub_and_scrub":    "shrub_and_scrub",
+                    "built":              "built",
+                    "bare":               "bare",
+                    "snow_and_ice":       "snow_and_ice",
+                    "LULC":               "label",
+                },
+                "reducer_groups": [
+                    {"bands": ["water", "trees", "grass", "flooded_vegetation",
+                               "crops", "shrub_and_scrub", "built", "bare",
+                               "snow_and_ice"],
+                     "reducer": "mean"},
+                    {"bands": ["label"], "reducer": "mode"},
+                ],
+            },
+        },
+    },
+
+    # ============================================================
     # Hansen Global Forest Change v1.11 (Hansen et al. 2013, annual
     # updates by UMD GLAD; hosted on Google Cloud Storage as anonymous
     # COGs). 30 m global tree-cover baseline + annual forest-loss /
@@ -996,60 +1870,193 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
-    # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
-    # STUB ONLY -- ORNL hosts the four global COGs (mean, SE, mode, QF)
-    # at https://daac.ornl.gov/daacdata/cms/GEDI_L4B_Gridded_Biomass_V2_1/
-    # but requires NASA Earthdata Login (.netrc auth). The direct_http
-    # provider supports anonymous fetches today; Earthdata-Login flow is
-    # a follow-up.
+    # JRC Global Forest Cover 2020 v3 (European Commission Joint Research
+    # Centre; Bourgoin et al. 2026, PID data.europa.eu/89h/8c561543-...).
     #
-    # When wired up, this will be the canonical raster biomass mission
-    # in the pipeline -- 1 km global, EASE-Grid 2.0 (EPSG:6933), Mg/ha.
+    # This is the reference 2020-baseline forest-cover map that the EU
+    # commissioned to support the EU Deforestation Regulation (EUDR,
+    # EU/2023/1115). Global, 10 m, single-year snapshot as of 2020-12-31.
+    # Binary: value 1 = "forest" per the FAO-style definition (>= 0.5 ha,
+    # >= 5 m tall, >= 10% canopy) with agricultural plantations (oil palm,
+    # cocoa, coffee, rubber, soya, cattle) explicitly EXCLUDED -- that
+    # exclusion is what makes it EUDR-compliant, and is the key semantic
+    # difference from Hansen-GFC (which draws no plantation distinction).
+    #
+    # Wired through the earth_engine provider as a single-image dataset
+    # (JRC/GFC2020/V3 is an ee.Image, not an ImageCollection). Non-forest
+    # pixels are MASKED in the source; we unmask to 0 server-side to get
+    # a clean 0/1 binary raster ready for one_hot encoding.
+    #
+    # Logical band name is `LULC` for consistency with other categorical
+    # single-class rasters (ESA-WorldCover, IO-LULC, Dynamic-World) --
+    # semantically this is a forest presence/absence mask, not a full LULC
+    # classification, but the naming keeps preprocessing.fusion pick
+    # nearest-neighbour resampling out of the box via _NEAREST_BANDS.
+    #
+    # Licence: free to use without permission, license, or royalty payment;
+    # attribution recommended.
     # ============================================================
-    "GEDI-L4B": {
-        "default_bands": ["AGBD"],
-        "extra_bands":   ["SE", "MODE", "QF"],
+    "JRC-GFC2020": {
+        "default_bands": ["LULC"],
+        "extra_bands":   [],
         "cloud_filter":  False,
         "ndvi":          None,
         "cloud_mask":    None,
-        "static":        True,
-        "_needs_earthdata_login": True,
+        "static":        True,   # single 2020-12-31 snapshot; no temporal filter
         "band_meta": {
-            "AGBD": {"kind": "index", "norm": ("linear", 0, 500)},   # Mg/ha
-            "SE":   {"kind": "index", "norm": ("linear", 0, 200)},
-            "MODE": {"kind": "categorical", "norm": ("passthrough",)},
-            "QF":   {"kind": "qa",          "norm": ("passthrough",)},
+            # Binary forest / non-forest. one_hot over (0, 1).
+            "LULC": {"kind": "categorical", "norm": ("one_hot", (0, 1))},
         },
-        "providers": {},   # intentionally empty until Earthdata auth lands
+        "providers": {
+            "earth_engine": {
+                "collection":   "JRC/GFC2020/V3",
+                "is_image":     True,               # single ee.Image, not a Collection
+                "unmask_value": 0,                  # non-forest pixels are masked in source
+                "band_map":     {"LULC": "Map"},    # JRC's band name is 'Map'
+                # No reducer_groups needed for a single Image (no reduction).
+            },
+        },
     },
 
     # ============================================================
-    # GEBCO 2024 Global Bathymetry -- STUB ONLY.
-    # 15-arcsec global elevation + bathymetry grid (-32768 to +9000 m).
-    # The canonical anonymous-access source is BODC at
-    # https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/zip/
-    # but it ships as a *4 GB zipped GeoTIFF*, not a /vsicurl/-streamable
-    # COG. The direct_http fetcher would need a download-and-cache
-    # extension to handle this. NetCDF variant (7.5 GB) needs the
-    # xarray backend (same blocker as Sentinel-5P / DAYMET / GOES-R).
+    # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
     #
-    # When wired, GEBCO is the standard global bathymetry input for
-    # coastal / ocean studies + serves as a global DEM where Cop-DEM
-    # GLO-30 lacks coverage (open ocean).
+    # Global gridded mean aboveground biomass density (AGBD) from GEDI's
+    # first four years of on-orbit lidar sampling (mission weeks 19-223,
+    # 2019-04-18 to 2023-03-16), aggregated onto the EASE-Grid 2.0 Global
+    # (EPSG:6933) 1 km grid (34704 x 14616 pixels, +/-52 deg latitude).
+    # Distributed as ten single-band Cloud-Optimized GeoTIFFs -- one per
+    # data layer -- rather than one multi-band granule; first mission
+    # wired through the ``raster_per_band`` reader-kind (one CMR search +
+    # one download per requested logical band).
+    #
+    # Bands surfaced:
+    #   MU  -- mean AGBD                                  Mg/ha,       float32
+    #   SE  -- standard error of MU                       Mg/ha,       float32
+    #   V1  -- sampling variance component                (Mg/ha)^2,   float32
+    #   V2  -- residual variance component                (Mg/ha)^2,   float32
+    #   PE  -- SE as a percentage of MU                   %,           float32
+    #   MI  -- mode of inference (1/2/3)                  categorical, uint8
+    #   QF  -- quality flag (1 = usable)                  qa,          uint8
+    #   NS  -- number of GEDI shots per cell              count,       int32
+    #   NC  -- number of clusters (PSUs) per cell         count,       int32
+    #   PS  -- prediction stratum ID                      categorical, uint8
+    # Float layers use -9999 as the fill value; uint8 flag layers use 0.
+    # Coverage cap is +/-52 deg latitude; AOIs above 52 deg N or below
+    # 52 deg S fail cleanly in _fetch_raster_per_band rather than
+    # silently returning NaN.
+    #
+    # DOI: 10.3334/ORNLDAAC/2299. Auth: NASA Earthdata Login + the ORNL
+    # DAAC application must be authorized in the EDL profile.
     # ============================================================
-    "GEBCO": {
-        "default_bands": ["elevation"],
-        "extra_bands":   ["tid"],   # type-identifier flag (source provenance)
+    "GEDI-L4B": {
+        "default_bands": ["MU", "SE"],
+        "extra_bands":   ["V1", "V2", "PE", "MI", "QF", "NS", "NC", "PS"],
         "cloud_filter":  False,
         "ndvi":          None,
         "cloud_mask":    None,
         "static":        True,
-        "_needs_zip_unpack": True,
         "band_meta": {
-            "elevation": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
-            "tid":       {"kind": "qa",        "norm": ('passthrough',)},
+            "MU": {"kind": "index",       "units": "Mg/ha",
+                   "norm": ("linear", 0, 500)},
+            "SE": {"kind": "index",       "units": "Mg/ha",
+                   "norm": ("linear", 0, 200)},
+            "V1": {"kind": "index",       "units": "(Mg/ha)^2",
+                   "norm": ("linear", 0, 40000)},
+            "V2": {"kind": "index",       "units": "(Mg/ha)^2",
+                   "norm": ("linear", 0, 40000)},
+            "PE": {"kind": "index",       "units": "%",
+                   "norm": ("linear", 0, 100)},
+            "MI": {"kind": "categorical", "norm": ("passthrough",)},
+            "QF": {"kind": "qa",          "norm": ("passthrough",)},
+            "NS": {"kind": "index",       "units": "shots",
+                   "norm": ("linear", 0, 1000)},
+            "NC": {"kind": "index",       "units": "clusters",
+                   "norm": ("linear", 0, 100)},
+            "PS": {"kind": "categorical", "norm": ("passthrough",)},
         },
-        "providers": {},   # empty until download-and-cache lands in direct_http
+        "providers": {
+            "earthdata": {
+                # Trailing _2299 is the ORNL DAAC collection id and is required;
+                # the shorter "GEDI_L4B_Gridded_Biomass_V2_1" returns zero hits.
+                "short_name": "GEDI_L4B_Gridded_Biomass_V2_1_2299",
+                "reader":     "geotiff",
+                # Logical band == source-side filename suffix, 1:1. The reader
+                # kind (see _READER_KINDS) routes to _fetch_raster_per_band,
+                # which downloads one granule per suffix.
+                "band_map": {b: b for b in ("MU", "SE", "V1", "V2", "PE",
+                                            "MI", "QF", "NS", "NC", "PS")},
+            },
+        },
+    },
+
+    # ============================================================
+    # GEBCO 2024 Global Bathymetry + Elevation Grid (IHO/IOC BODC,
+    # released 2024-07-04, DOI 10.5285/1c44ce99-0a0d-5f4f-e063-7086abc0ea0f).
+    #
+    # 15-arc-second global raster (~463 m at the equator) of elevation
+    # and bathymetry, distributed by BODC on the CEDA Data Access
+    # Portal (dap.ceda.ac.uk) as EIGHT fixed 90-deg x 90-deg GeoTIFF
+    # tiles per variant (4 columns x 2 rows; lon edges -180/-90/0/90/180,
+    # lat edges -90/0/90). Each tile is 21600 x 21600 int16 (~933 MB
+    # uncompressed) in EPSG:4326, area-registered, with nodata = -32767.
+    #
+    # Anonymous HTTPS, no auth. The user-facing entrypoint
+    # https://www.bodc.ac.uk/data/open_download/gebco/gebco_2024/geotiff/
+    # 301-redirects to the 4.26 GB whole-world zip -- do NOT follow it
+    # for AOI work. The per-tile CEDA URLs support HTTP byte-range
+    # requests (Accept-Ranges: bytes verified), so rasterio /vsicurl/
+    # streams only the AOI window and per-fetch cost stays small
+    # (~kB for a 5-10 km AOI) despite the 933 MB nominal tile size.
+    #
+    # Two co-tiled variants share the tile layout, differing only in
+    # the filename prefix and in how each pixel is reported over grounded
+    # ice sheets:
+    #   * "ice_surface_elevation" (default)     -- ice-sheet top over
+    #     Greenland / Antarctica. Prefix: ``gebco_2024``.
+    #   * "sub_ice_topography_bathymetry"       -- bedrock beneath the
+    #     ice removed. Prefix: ``gebco_2024_sub_ice``. Use for true
+    #     bathymetry / bedrock under ice.
+    # Each logical band maps to one variant (see band_map below); the
+    # tile_callback formats the CEDA URL string per band.
+    #
+    # Static climatology: no time axis, single 2024 release. The
+    # tile_callback ignores any time_range arg.
+    #
+    # The Type-Identifier Grid (per-pixel source provenance flag) is
+    # NOT included: BODC only ships it as a NetCDF zip
+    # (gebco_2024_tid.zip, 107 MB), not as per-tile GeoTIFFs, so it
+    # cannot be wired through the geotiff-only direct_http fetcher.
+    # ============================================================
+    "GEBCO-2024": {
+        "default_bands": ["elevation"],
+        "extra_bands":   ["elevation_sub_ice"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,       # 2024 release; no temporal filter
+        "band_meta": {
+            # Norm range aligned with the geospatial_vertical_min/max tags
+            # observed on the per-tile GeoTIFFs (-10919 / +8627 m).
+            "elevation":         {"kind": "elevation",
+                                  "units": "meters",
+                                  "norm": ("linear", -8000.0, 4000.0)},
+            "elevation_sub_ice": {"kind": "elevation",
+                                  "units": "meters",
+                                  "norm": ("linear", -8000.0, 4000.0)},
+        },
+        "providers": {
+            "direct_http": {
+                "release_tag":   "2024",
+                # Logical band -> GEBCO variant folder + filename prefix.
+                # Consumed by the tile_callback wired up below the dict.
+                "band_variant": {
+                    "elevation":         "ice_surface_elevation",
+                    "elevation_sub_ice": "sub_ice_topography_bathymetry",
+                },
+                "tile_callback": None,       # wired up below the dict
+            },
+        },
     },
 
     # ============================================================
@@ -1108,6 +2115,87 @@ MISSION_PROFILES = {
             },
         },
     },
+
+    # ============================================================
+    # Sentinel-5P TROPOMI Tropospheric NO2 -- 1-Orbit L2, 5.5 km x 3.5 km
+    # (NASA GES_DISC).
+    #
+    # Product: S5P_L2__NO2____HiR v2 (CMR concept-id C2089270961-GES_DISC;
+    # short_name S5P_L2__NO2____HiR, version 2). One NetCDF-4 per ~100-min
+    # orbit (~590 MB), CF-compliant, /PRODUCT group hierarchy. Sentinel-5P
+    # is polar-orbiting so a fixed high-latitude AOI can intersect 8-14
+    # orbits per day; expect ~130 granules per fortnight over a mid-size
+    # Arctic AOI, ~500+ over a wider ocean AOI.
+    #
+    # Data model: **tracks**. Native swath data at dims
+    # (time=1, scanline~3600, ground_pixel=450) with per-pixel corner
+    # geolocations. In-reader resampling would need pyresample-KDTree per
+    # orbit and per-target-CRS work; ascending/descending pass overlap
+    # complicates any mosaic. Reusing the ATL06 / GEDI-L4A tracks flow
+    # gives us: read /PRODUCT/{lat, lon, delta_time, NO2 tropo column,
+    # qa_value}, mask to bbox + qa_value >= 0.75 (Product User Manual
+    # recommendation), flatten (scanline, ground_pixel), write one row
+    # per surviving pixel into the tracks Parquet, and let
+    # PointObservations bin / rasterize at any downstream resolution.
+    #
+    # Auth: NASA Earthdata Login PLUS a one-time application authorization
+    # for **NASA GESDISC DATA ARCHIVE** at
+    # https://urs.earthdata.nasa.gov/approve_app?client_id=e2WVk8Pw6weeLUKZYOxvTQ
+    # -- without that click, earthaccess.download raises EulaNotAccepted
+    # even though the .netrc credentials are valid. Users see a clear
+    # error message pointing at the URL when this happens.
+    #
+    # Value range: ``nitrogendioxide_tropospheric_column`` in mol m^-2.
+    # Typical polluted urban 5e-5 to 3e-4, remote / marine <5e-5. Multiply
+    # by 6.022e19 to get molec/cm^2 (the classic display unit). The
+    # ("linear", 0, 2e-4) norm maps most polluted-city values into [0, 1].
+    #
+    # Product variants NOT wired here:
+    # * NRTI (Near-Real-Time, ~3-hour latency) -- separate CMR collection;
+    #   OFFL is the default for retrospective / research use.
+    # * Additional gases (CO, SO2, CH4, O3, HCHO): each is its own CMR
+    #   short_name with the same /PRODUCT group layout, so wiring another
+    #   is a 5-line profile stanza + a per-band suffix change in the
+    #   reader (or a shared reader keyed on band name).
+    # ============================================================
+    "Sentinel-5P-NO2": {
+        "default_bands": ["no2_tropospheric"],
+        "extra_bands":   [],
+        "cloud_filter":  False,   # atmospheric column, cloud fraction is
+                                  # ancillary; qa_value gating happens in
+                                  # the reader.
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,
+        "band_meta": {
+            "no2_tropospheric": {
+                "kind":  "continuous",
+                "units": "mol m^-2",
+                "norm":  ("linear", 0.0, 2e-4),
+            },
+        },
+        "providers": {
+            "earthdata": {
+                "short_name":      "S5P_L2__NO2____HiR",
+                "reader":          "tropomi_no2_tracks",
+                "band_map":        {
+                    "no2_tropospheric": "nitrogendioxide_tropospheric_column",
+                },
+                "default_reducer": "mean",
+                # CMR version filter: pins the search to the v2 (collection
+                # 03/06) archive so an eventual v3 release does not silently
+                # change the file layout our reader depends on.
+                "filters":         {"version": "2"},
+                # TROPOMI granules are ~600 MB each and polar orbits mean
+                # 3-10 unique passes per day cross a high-latitude AOI. A
+                # one-week window can easily hit 30+ GB unbounded. Users
+                # doing multi-week aggregation should override in-code
+                # (they're aware of the disk cost by then).
+                "max_granules":    10,
+                "max_download_gb": 10.0,
+            },
+        },
+    },
 }
 
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)
@@ -1158,6 +2246,224 @@ def _hansen_gfc_tile_callback(roi, bands, time_range):
 
 MISSION_PROFILES["Hansen-GFC"]["providers"]["direct_http"]["tile_callback"] = (
     _hansen_gfc_tile_callback
+)
+
+
+# ============================================================
+# ArcticDEM v4.1 mosaic tile callback
+# ============================================================
+# Grid parameters derived empirically (see notes on the ArcticDEM
+# mission profile above and verified against a downloaded tile):
+#   * EPSG:3413 polar-stereographic, 100 km x 100 km tiles.
+#   * Tile (row, col) covers
+#         x in [ORIGIN + col*STEP, ORIGIN + (col+1)*STEP]
+#         y in [ORIGIN + row*STEP, ORIGIN + (row+1)*STEP]
+#     with ORIGIN = -4100000 and STEP = 100000.
+#   * URL:
+#         https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/
+#         arcticdem/mosaics/v4.1/<res>/<row>_<col>/<row>_<col>_<res>_v4.1_dem.tif
+
+_ARCTICDEM_ORIGIN_M = -4100000     # x=y origin of the tile grid in EPSG:3413
+_ARCTICDEM_STEP_M   = 100000       # tile size (m) in EPSG:3413
+_ARCTICDEM_BASE_URL = (
+    "https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1"
+)
+_ARCTICDEM_VALID_RES = ("2m", "10m", "32m", "100m", "500m")
+
+
+def _arcticdem_current_resolution() -> str:
+    """Read the ArcticDEM tile resolution from the mission profile."""
+    res = (MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]
+           .get("resolution") or "32m")
+    if res not in _ARCTICDEM_VALID_RES:
+        raise ValueError(
+            f"ArcticDEM resolution {res!r} not in "
+            f"{_ARCTICDEM_VALID_RES}. Note: 2m and 100m/500m tiles are "
+            "not published for every grid cell; 10m and 32m are the "
+            "safest defaults."
+        )
+    return res
+
+
+def set_arcticdem_resolution(resolution: str) -> None:
+    """Set both ``resolution`` and ``release_tag`` on the ArcticDEM profile.
+
+    Use this instead of writing to the profile fields directly -- the
+    release_tag is what fetch_data.py uses to name the output folder,
+    and it must be updated at the same time as resolution or fetches
+    will land in stale-named directories. Valid values: "2m", "10m",
+    "32m", "100m", "500m" (not every value is available for every tile).
+    """
+    if resolution not in _ARCTICDEM_VALID_RES:
+        raise ValueError(
+            f"ArcticDEM resolution {resolution!r} not in "
+            f"{_ARCTICDEM_VALID_RES}."
+        )
+    cfg = MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]
+    cfg["resolution"] = resolution
+    cfg["release_tag"] = f"v4.1_{resolution}"
+
+
+def _arcticdem_tile_callback(roi, bands, time_range):
+    """Enumerate the ArcticDEM v4.1 mosaic tiles intersecting an AOI.
+
+    The AOI (WGS84 bbox) is projected to EPSG:3413 by transforming ALL
+    FOUR corners (polar stereographic rotates a lat/lon bbox into a
+    tilted quadrilateral; using just two opposite corners would clip
+    the wrong pixels). Then the intersecting tile grid indices are
+    computed and one TileRef per tile is returned. The tile resolution
+    (2m / 10m / 32m / 100m / 500m) is read from the mission profile at
+    call time -- see ``_arcticdem_current_resolution``.
+    """
+    from pyproj import Transformer
+
+    res = _arcticdem_current_resolution()
+
+    lon_min, lat_min, lon_max, lat_max = roi
+    tf_fwd = Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
+    tf_back = Transformer.from_crs("EPSG:3413", "EPSG:4326", always_xy=True)
+
+    xs, ys = tf_fwd.transform(
+        [lon_min, lon_max, lon_max, lon_min],
+        [lat_min, lat_min, lat_max, lat_max],
+    )
+    x_min_s, x_max_s = min(xs), max(xs)
+    y_min_s, y_max_s = min(ys), max(ys)
+
+    col_min = int((x_min_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    col_max = int((x_max_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    row_min = int((y_min_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+    row_max = int((y_max_s - _ARCTICDEM_ORIGIN_M) // _ARCTICDEM_STEP_M)
+
+    if col_min > col_max or row_min > row_max:
+        raise RuntimeError(
+            f"No ArcticDEM tiles intersect AOI {roi} in EPSG:3413. AOI may "
+            "be outside the Arctic domain -- ArcticDEM only covers latitudes "
+            "north of ~60N."
+        )
+
+    refs = []
+    for row in range(row_min, row_max + 1):
+        for col in range(col_min, col_max + 1):
+            tile_name = f"{row:02d}_{col:02d}"
+            url = (f"{_ARCTICDEM_BASE_URL}/{res}/{tile_name}/"
+                   f"{tile_name}_{res}_v4.1_dem.tif")
+
+            # Tile bbox in EPSG:3413 -> WGS84 (four corners, then min/max).
+            tx_lo = _ARCTICDEM_ORIGIN_M + col * _ARCTICDEM_STEP_M
+            tx_hi = tx_lo + _ARCTICDEM_STEP_M
+            ty_lo = _ARCTICDEM_ORIGIN_M + row * _ARCTICDEM_STEP_M
+            ty_hi = ty_lo + _ARCTICDEM_STEP_M
+            lons_t, lats_t = tf_back.transform(
+                [tx_lo, tx_hi, tx_hi, tx_lo],
+                [ty_lo, ty_lo, ty_hi, ty_hi],
+            )
+            refs.append({
+                "band":         "DEM",
+                "url":          url,
+                "tile_bbox_ll": [min(lons_t), min(lats_t), max(lons_t), max(lats_t)],
+                "tile_name":    tile_name,
+                "auth":         None,
+            })
+
+    # No overlap-check against s3 here: some tiles in the candidate grid
+    # may be genuinely absent (ArcticDEM v4.1 doesn't publish every
+    # possible tile, only the ones with source coverage). The
+    # direct_http fetcher already logs+skips 404-ing tiles gracefully.
+    return refs
+
+
+MISSION_PROFILES["ArcticDEM"]["providers"]["direct_http"]["tile_callback"] = (
+    _arcticdem_tile_callback
+)
+# Prime resolution + release_tag with the default so downstream code
+# that reads either field before the first fetch call sees real values,
+# not None.
+set_arcticdem_resolution("32m")
+
+
+# ============================================================
+# GEBCO 2024 tile callback
+# ============================================================
+# BODC / CEDA publish GEBCO 2024 as EIGHT fixed 90 deg x 90 deg tiles per
+# variant (4 columns x 2 rows). No 5-deg pre-tiled slicing exists; the
+# GEBCO subset app produces arbitrary AOI cutouts but only via a form-POST
+# session-cookie flow with no stable URLs, so it is not automatable.
+#
+# The 933 MB nominal tile size is not a fetch cost -- CEDA supports HTTP
+# byte-range (Accept-Ranges: bytes), so rasterio /vsicurl/ transfers only
+# the AOI window (~kB for a typical 5-10 km AOI).
+
+_GEBCO_2024_BASE_URL = "https://dap.ceda.ac.uk/bodc/gebco/global/gebco_2024"
+_GEBCO_2024_LON_WEST_EDGES = (-180, -90, 0, 90)
+_GEBCO_2024_LAT_SOUTH_EDGES = (-90, 0)
+_GEBCO_2024_VARIANT_PREFIX = {
+    "ice_surface_elevation":         "gebco_2024",
+    "sub_ice_topography_bathymetry": "gebco_2024_sub_ice",
+}
+
+
+def _gebco_2024_tile_callback(roi, bands, time_range):
+    """Enumerate the GEBCO 2024 90 deg x 90 deg tiles intersecting an AOI.
+
+    GEBCO 2024 is a static climatology, so ``time_range`` is ignored.
+    Each requested band maps to a specific GEBCO variant folder + filename
+    prefix via the mission profile's ``band_variant`` table (currently
+    ``elevation`` -> ``ice_surface_elevation`` and ``elevation_sub_ice``
+    -> ``sub_ice_topography_bathymetry``); tiles are the same 8 for both.
+    """
+    del time_range   # static climatology: single 2024 release
+    band_variant = (MISSION_PROFILES["GEBCO-2024"]["providers"]
+                    ["direct_http"].get("band_variant") or {})
+
+    lon_min, lat_min, lon_max, lat_max = roi
+
+    intersecting = []
+    for lon_w in _GEBCO_2024_LON_WEST_EDGES:
+        lon_e = lon_w + 90
+        # Half-open intersection: skip tiles fully east or fully west of AOI.
+        if lon_e <= lon_min or lon_w >= lon_max:
+            continue
+        for lat_s in _GEBCO_2024_LAT_SOUTH_EDGES:
+            lat_n = lat_s + 90
+            if lat_n <= lat_min or lat_s >= lat_max:
+                continue
+            intersecting.append((lat_n, lat_s, lon_w, lon_e))
+
+    if not intersecting:
+        raise RuntimeError(
+            f"No GEBCO-2024 tiles intersect AOI {roi!r}. GEBCO is truly "
+            "global; this indicates a malformed bbox (e.g. lon_min > lon_max)."
+        )
+
+    refs = []
+    for band in bands:
+        variant = band_variant.get(band)
+        if variant is None:
+            raise ValueError(
+                f"GEBCO-2024: band {band!r} has no variant mapping. Known "
+                f"bands: {sorted(band_variant)}."
+            )
+        prefix = _GEBCO_2024_VARIANT_PREFIX[variant]
+        base = f"{_GEBCO_2024_BASE_URL}/{variant}/geotiff"
+        for (lat_n, lat_s, lon_w, lon_e) in intersecting:
+            # Filename edges are written as signed floats with one decimal
+            # (e.g. n90.0_s0.0_w-90.0_e0.0.tif). Verified against BODC/CEDA.
+            tile_stem = (f"n{lat_n:.1f}_s{lat_s:.1f}"
+                         f"_w{lon_w:.1f}_e{lon_e:.1f}")
+            refs.append({
+                "band":         band,
+                "url":          f"{base}/{prefix}_{tile_stem}.tif",
+                "tile_bbox_ll": [float(lon_w), float(lat_s),
+                                 float(lon_e), float(lat_n)],
+                "tile_name":    f"{variant}/{tile_stem}",
+                "auth":         None,
+            })
+    return refs
+
+
+MISSION_PROFILES["GEBCO-2024"]["providers"]["direct_http"]["tile_callback"] = (
+    _gebco_2024_tile_callback
 )
 
 

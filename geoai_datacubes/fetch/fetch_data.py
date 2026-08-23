@@ -57,8 +57,8 @@ PROVIDER_AUTO = {
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
     "NAIP":           "planetary_computer", # PC only; US aerial imagery
-    "MODIS_SR":       "planetary_computer", # PC only; surface reflectance 8-day
-    "MODIS_LST":      "planetary_computer", # PC only; daily land surface temperature
+    "MODIS_SR":       "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
+    "MODIS_LST":      "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
     "HLS_S30":        "planetary_computer", # PC only; harmonized S2 leg
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
@@ -66,11 +66,26 @@ PROVIDER_AUTO = {
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
+    "ArcticDEM":      "direct_http",        # PGC ArcticDEM v4.1 32 m mosaic, AWS Open Data
+    "GEBCO-2024":     "direct_http",        # BODC/CEDA GEBCO 2024 15-arcsec global bathymetry/elevation
     "Copernicus-DEM-90": "planetary_computer", # 90 m static, lower-res complement
     "USDA-CDL":       "planetary_computer", # annual US crop-type raster
     "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)
     "IO-LULC":        "planetary_computer", # annual global 10 m LULC
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
+    "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
+    "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
+    "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
+    "ICESat-2-ATL03": "earthdata",          # NSIDC DAAC, per-photon geolocated photons (tracks flow, downsampled)
+    "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
+    "ICESat-2-ATL08": "earthdata",          # NSIDC DAAC, land + vegetation heights (100 m tracks flow)
+    "ICESat-2-ATL13": "earthdata",          # NSIDC DAAC, along-track inland water surface heights (tracks flow)
+    "SWOT-HR":        "earthdata",          # PODAAC, KaRIn L2 HR Raster NetCDF (250 m default)
+    "CryoSat-RDEFT4": "earthdata",          # NSIDC DAAC, monthly NH sea-ice thickness (25 km)
+    "GEDI-L4B":       "earthdata",          # ORNL DAAC, 1 km global gridded biomass (EASE-Grid 2.0)
+    "GEDI-L4A":       "earthdata",          # ORNL DAAC, per-shot 25 m footprint biomass (tracks flow)
+    "SMAP-L3":        "earthdata",          # NSIDC DAAC, daily global 9 km enhanced soil moisture (SPL3SMP_E V006)
+    "Sentinel-5P-NO2": "earthdata",         # GES_DISC, TROPOMI L2 NO2 HiR v2 (tracks flow, ~590 MB/orbit)
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -162,6 +177,24 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
         )
 
+    if provider == "earth_engine":
+        return fetch_earth_engine(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
+    if provider == "earthdata":
+        return fetch_earthdata(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
+    if provider == "local_files":
+        return fetch_local_files(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+        )
+
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
@@ -174,7 +207,8 @@ def fetch_sentinel_data(
 
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
-        f"'planetary_computer', 'planet', 'direct_http', or 'sentinelhub'."
+        f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
+        f"'earthdata', 'local_files', or 'sentinelhub'."
     )
 
 
@@ -197,6 +231,106 @@ def fetch_direct_http(mission, bands, time_range, roi,
         tile_callback=cfg["tile_callback"],
         band_meta=get_profile(mission).get("band_meta"),
         release_tag=cfg.get("release_tag"),
+    )
+
+
+def fetch_earth_engine(mission, bands, time_range, roi,
+                       resolution=10, save_folder="data"):
+    """Google Earth Engine fetcher (see ``fetch._earth_engine``).
+
+    Reads the mission's ``earth_engine`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earth_engine``, which
+    reduces the collection server-side, downloads the payload (auto-tiling
+    for large AOIs), and writes the standard ``<Mission>_full_size.tiff`` +
+    ``userdata.json`` layout so fusion / tiling need no provider-specific
+    code.
+
+    Auth is env-driven; see the docstring of
+    ``_earth_engine._ensure_ee_initialized`` for the credential-selection
+    order.
+    """
+    from ._earth_engine import _fetch_via_earth_engine
+    cfg = get_provider_config(mission, "earth_engine")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earth_engine(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        ee_collection=cfg["collection"],
+        band_map=cfg["band_map"],
+        reducer_groups=cfg.get("reducer_groups"),
+        static=profile.get("static", False),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
+        scale_factors=cfg.get("scale_factors"),
+        is_image=cfg.get("is_image", False),
+        unmask_value=cfg.get("unmask_value"),
+        project=cfg.get("project"),
+    )
+
+
+def fetch_local_files(mission, bands, time_range, roi,
+                        resolution=10, save_folder="data"):
+    """Local-files fetcher (see ``fetch._local_files``).
+
+    Wraps a user-registered set of local raster files (GeoTIFF in v1,
+    NetCDF/HDF5 on the roadmap) as a first-class mission -- same
+    fetch/fuse/tile pipeline, output contract, and downstream ML flow
+    as any other provider.
+
+    Users register missions at runtime with
+    :func:`geoai_datacubes.fetch.register_local_mission`; there is no
+    hardcoded mission profile in ``missions.py`` for this provider.
+    """
+    from ._local_files import _fetch_via_local_files
+    cfg = get_provider_config(mission, "local_files")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_local_files(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        path=cfg["path"],
+        reader=cfg.get("reader", "geotiff"),
+        band_map=cfg.get("band_map"),
+        band_meta=profile.get("band_meta"),
+        time_from_filename=cfg.get("time_from_filename"),
+    )
+
+
+def fetch_earthdata(mission, bands, time_range, roi,
+                     resolution=30, save_folder="data"):
+    """NASA Earthdata / CMR fetcher (see ``fetch._earthdata``).
+
+    Reads the mission's ``earthdata`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earthdata``, which
+    authenticates via NASA Earthdata Login, searches CMR, downloads the
+    granule, extracts the AOI window with the per-product reader
+    (``nisar_gcov_h5``, ``geotiff``, ...), reprojects to local UTM, and
+    writes the standard ``<Mission>_full_size.tiff`` + ``userdata.json``
+    layout.
+
+    Auth is env-driven; see ``_earthdata._ensure_earthdata_initialized``.
+    """
+    from ._earthdata import _fetch_via_earthdata
+    cfg = get_provider_config(mission, "earthdata")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earthdata(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        short_name=cfg["short_name"],
+        band_map=cfg["band_map"],
+        reader=cfg.get("reader", "nisar_gcov_h5"),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
+        default_reducer=cfg.get("default_reducer", "mean"),
+        reader_kwargs=cfg.get("reader_kwargs"),
+        # Per-mission download guards; ignored by non-tracks readers.
+        max_granules=cfg.get("max_granules"),
+        max_download_gb=cfg.get("max_download_gb"),
     )
 
 

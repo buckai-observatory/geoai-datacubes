@@ -18,7 +18,15 @@
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for all three. A fourth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
+> - **Earth Engine + Dynamic World** (v0.2 preview — this branch only) — Colab-first onramp for the new `earth_engine` data provider. Fetches Google Dynamic World, ESA WorldCover, or the JRC EUDR-compliant GFC2020 forest baseline as a LULC label layer, plus Sentinel-2 + Copernicus DEM; fuses them into a single UTM cube; trains XGBoost end-to-end.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+>   <!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+>
+> - **NISAR L-band SAR + Arctic-calving-glacier datacube** (v0.2 preview — this branch only) — cutting-edge showcase of the new `earthdata` provider fetching **NISAR** L-band SAR (public archive opened 2026-07-20, first proper open L-band SAR archive since ALOS PALSAR-1) alongside Sentinel-1 C-band, ArcticDEM (PGC), and Sentinel-2 optical, fused into one UTM cube over an Arctic ice-cap AOI (default: northern Baffin Island plateau).
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+>   <!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+>
+> Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for the full set. A fifth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
 
 ---
 
@@ -35,8 +43,91 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ## What it does
 
-- **26 missions** in a unified registry — Sentinel-1 / 2, Landsat, NAIP, PlanetScope, MODIS, HLS, ALOS, Copernicus DEM, 3DEP, ESA WorldCover, JRC-GSW, USDA-CDL, Hansen-GFC, and more. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
-- **Four interchangeable providers** (Earth Search, Microsoft Planetary Computer, Planet Orders, Sentinel Hub) plus a `direct_http` path for non-STAC datasets, unified behind one dispatcher. The default `PROVIDER = "auto"` routes each mission to its best free host. See [`docs/providers.md`](docs/providers.md) for the trade-offs and routing table.
+- **38 missions in a unified registry, grouped by data modality below.** 23 released in v0.1.0 (under JOSS review) + **15 new v0.2-preview additions on this branch, marked †**. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
+
+  <details>
+  <summary><b>Optical (multispectral)</b> — 9 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Sentinel-2` / `Sentinel-2-L1C` | 10 m | earthsearch | 4 vis+NIR @ 10 m, 6 red-edge/SWIR @ 20 m; L2A (BOA) and L1C (TOA) |
+  | `Landsat` (8 / 9 C2L2) | 30 m | planetary_computer | Long time series; thermal @ 100 m |
+  | `NAIP` | 1 m | planetary_computer | US aerial imagery |
+  | `MODIS_SR` (Terra / Aqua) | 500 m | earth_engine | Daily global; sinusoidal tile seams resolved via EE |
+  | `HLS_S30` / `HLS_L30` | 30 m | planetary_computer | Harmonized Sentinel-2 + Landsat |
+  | `PlanetScope-4b` / `PlanetScope-8b` | ~3.5 m | planet | Commercial daily global; API key required |
+  </details>
+
+  <details>
+  <summary><b>SAR</b> — 3 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Sentinel-1` | 10 m | planetary_computer | C-band, RTC analysis-ready |
+  | `NISAR-L` † | ~20 m | earthdata | NASA-ISRO L-band; public since 2026-07-20 |
+  | `ALOS-PALSAR` | 25 m | planetary_computer | Annual L-band mosaic |
+  </details>
+
+  <details>
+  <summary><b>LIDAR / altimetry (photons, waveforms, radar)</b> — 6 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `ICESat-2-ATL06` † | 40 m segments, 6 beams | earthdata | Land-ice heights |
+  | `ICESat-2-ATL08` † | 100 m segments | earthdata | Land + canopy heights |
+  | `ICESat-2-ATL13` † | per-water-body segments | earthdata | Inland water surface heights |
+  | `ICESat-2-ATL03` † | per-photon (capped) | earthdata | Raw geolocated photons |
+  | `GEDI-L4A` † | 25 m footprint | earthdata | Aboveground biomass per shot (±52° lat) |
+  | `SWOT-HR` † | 100 m or 250 m | earthdata | KaRIn Ka-band water surface heights |
+  </details>
+
+  <details>
+  <summary><b>Elevation (DEMs) and bathymetry</b> — 5 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `Copernicus-DEM` / `Copernicus-DEM-90` | 30 m / 90 m | earthsearch / planetary_computer | Global TanDEM-X-derived |
+  | `ArcticDEM` † | 2 / 10 / 32 m | direct_http | PGC / OSU (>60° N); resolution configurable |
+  | `3DEP` | 10 / 1 m | planetary_computer | US high-res LIDAR-derived |
+  | `GEBCO-2024` † | 15 arc-s (~450 m) | direct_http | Global bathymetry + topography |
+  </details>
+
+  <details>
+  <summary><b>Land cover / land use</b> — 6 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `ESA-WorldCover` | 10 m | planetary_computer | Static 11-class global (2020, 2021) |
+  | `USDA-CDL` | 30 m | planetary_computer | US annual crop-type raster |
+  | `LCMAP-CONUS` | 30 m | planetary_computer | US annual (NLCD substitute) |
+  | `IO-LULC` | 10 m | planetary_computer | Annual global 10-class |
+  | `Dynamic-World` † | 10 m | earth_engine | Per-Sentinel-2-scene 9-class LULC |
+  | `JRC-GFC2020` † | 10 m | earth_engine | EUDR-compliant forest-cover baseline |
+  </details>
+
+  <details>
+  <summary><b>Biomass / forest structure and change</b> — 4 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `GEDI-L4B` † | 1 km | earthdata | Gridded global aboveground biomass (±52° lat) |
+  | `Chloris-Biomass` | ~4.6 km | planetary_computer | Annual global biomass |
+  | `ALOS-FNF` | 25 m | planetary_computer | Annual forest / non-forest |
+  | `Hansen-GFC` | 30 m | direct_http | Annual forest-change v1.11 |
+  </details>
+
+  <details>
+  <summary><b>Thermal · hydrology · cryosphere · atmosphere · soil</b> — 5 missions</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `MODIS_LST` | 1 km | earth_engine | Daily land-surface temperature |
+  | `JRC-GSW` | 30 m | planetary_computer | Static global surface water (Pekel 2016) |
+  | `CryoSat-RDEFT4` † | 25 km | earthdata | Monthly NH sea-ice thickness + freeboard |
+  | `Sentinel-5P-NO2` † | 7 km | earthdata | Tropospheric NO₂ (extendable to CO, CH₄, O₃, ...) |
+  | `SMAP-L3` † | 9 km | earthdata | Daily enhanced soil moisture |
+  </details>
+- **Four interchangeable STAC providers** (Earth Search, Microsoft Planetary Computer, Planet Orders, Sentinel Hub) plus a `direct_http` path for non-STAC datasets. **On this v0.2-preview branch: three additional providers — `earth_engine` (Google Earth Engine, unlocks Dynamic World, JRC GFC2020, and MODIS with server-side reprojection), `earthdata` (NASA Earthdata Login, unlocks NISAR L-band, GEDI biomass, SMAP, ICESat-2, SWOT, CryoSat, Sentinel-5P, and the wider NASA DAAC catalogue), and `local_files` (register the user's own local GeoTIFFs as a first-class mission via `register_local_mission(...)` — perfect for airborne LIDAR bathymetry, licensed WorldView / Maxar, or georeferenced drone imagery).** All eight unified behind one dispatcher; the default `PROVIDER = "auto"` routes each mission to its best free host. See [`docs/providers.md`](docs/providers.md) for the trade-offs, capability matrices, and routing table.
 - **Declarative per-band metadata.** Every band carries a `kind` and a normalisation recipe; `apply_band_norm` + `get_band_norm` produce ML-ready features in one call without hiding the scale factors.
 - **Multi-mission fusion** onto a common UTM grid via `fuse_response_tiffs(...)` with mission-prefixed band descriptions so provenance survives. See [`docs/fusion.md`](docs/fusion.md).
 - **Robust pre-processing** — smear-protected reprojection, polygon-aware Sentinel-1 same-day mosaicking, cloud / shadow / haze masking via mission-aware QA bands (Sentinel-2 SCL, Landsat BQA, PlanetScope UDM2).
@@ -68,6 +159,49 @@ For Docker, pip-only, slimmer installs via `[ml]` / `[geoai]` / `[notebooks]` / 
 
 ---
 
+## Talk to an agent (the primary way to use the package)
+
+For the ~80% case — "I want a fused datacube over [AOI] for [time window]" — the fastest path is to **chat with an AI coding agent** running in the repo. The agent picks missions, resolves the AOI, walks you through auth for anything that needs it, runs the fetches, fuses the cube, visualises the result, and optionally scaffolds a Jupyter notebook or a baseline ML model on top. No requirement that you know the Python API.
+
+**Every major agentic CLI works** (Claude Code, Gemini CLI, OpenAI Codex CLI, Cursor, Windsurf) — the repo ships an [`AGENTS.md`](AGENTS.md) at the root that all of them auto-load, plus modular skill files in [`agents/skills/`](agents/skills/). Nothing is tool-specific: plain English + shell/Python blocks, no MCP schemas, no vendor lock-in.
+
+**Getting started (from a fresh terminal):**
+
+```bash
+# 1. Clone the repo (or `cd` into an existing clone)
+git clone https://github.com/buckai-observatory/geoai-datacubes.git
+cd geoai-datacubes
+
+# 2. Launch your agent in this directory. Any of:
+claude          # Claude Code
+gemini          # Gemini CLI
+codex           # OpenAI Codex CLI
+# ... whichever you have installed
+
+# 3. Say what you want. Example prompts that "just work":
+#    "Build me a Sentinel-1 + Sentinel-2 + Copernicus DEM cube
+#     over Lake Erie for summer 2024, resolution 10 m."
+#    "Which missions give me L-band SAR over Baffin Island?"
+#    "Add ICESat-2 ATL06 as sparse labels and train a baseline
+#     ArcticDEM-bias-correction regressor with spatial-block CV."
+#    "Register my folder of drone GeoTIFFs at ~/data/drone/ as
+#     a new mission and fuse it with a Sentinel-2 scene."
+```
+
+The agent will:
+- Sniff your environment (Colab vs local vs HPC) and ask which install extras to pull in.
+- List available missions grouped by data modality (38 today) and match them to your needs.
+- Walk you through NASA EDL / Google Earth Engine / Sentinel Hub / Planet credentials only if a chosen mission requires them.
+- Fetch, fuse, and report per-band statistics + NaN coverage.
+- Optionally save the whole workflow as a Jupyter notebook (local or Colab-ready).
+- Optionally scaffold a baseline classifier / regressor / segmenter with correct spatial-block CV.
+
+The agent **stops and hands back to you** for anything outside the standard toolbox — custom loss functions, PINN training, foundation-model fine-tuning, large paid downloads, browser-based credential steps, `git commit`. See [`AGENTS.md`](AGENTS.md) for the full contract.
+
+**Prefer to read code first?** Every capability the agent has is available directly via the Python API — see the notebooks below and [`docs/`](docs/).
+
+---
+
 ## Try the notebooks
 
 The repo ships with **three complementary reviewed notebooks** in `notebooks/` plus one in-development scaffold. See [`notebooks/README.md`](notebooks/README.md) for a detailed walkthrough of each.
@@ -92,6 +226,22 @@ A complete machine-learning workflow that picks up where the tour leaves off. Fe
 <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/03_with_opengeos_geoai.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
 A worked example of composing `geoai-datacubes` (data-prep front-end) with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling back-end). Builds fused multi-mission cubes for three Ohio cities and hands them off to `geoai-py` in two patterns: pretrained inference via `geoai.segment_water` on a NAIP scene, and custom training via `select_bands` + `geoai.train_segmentation_landcover` + `geoai.semantic_segmentation`. Trains on Cleveland + Cincinnati and **holds Columbus out entirely** — in-distribution F1 reaches ~0.95 while OOD F1 collapses to ~0.05, an honest illustration of the standard remote-sensing-ML reality of training on a handful of AOIs.
+
+### 4. Earth Engine + Dynamic World (v0.2 preview — this branch only)
+
+[`notebooks/04_earth_engine_dynamic_world.ipynb`](notebooks/04_earth_engine_dynamic_world.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+<!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+
+Colab-first onramp for the new `earth_engine` data provider added on this branch (not yet merged to `main` — targeted for **v0.2**). Fetches a LULC label layer from one of three sources at a one-line toggle — **Google Dynamic World** (Brown et al. 2022) via Earth Engine, the static 2020/2021 **ESA WorldCover** mosaic, or the **JRC GFC2020 V3** EUDR-compliant global forest-cover baseline (Bourgoin et al. 2026) — plus a **Sentinel-2** RGB+NIR scene and a **Copernicus DEM** tile over the same AOI. Each `LABEL_SOURCE` swaps in its own default AOI + target class automatically (Columbus, OH for "built" / "built-up"; Portsmouth, OH + Shawnee State Forest for "forest") — override the `(lat, lon)` centre + `radius_km` in the setup cell for any other study area. Fuses everything into a single multi-band data cube on a common UTM grid, then trains a lightweight **XGBoost** pixel classifier with a 3-way spatial train / val / test column split and early stopping on the val strip. Includes a bonus section demonstrating the **MODIS cross-tile mosaic fix** ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)) — MODIS via Earth Engine returns seamless, UTM-native data in place of the old `planetary_computer` path that stayed in native sinusoidal projection. See [`docs/providers/earth_engine.md`](docs/providers/earth_engine.md) for the auth / project-ID / Colab-secrets setup walkthrough. Live progress on this branch: [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18).
+
+### 5. NISAR L-band SAR + Arctic calving-glacier datacube (v0.2 preview — this branch only)
+
+[`notebooks/05_nisar_arctic_datacube.ipynb`](notebooks/05_nisar_arctic_datacube.ipynb)
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
+<!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+
+Cutting-edge showcase of the new `earthdata` and ArcticDEM providers added on this branch. Fetches **NISAR L-band SAR** (`NISAR_L2_GCOV_PROVISIONAL_V1`, NASA-ISRO mission whose public data archive opened just **7 weeks before this notebook was written** — 2026-07-20 — the first proper open L-band SAR archive since ALOS PALSAR-1 shut down in 2011) via the new `earthdata` provider (NASA CMR + Earthdata Login), alongside **Sentinel-1 C-band SAR**, **ArcticDEM v4.1** (PGC / Ian Howat's group, via `direct_http` on AWS Open Data — 32 m polar-stereo mosaic, higher-resolution complement to Copernicus DEM in Arctic AOIs), and optional **Sentinel-2** optical over an Arctic calving-glacier / ice-cap AOI. The specific target is set in **exactly one place** — the setup cell — so the notebook stays generic across Arctic targets; default is northern Baffin Island plateau (chosen because NISAR has 9+ dual-pol granules and S1 has 7+ dual-pol RTC scenes there, so both L-band polarisations plus the L-vs-C-band comparison are guaranteed to work). Fuses everything into a single multi-band UTM cube on a common grid, then does a direct **L-band vs C-band comparison at the same polarisation (HH)** side-by-side over the ice — the two disagree in a physically meaningful way, and the notebook explains why. Includes an **OSM basemap panel** that shows the AOI location before any big fetches, a **granule-footprint AOI picker** that guarantees good NISAR coverage without hand-tuning coordinates, and the standard three-mode auth pattern (`EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` env vars, `~/.netrc`, interactive; legacy `EDL_USERNAME`/`EDL_PASSWORD` names also accepted) mirroring notebook 04's EE story. See [`docs/providers/earthdata.md`](docs/providers/earthdata.md) for the auth walkthrough. Live progress on this branch: [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18).
 
 ### ⚠️ Work in progress: object detection on NAIP
 

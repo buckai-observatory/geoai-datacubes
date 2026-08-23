@@ -60,6 +60,7 @@ dependencies = [
     "requests>=2.28",
     "pillow>=9.0",
     "rasterio>=1.3",
+    "pyproj>=3.4",           # CRS transforms across every provider; rasterio pulls it on macOS but not always on Linux
     "pystac>=1.10",
     "pystac-client>=0.7",
     "planetary-computer>=1.0",
@@ -133,6 +134,35 @@ planet = [
     "sentinelhub>=3.10",
 ]
 
+# Google Earth Engine provider (Dynamic World, MODIS in native sinusoidal,
+# the pre-2013 Landsat archive, Hansen GFC in canonical form, and hundreds
+# of derived layers whose only public home is EE). Requires a Google
+# account with Earth Engine access and one of: EARTHENGINE_TOKEN env var
+# (Colab/CI), GOOGLE_APPLICATION_CREDENTIALS service-account key (HPC),
+# or a persisted ~/.config/earthengine/credentials from ee.Authenticate().
+# See docs/providers/earth_engine.md.
+#
+#     pip install geoai-datacubes[earthengine]
+#
+earthengine = [
+    "earthengine-api>=0.1.400",
+]
+
+# NASA Earthdata provider (NISAR L-band SAR, GEDI biomass, SMAP soil
+# moisture, ICESat-2, and anything else hosted by a NASA DAAC behind
+# Earthdata Login). Requires a free Earthdata Login account
+# (https://urs.earthdata.nasa.gov/users/new) with the appropriate DAAC
+# apps approved -- see docs/providers/earthdata.md.
+#
+#     pip install geoai-datacubes[earthdata]
+#
+earthdata = [
+    "earthaccess>=0.11",
+    "h5py>=3.0",
+    "xarray>=2023.1",       # NetCDF-4 readers (SWOT, CryoSat RDEFT4, ...)
+    "h5netcdf>=1.0",        # xarray NetCDF-4 backend without needing libnetcdf
+]
+
 # Development tooling (formatter, linter, tests).
 #
 #     pip install geoai-datacubes[dev]
@@ -148,7 +178,7 @@ dev = [
 #     pip install geoai-datacubes[all]
 #
 all = [
-    "geoai-datacubes[ml,geoai,notebooks,planet]",
+    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine,earthdata]",
 ]
 
 [project.urls]

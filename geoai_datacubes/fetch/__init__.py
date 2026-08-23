@@ -20,14 +20,21 @@ cloud filtering, and band selection automatically.
 """
 
 from .aoi import resolve_aoi
-from .missions import MISSION_PROFILES, get_profile, get_provider_config
+from .missions import (
+    MISSION_PROFILES,
+    get_profile,
+    get_provider_config,
+    set_arcticdem_resolution,
+)
 from .fetch_data import (
     fetch_sentinel_data,
     fetch_earthsearch,
     fetch_planetary_computer,
     fetch_sentinelhub,
     fetch_planet,
+    fetch_local_files,
 )
+from ._local_files import register_local_mission, unregister_local_mission
 from .parallel_fetch import fetch_many_in_parallel
 
 __all__ = [
@@ -35,10 +42,14 @@ __all__ = [
     "MISSION_PROFILES",
     "get_profile",
     "get_provider_config",
+    "set_arcticdem_resolution",
     "fetch_sentinel_data",
     "fetch_earthsearch",
     "fetch_planetary_computer",
     "fetch_sentinelhub",
     "fetch_planet",
+    "fetch_local_files",
+    "register_local_mission",
+    "unregister_local_mission",
     "fetch_many_in_parallel",
 ]

@@ -11,6 +11,7 @@ _EXPECTED_MISSIONS = (
     "Sentinel-1",
     "Landsat",
     "Copernicus-DEM", "Copernicus-DEM-90",
+    "ArcticDEM",
     "ESA-WorldCover",
     "NAIP",
     "MODIS_SR", "MODIS_LST",
@@ -21,8 +22,21 @@ _EXPECTED_MISSIONS = (
     "Hansen-GFC",
     "USDA-CDL", "LCMAP-CONUS", "IO-LULC",
     "Chloris-Biomass",
+    "Dynamic-World",
+    "JRC-GFC2020",
+    "NISAR-L",
+    "ICESat-2-ATL03",
+    "ICESat-2-ATL06",
+    "ICESat-2-ATL08",
+    "ICESat-2-ATL13",
+    "SWOT-HR",
+    "CryoSat-RDEFT4",
     "PlanetScope-4b", "PlanetScope-8b",
-    "Sentinel-5P", "GEDI-L4B", "GEBCO",          # documented stubs
+    "GEDI-L4B", "GEDI-L4A",
+    "SMAP-L3",
+    "GEBCO-2024",
+    "Sentinel-5P-NO2",                            # v0.2 preview: TROPOMI NO2 via tracks flow
+    "Sentinel-5P",                                # documented stub (remaining unwired gases)
 )
 
 
@@ -56,11 +70,14 @@ def test_band_meta_entries_have_kind_and_norm():
 
 
 def test_stub_missions_have_no_providers():
-    # Sentinel-5P, GEDI-L4B, GEBCO are documented stubs: registered in
+    # Sentinel-5P is the only remaining documented stub: registered in
     # MISSION_PROFILES for visibility / docs but not yet wired into the
-    # PROVIDER_AUTO router. Their providers dict should be empty OR
-    # they should not appear in PROVIDER_AUTO.
+    # PROVIDER_AUTO router. Its providers dict should be empty OR it
+    # should not appear in PROVIDER_AUTO. GEDI-L4B was moved out when
+    # it was wired via the earthdata `raster_per_band` flow; GEBCO
+    # (renamed `GEBCO-2024` on the same commit) was moved out when it
+    # was wired via `direct_http` against BODC/CEDA's per-tile GeoTIFFs.
     from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
-    for stub in ("GEDI-L4B", "GEBCO"):
+    for stub in ("Sentinel-5P",):
         # No router entry == cannot be fetched (which is the contract).
         assert stub not in PROVIDER_AUTO or not PROVIDER_AUTO[stub]
