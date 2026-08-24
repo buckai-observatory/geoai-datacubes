@@ -2,6 +2,7 @@
 
 **Turn raw satellite imagery into AI-ready data cubes — pick a place, pick a time, get clean training data.**
 
+[![Docs](https://img.shields.io/badge/docs-Quarto%20site-2563EB.svg?style=flat-square&logo=quarto&logoColor=white)](https://buckai-observatory.github.io/geoai-datacubes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-BA0C2F.svg?style=flat-square)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![tests](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml)
@@ -9,6 +10,8 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
 [![status](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00/status.svg)](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00)
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
+
+**Full documentation:** <https://buckai-observatory.github.io/geoai-datacubes/>
 
 > **New here?** Two ready-to-run paths get you started directly in Colab — no install, no credentials needed:
 >
