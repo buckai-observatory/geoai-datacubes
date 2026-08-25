@@ -126,6 +126,29 @@ want to use the package without modifying it, drop the `-e`. The flat
 `pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh --pip`
 import check).
 
+### Known install-time gotchas
+
+<details>
+<summary><b>Missing JPEG-2000 codec: <code>ERROR 4: Unable to open ... JP2OpenJPEG driver is unavailable</code></b></summary>
+
+Some conda-forge `gdal` builds ship without the JPEG-2000 driver.
+Sentinel-2 assets on some public buckets are JP2 (`*.jp2`) rather than
+COG, and rasterio-reading them then errors with
+`ERROR 4: … JP2OpenJPEG driver is unavailable`. Fix:
+
+```bash
+mamba install -n <your-env> -c conda-forge libgdal-jp2openjpeg
+```
+
+The default `mamba install ... gdal` on some platforms leaves this codec
+out; installing it explicitly makes the JP2 path work. **This does not
+affect Colab** (its GDAL wheel already bundles the codec), only local
+mamba / conda environments.
+
+Reported during JOSS review: openjournals/joss-reviews#11034.
+
+</details>
+
 ## 4. Choose what to download
 
 Open `geoai_datacubes/main.py` and edit the **`USER INPUT`** block at the top to describe the data you want:
