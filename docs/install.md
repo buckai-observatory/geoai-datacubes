@@ -60,27 +60,54 @@ This single env is enough for every notebook in the repo:
 
 ### Slimmer installs (only the deps you'll actually use)
 
-If you don't want the full ML / DL / notebook stack, drop the
-corresponding packages from the `mamba create` line. The four named
-slices in `pyproject.toml` are documented as `pip install -e ".[<slice>]"`
-recipes for users who already have a working conda env and just want to
-add the missing pieces:
+Core `pip install geoai-datacubes` gives you the **fetch + fuse**
+surface plus the raster-side preprocessing helpers (`compute_ndvi`,
+`fuse_response_tiffs`, `tile_geotiff`, band-meta normalisation). It
+does **not** install PyTorch. Total footprint: ~200 MB of Python
+wheels plus GDAL / rasterio system libraries.
+
+Add optional extras for the pieces you actually need. Only the extra
+you install adds to your footprint, so a fetch-only user pays no ML
+tax:
+
+| Extra | Adds | Enables | Approx. extra install size |
+|---|---|---|---|
+| (core) | — | Every mission fetch, provider dispatch, AOI validation, fusion, tiling, band math, NaN handling, cloud-mask decoding, per-band norms | — |
+| `[ml]` | PyTorch, torchvision, scikit-image, scikit-learn, XGBoost, Ultralytics YOLO, transformers, HF hub | `LazyTileDataset`, `geotiff_to_zarr`, tiler augmentation (rotate / inpaint), all of `geoai_datacubes.ml_dl` | ~2 GB |
+| `[geoai]` | opengeos/geoai + leafmap + torchgeo + omniwatermask | Foundation-model wrappers (Prithvi, Clay, DOFA, SatMAE, DINOv3), pretrained task-specific models, notebook 03 integration | ~1 GB (also pulls torch, so implies `[ml]`-ish footprint) |
+| `[earthdata]` | earthaccess, h5py, xarray, h5netcdf | NASA DAAC fetches (NISAR, ICESat-2, SWOT, CryoSat, GEDI, SMAP, Sentinel-5P, ...) | ~30 MB |
+| `[earthengine]` | earthengine-api | Google Earth Engine fetches (Dynamic World, JRC-GFC2020, MODIS with server-side reproject) | ~50 MB |
+| `[notebooks]` | jupyterlab, ipywidgets, seaborn, geopandas, contextily | Running / editing the shipped notebooks locally | ~200 MB |
+| `[planet]` | python-dotenv, sentinelhub | Commercial Planet Orders + Sentinel Hub provider paths | ~10 MB |
+| `[dev]` | pytest, ruff, pre-commit | Running the test suite, linting, contributing | ~10 MB |
+| `[all]` | Every extra above | Everything | ~4 GB |
+
+Install syntax:
 
 ```bash
-pip install -e ".[ml]"            # + scikit-learn, XGBoost, Ultralytics YOLO, transformers
-pip install -e ".[geoai]"         # + opengeos/geoai (Wu 2026, JOSS 11(118):9605)
-pip install -e ".[notebooks]"     # + jupyterlab, ipywidgets, seaborn, geopandas, contextily
-pip install -e ".[planet]"        # + Planet Orders + Sentinel Hub (commercial providers)
-pip install -e ".[all]"           # everything above
+pip install geoai-datacubes[ml]              # fetch + fuse + ML/DL
+pip install geoai-datacubes[ml,earthdata]    # multiple extras — comma-separated inside brackets
+pip install -e ".[dev,earthdata]"            # from a local clone
 ```
 
-The corresponding conda-forge names are: `geoai-py leafmap torchgeo
-omniwatermask` for `[geoai]`; `scikit-learn xgboost ultralytics
-transformers huggingface_hub` for `[ml]`; `jupyterlab ipywidgets seaborn
+The corresponding conda-forge names are: `pytorch torchvision
+scikit-image scikit-learn xgboost ultralytics transformers
+huggingface_hub` for `[ml]`; `geoai-py leafmap torchgeo omniwatermask`
+for `[geoai]`; `earthaccess h5py xarray h5netcdf` for `[earthdata]`;
+`earthengine-api` for `[earthengine]`; `jupyterlab ipywidgets seaborn
 geopandas contextily` for `[notebooks]`; `python-dotenv sentinelhub`
-for `[planet]`. The `pip` recipes are convenient when you already have
-a working conda env, and pin slightly faster on a few fast-moving ML
-packages (ultralytics, transformers).
+for `[planet]`. The `pip` recipes are convenient when you already
+have a working conda env, and pin slightly faster on a few
+fast-moving ML packages (ultralytics, transformers).
+
+> **v0.1.1 note.** Prior to v0.1.1, `torch`, `torchvision`, and
+> `scikit-image` were core dependencies -- fetch-only users paid the
+> full 2 GB PyTorch install even if they never touched a model.
+> That's fixed as of v0.1.1: those three moved to `[ml]`. If you
+> `pip install geoai-datacubes` today and try to use
+> `LazyTileDataset` or `geotiff_to_zarr`, you'll get a clear
+> ImportError telling you to add `[ml]`. See
+> [CHANGELOG.md](../CHANGELOG.md) for the full rationale.
 
 ### Docker (zero-install, full stack + JupyterLab)
 
@@ -125,49 +152,6 @@ want to use the package without modifying it, drop the `-e`. The flat
 `requirements.txt` file is preserved for tooling that doesn't read
 `pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh --pip`
 import check).
-
-### Known install-time gotchas
-
-<details>
-<summary><b>Missing JPEG-2000 codec: <code>ERROR 4: Unable to open ... JP2OpenJPEG driver is unavailable</code></b></summary>
-
-**Why it matters.** ESA distributes Sentinel-2 bands as JPEG-2000
-(`.jp2`) files. Some public STAC buckets (notably Element 84's Earth
-Search Sentinel-2 L2A collection) serve these `.jp2` assets directly
-rather than converting to Cloud-Optimised GeoTIFF. Reading them
-requires the GDAL `JP2OpenJPEG` driver, which in turn requires the
-`libopenjp2` shared library to be present at runtime.
-
-**Status by installer** (as of 2026):
-
-| Installer | Ships JP2 support by default? | If not, fix |
-|---|---|---|
-| **conda-forge / mamba** | ❌ Split package — `gdal` doesn't imply the codec | Already added to the recommended `mamba create` line in Section 3. If you rolled your own env, `mamba install -n <env> -c conda-forge libgdal-jp2openjpeg`. |
-| **PyPI wheel (`pip install rasterio`)** | ✅ Yes — manylinux / macOS / Windows wheels bundle a GDAL built `--with-openjpeg` | Nothing to do. Verify with the diagnostic at the bottom of this callout. |
-| **apt (`libgdal-dev` on Ubuntu 22.04+)** | ✅ Yes | Nothing to do. |
-| **Homebrew (`brew install gdal`)** | ✅ Yes — the formula lists openjpeg as a dependency | Nothing to do. |
-| **MacPorts** | ❌ Base port lacks it | `sudo port install gdal +openjpeg` |
-| **Colab** | ✅ Yes — bundled GDAL wheel includes every codec | Nothing to do. |
-
-**Diagnostic** — regardless of installer, this one-liner tells you
-whether JP2 is available in your current Python env:
-
-```python
-from osgeo import gdal
-print([gdal.GetDriver(i).GetDescription()
-       for i in range(gdal.GetDriverCount())
-       if 'JP2' in gdal.GetDriver(i).GetDescription()])
-# Expected: ['JP2OpenJPEG'] (or similar)
-# Empty list -> codec is missing
-```
-
-**Symptom you'll actually see when it's missing**:
-`rasterio.errors.RasterioIOError: ... JP2OpenJPEG driver is unavailable`
-during a Sentinel-2 fetch.
-
-Reported during JOSS review: openjournals/joss-reviews#11034.
-
-</details>
 
 ## 4. Choose what to download
 
