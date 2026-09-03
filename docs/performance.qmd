@@ -4,9 +4,9 @@ title: Performance
 
 # Performance characteristics
 
-`fetch_sentinel_data` is what determines end-to-end wall time for a
-typical pipeline call. It has two cost centres: network I/O to the
-selected provider, and CPU-bound warp / reproject in
+The pipeline's fetch call is what determines end-to-end wall time for
+a typical pipeline invocation. It has two cost centres: network I/O
+to the selected provider, and CPU-bound warp / reproject in
 [`_read_band_to_grid`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/geoai_datacubes/fetch/fetch_data.py).
 Which one dominates depends on AOI size, band count, provider, and how
 warm the STAC endpoint's cache happens to be for your bbox.
@@ -18,10 +18,10 @@ setup for anything load-bearing.
 
 ## Measured throughput
 
-**Configuration:** each row is a full `fetch_sentinel_data(...)` call
-returning a georeferenced multi-band GeoTIFF. AOIs are centred on
-Cleveland, OH — a mixed urban / suburban / lake-shore box that
-exercises multiple same-day scene mosaics in most missions. AOI sizes:
+**Configuration:** each row is a full fetch call returning a
+georeferenced multi-band GeoTIFF. AOIs are centred on Cleveland, OH —
+a mixed urban / suburban / lake-shore box that exercises multiple
+same-day scene mosaics in most missions. AOI sizes:
 **small ≈ 25 km²**, **medium ≈ 100 km²**, **large ≈ 400 km²**. Time
 ranges are one growing-season month for time-varying missions, unset
 for static products (DEMs, Hansen tree cover).
@@ -32,12 +32,6 @@ laptop run — S1-RTC bands lowercased, `3DEP-seamless` vs `3DEP`,
 Landsat time range too narrow — fixed and re-run for runs 2 and 3).
 Wall time is reported as **min – median – max** across those runs;
 output size and produced-pixel rate use the median.
-
-*Skipped rows for missing credentials:* `Sentinel-2-L1C via sentinelhub`
-and `PlanetScope via planet` — neither machine had the requisite
-`SH_CLIENT_ID` / `PL_API_KEY` env vars set. The harness (see
-`smoke-tests/perf_bench.py`) skips these cleanly rather than treating
-them as failures.
 
 ### Laptop — Apple M-series, 10 cores, 16 GB, cellular tethering
 
@@ -54,7 +48,7 @@ them as failures.
 | Hansen-GFC medium | `direct_http` | 100 km² | 3 | 17.6 – 20.8 – 24.2 | 0.8 | 0.60 | 0.03 |
 | Hansen-GFC large | `direct_http` | 400 km² | 3 | 22.4 – 25.1 – 30.7 | 3.5 | 2.72 | 0.11 |
 
-### Unity HPC — OSU cluster, `batch` partition, 32-core Xeon node (4 requested), 16 GB, Linux, Python 3.12
+### HPC node — batch partition, 32-core Xeon (4 requested), 16 GB, Linux, Python 3.12
 
 | Row | Provider | AOI | n | Wall min–med–max (s) | Out (MB) | Out (Mpx) | Mpx/s |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -75,9 +69,9 @@ so upstream traffic is typically 2–10× the output. `Out (Mpx)` is
 `bands × width × height` of that tiff. `Mpx/s` is the corresponding
 produced-pixel rate, a scale-invariant proxy for pipeline throughput.
 
-### Laptop ↔ Unity comparison (using medians)
+### Laptop ↔ HPC comparison (using medians)
 
-| Row | Laptop | Unity | Unity speedup |
+| Row | Laptop | HPC | HPC speedup |
 |---|---:|---:|---:|
 | S2 small | 11.2 s | 9.4 s | 1.2× |
 | S2 medium | 14.4 s | 9.1 s | **1.6×** |
@@ -102,16 +96,16 @@ Three patterns fall out of the numbers above:
    bandwidth doesn't help when nothing is downloading yet.
 
 2. **Larger AOIs and `direct_http` benefit most from good bandwidth.**
-   Hansen GFC (Google Cloud Storage) shows a 2× speedup on Unity
-   because a bigger fraction of wall time is actual bytes flowing.
-   Sentinel-2 large also amortises the fixed setup cost well.
+   Hansen GFC (Google Cloud Storage) shows a 2× speedup on the HPC
+   node because a bigger fraction of wall time is actual bytes
+   flowing. Sentinel-2 large also amortises the fixed setup cost well.
 
 3. **`planetary_computer` NAIP is the exception.** NAIP is served
    through a bursty tile pipeline whose upstream throughput is
    independent of the client's bandwidth to Azure. Neither cellular
-   nor Unity moves the needle much — both take ~12 minutes for
-   ~90 Mpx. If NAIP throughput is a bottleneck for your workflow,
-   the win comes from batching (multiple AOIs in parallel via
+   nor HPC moves the needle much — both take ~12 minutes for ~90 Mpx.
+   If NAIP throughput is a bottleneck for your workflow, the win
+   comes from batching (multiple AOIs in parallel via
    [`fetch/parallel_fetch.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/geoai_datacubes/fetch/parallel_fetch.py))
    rather than from faster interconnect.
 
@@ -145,10 +139,6 @@ The knobs that actually move the wall time, in rough order of impact:
    is typically the fastest cold-cache option for Sentinel-2 (AWS
    Open Data), while `planetary_computer` is best for Sentinel-1 RTC
    (analysis-ready) and Landsat C2 L2 (free, not requester-pays).
-   `sentinelhub` and `planet` have request latency dominated by
-   OAuth / order-processing steps and are best reserved for cases
-   where their unique offerings (S3-OLCI, PlanetScope daily) actually
-   matter.
 
 5. **Concurrency** — for the multi-AOI case, `parallel_fetch.py`
    wraps a `ThreadPoolExecutor` around per-AOI calls. Provider
@@ -159,16 +149,16 @@ The knobs that actually move the wall time, in rough order of impact:
 
 The benchmark harness lives at
 [`smoke-tests/perf_bench.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_bench.py).
-Its `--configs all` preset runs the 12 rows above; `--configs credfree`
-skips the two OAuth-gated ones. Each row's raw JSON log lands in
-`smoke-tests/perf_logs/` (gitignored — outputs stay local).
+Its `--configs credfree` preset runs the 10 rows above. Each row's raw
+JSON log lands in `smoke-tests/perf_logs/` (gitignored — outputs stay
+local).
 
 Laptop run:
 ```{.bash}
-python smoke-tests/perf_bench.py --configs all --label laptop
+python smoke-tests/perf_bench.py --configs credfree --label laptop
 ```
 
-SLURM (Unity or similar):
+SLURM:
 ```{.bash}
 sbatch --export=ALL,ENV_NAME=<your-env>,LABEL=hpc \
        smoke-tests/perf_bench.slurm
@@ -188,7 +178,7 @@ The aggregator collapses per-run suffixes (`laptop-run2`,
 `laptop-run3`, …) into a single `laptop` column, so repeat runs stack
 cleanly.
 
-## Honest caveats
+## Caveats
 
 - **These are single-machine measurements**, not benchmarks in a
   formal sense. n = 3 per row is enough to expose the ~15–30 %
