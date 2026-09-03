@@ -76,15 +76,17 @@ CONFIGS = [
     Config("Cop-DEM         medium", "Copernicus-DEM", "earthsearch",         None,           30, "medium", None),
 
     # --- planetary_computer ------------------------------------------------
-    Config("S1-RTC          medium", "Sentinel-1",     "planetary_computer",  ["vv", "vh"],   10, "medium", ("2024-06-01", "2024-06-30")),
-    Config("Landsat-8       medium", "Landsat-8",      "planetary_computer",  None,           30, "medium", ("2024-06-01", "2024-06-30")),
+    Config("S1-RTC          medium", "Sentinel-1",     "planetary_computer",  ["VV", "VH"],   10, "medium", ("2024-06-01", "2024-06-30")),
+    # Cleveland is Landsat WRS-2 path 19; a single-month narrow-cloud filter
+    # can miss cleanly. Widen to a full quarter + relax to <30% cloud.
+    Config("Landsat-8       medium", "Landsat-8",      "planetary_computer",  None,           30, "medium", ("2024-05-01", "2024-08-31")),
     Config("NAIP            small",  "NAIP",           "planetary_computer",  None,            1, "small",  ("2022-01-01", "2024-12-31")),
-    Config("3DEP            small",  "3DEP-seamless",  "planetary_computer",  None,           10, "small",  None),
+    Config("3DEP            small",  "3DEP",           "planetary_computer",  None,           10, "small",  None),
 
     # --- direct_http (non-STAC providers; free) ---------------------------
     Config("Hansen-GFC      medium", "Hansen-GFC",     "direct_http",         None,           30, "medium", None),
     Config("Hansen-GFC      large",  "Hansen-GFC",     "direct_http",         None,           30, "large",  None),
-    Config("GEDI-L4B        medium", "GEDI-L4B",       "direct_http",         None,        1000, "medium", None),
+    # GEDI-L4B has no provider on main (v0.2-preview only); skipped here.
 
     # --- sentinelhub (OAuth; skips gracefully if creds missing) ----------
     Config("S2-L1C-SH       medium", "Sentinel-2-L1C", "sentinelhub",         None,           10, "medium", ("2024-06-01", "2024-06-30")),
@@ -252,6 +254,10 @@ def main():
     ap.add_argument("--out",     default="smoke-tests/perf_logs",
                     help="local dir for JSON log (gitignored)")
     ap.add_argument("--configs", default="all", choices=list(PRESETS))
+    ap.add_argument("--only",    default=None,
+                    help="substring filter on Config.label (case-insensitive); "
+                         "handy for re-running just the failing rows without "
+                         "paying the wall-clock of the passing ones")
     ap.add_argument("--label",   default=None,
                     help="label stamped into the JSON + markdown (e.g. 'unity' / 'laptop')")
     ap.add_argument("--keep-tiffs", action="store_true",
@@ -278,7 +284,12 @@ def main():
     print(f"==> machine {json.dumps(machine)}")
 
     selected = [c for c in CONFIGS if PRESETS[args.configs](c)]
-    print(f"==> {len(selected)} config(s) selected via preset='{args.configs}'")
+    if args.only:
+        needle = args.only.lower()
+        selected = [c for c in selected if needle in c.label.lower()]
+        print(f"==> {len(selected)} config(s) selected via preset='{args.configs}' + --only={args.only!r}")
+    else:
+        print(f"==> {len(selected)} config(s) selected via preset='{args.configs}'")
 
     rows: List[dict] = []
     with log_path.open("w") as fh:
