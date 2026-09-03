@@ -48,12 +48,15 @@ for init in "$HOME"/mambaforge/etc/profile.d/conda.sh \
         break
     fi
 done
-if command -v mamba >/dev/null 2>&1; then
-    mamba activate "$ENV_NAME"
-elif command -v conda >/dev/null 2>&1; then
+# Prefer `conda activate` over `mamba activate` -- conda.sh above defines
+# the `conda` shell function; `mamba activate` needs its own `mamba init`
+# on top of that, which most SLURM shells don't have.
+if command -v conda >/dev/null 2>&1; then
     conda activate "$ENV_NAME"
+elif command -v mamba >/dev/null 2>&1; then
+    mamba activate "$ENV_NAME"
 else
-    echo "!! neither mamba nor conda on PATH after conda-init sweep"
+    echo "!! neither conda nor mamba on PATH after conda-init sweep"
     echo "   activate '$ENV_NAME' yourself in your ~/.bashrc or job preamble"
     exit 2
 fi
