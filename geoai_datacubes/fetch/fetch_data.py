@@ -198,12 +198,22 @@ def fetch_direct_http(mission, bands, time_range, roi,
     shared mosaic-and-reproject pipeline.
     """
     from ._direct_fetch import _fetch_via_direct_http
+    profile = get_profile(mission)
     cfg = get_provider_config(mission, "direct_http")
+    # Match the STAC path's convenience: bands=None means "the mission's
+    # default set + its extra_bands (QA / SCL / etc.)". Without this the
+    # per-mission tile_callback trips over a `for band in None` iteration
+    # a few frames down.
+    if bands is None:
+        bands = list(profile["default_bands"])
+        for b in profile.get("extra_bands", []) or []:
+            if b not in bands:
+                bands.append(b)
     return _fetch_via_direct_http(
         mission, bands, time_range, roi,
         resolution=resolution, save_folder=save_folder,
         tile_callback=cfg["tile_callback"],
-        band_meta=get_profile(mission).get("band_meta"),
+        band_meta=profile.get("band_meta"),
         release_tag=cfg.get("release_tag"),
     )
 
