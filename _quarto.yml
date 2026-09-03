@@ -12,6 +12,7 @@ project:
     - "docs/architecture.qmd"
     - "docs/configuration.md"
     - "docs/fusion.md"
+    - "docs/performance.qmd"
     - "docs/HPC_QUICKSTART.md"
     - "docs/project_structure.md"
     - "CHANGELOG.md"
@@ -47,6 +48,7 @@ website:
           - docs/architecture.qmd
           - docs/configuration.md
           - docs/fusion.md
+          - docs/performance.qmd
       - text: HPC
         menu:
           - docs/HPC_QUICKSTART.md
@@ -89,6 +91,7 @@ website:
           - docs/architecture.qmd
           - docs/configuration.md
           - docs/fusion.md
+          - docs/performance.qmd
       - section: "Notebooks (open in Colab)"
         icon: journal-code
         contents:

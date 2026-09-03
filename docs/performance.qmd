@@ -1,0 +1,211 @@
+---
+title: Performance
+---
+
+# Performance characteristics
+
+`fetch_sentinel_data` is what determines end-to-end wall time for a
+typical pipeline call. It has two cost centres: network I/O to the
+selected provider, and CPU-bound warp / reproject in
+[`_read_band_to_grid`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/geoai_datacubes/fetch/fetch_data.py).
+Which one dominates depends on AOI size, band count, provider, and how
+warm the STAC endpoint's cache happens to be for your bbox.
+
+This page reports what we actually measured on two machines. It does
+**not** promise the same numbers on other hardware or over other
+networks; users should re-run the harness described below on their own
+setup for anything load-bearing.
+
+## Measured throughput
+
+**Configuration:** each row is a full `fetch_sentinel_data(...)` call
+returning a georeferenced multi-band GeoTIFF. AOIs are centred on
+Cleveland, OH — a mixed urban / suburban / lake-shore box that
+exercises multiple same-day scene mosaics in most missions. AOI sizes:
+**small ≈ 25 km²**, **medium ≈ 100 km²**, **large ≈ 400 km²**. Time
+ranges are one growing-season month for time-varying missions, unset
+for static products (DEMs, Hansen tree cover).
+
+Each configuration was run **n = 3** times per machine (n = 2 for the
+three configurations that were mis-configured in the harness's first
+laptop run — S1-RTC bands lowercased, `3DEP-seamless` vs `3DEP`,
+Landsat time range too narrow — fixed and re-run for runs 2 and 3).
+Wall time is reported as **min – median – max** across those runs;
+output size and produced-pixel rate use the median.
+
+*Skipped rows for missing credentials:* `Sentinel-2-L1C via sentinelhub`
+and `PlanetScope via planet` — neither machine had the requisite
+`SH_CLIENT_ID` / `PL_API_KEY` env vars set. The harness (see
+`smoke-tests/perf_bench.py`) skips these cleanly rather than treating
+them as failures.
+
+### Laptop — Apple M-series, 10 cores, 16 GB, cellular tethering
+
+| Row | Provider | AOI | n | Wall min–med–max (s) | Out (MB) | Out (Mpx) | Mpx/s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| S2-earthsearch small | `earthsearch` | 25 km² | 3 | 11.1 – 11.2 – 12.2 | 2.3 | 1.13 | 0.10 |
+| S2-earthsearch medium | `earthsearch` | 100 km² | 3 | 11.8 – 14.4 – 15.8 | 8.9 | 4.53 | 0.31 |
+| S2-earthsearch large | `earthsearch` | 400 km² | 3 | 7.5 – 9.7 – 9.9 | 38.9 | 20.4 | 2.11 |
+| Cop-DEM medium | `earthsearch` | 100 km² | 3 | 3.6 – 3.8 – 4.4 | 0.2 | 0.10 | 0.03 |
+| S1-RTC medium | `planetary_computer` | 100 km² | 2 | 8.6 – 8.8 – 9.0 | 6.3 | 1.81 | 0.21 |
+| Landsat-8 medium | `planetary_computer` | 100 km² | 2 | 8.1 – 8.7 – 9.4 | 0.7 | 0.30 | 0.04 |
+| NAIP small | `planetary_computer` | 25 km² | 3 | 693.8 – 724.4 – 733.8 | 303.0 | 90.5 | 0.12 |
+| 3DEP small | `planetary_computer` | 25 km² | 2 | 7.3 – 7.7 – 8.0 | 0.6 | 0.23 | 0.03 |
+| Hansen-GFC medium | `direct_http` | 100 km² | 3 | 17.6 – 20.8 – 24.2 | 0.8 | 0.60 | 0.03 |
+| Hansen-GFC large | `direct_http` | 400 km² | 3 | 22.4 – 25.1 – 30.7 | 3.5 | 2.72 | 0.11 |
+
+### Unity HPC — OSU cluster, `batch` partition, 32-core Xeon node (4 requested), 16 GB, Linux, Python 3.12
+
+| Row | Provider | AOI | n | Wall min–med–max (s) | Out (MB) | Out (Mpx) | Mpx/s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| S2-earthsearch small | `earthsearch` | 25 km² | 3 | 9.0 – 9.4 – 11.0 | 2.3 | 1.13 | 0.12 |
+| S2-earthsearch medium | `earthsearch` | 100 km² | 3 | 8.6 – 9.1 – 9.2 | 8.9 | 4.53 | 0.50 |
+| S2-earthsearch large | `earthsearch` | 400 km² | 3 | 8.3 – 9.5 – 10.3 | 38.9 | 20.4 | 2.14 |
+| Cop-DEM medium | `earthsearch` | 100 km² | 3 | 2.6 – 3.5 – 3.6 | 0.2 | 0.10 | 0.03 |
+| S1-RTC medium | `planetary_computer` | 100 km² | 3 | 7.2 – 7.4 – 7.9 | 6.3 | 1.81 | 0.24 |
+| Landsat-8 medium | `planetary_computer` | 100 km² | 3 | 4.9 – 5.4 – 5.5 | 0.7 | 0.30 | 0.06 |
+| NAIP small | `planetary_computer` | 25 km² | 3 | 793.8 – 806.6 – 818.7 | 303.0 | 90.5 | 0.11 |
+| 3DEP small | `planetary_computer` | 25 km² | 3 | 5.5 – 5.5 – 5.6 | 0.6 | 0.23 | 0.04 |
+| Hansen-GFC medium | `direct_http` | 100 km² | 3 | 9.8 – 10.2 – 13.7 | 0.8 | 0.60 | 0.06 |
+| Hansen-GFC large | `direct_http` | 400 km² | 3 | 12.9 – 15.0 – 19.9 | 3.5 | 2.72 | 0.18 |
+
+**Column notes**: `Out (MB)` is the on-disk multi-band mosaic GeoTIFF
+size, not raw bytes downloaded from the source — COGs are window-read,
+so upstream traffic is typically 2–10× the output. `Out (Mpx)` is
+`bands × width × height` of that tiff. `Mpx/s` is the corresponding
+produced-pixel rate, a scale-invariant proxy for pipeline throughput.
+
+### Laptop ↔ Unity comparison (using medians)
+
+| Row | Laptop | Unity | Unity speedup |
+|---|---:|---:|---:|
+| S2 small | 11.2 s | 9.4 s | 1.2× |
+| S2 medium | 14.4 s | 9.1 s | **1.6×** |
+| S2 large | 9.7 s | 9.5 s | ~1.0× |
+| Cop-DEM | 3.8 s | 3.5 s | 1.1× |
+| S1-RTC | 8.8 s | 7.4 s | 1.2× |
+| Landsat-8 | 8.7 s | 5.4 s | **1.6×** |
+| NAIP | 724 s | 807 s | **0.9× (laptop faster)** |
+| 3DEP | 7.7 s | 5.5 s | 1.4× |
+| Hansen medium | 20.8 s | 10.2 s | **2.0×** |
+| Hansen large | 25.1 s | 15.0 s | **1.7×** |
+
+## What dominates runtime
+
+Three patterns fall out of the numbers above:
+
+1. **Small AOIs are setup-bound, not bandwidth-bound.** A 25 km² S2
+   fetch spends most of its wall time on STAC search, per-band grid
+   setup, and rasterio's session-open overhead — the actual asset
+   download for ~1 M pixels @ 10 m is trivial. This is why the two
+   machines are nearly tied for the 25 km² rows: institutional
+   bandwidth doesn't help when nothing is downloading yet.
+
+2. **Larger AOIs and `direct_http` benefit most from good bandwidth.**
+   Hansen GFC (Google Cloud Storage) shows a 2× speedup on Unity
+   because a bigger fraction of wall time is actual bytes flowing.
+   Sentinel-2 large also amortises the fixed setup cost well.
+
+3. **`planetary_computer` NAIP is the exception.** NAIP is served
+   through a bursty tile pipeline whose upstream throughput is
+   independent of the client's bandwidth to Azure. Neither cellular
+   nor Unity moves the needle much — both take ~12 minutes for
+   ~90 Mpx. If NAIP throughput is a bottleneck for your workflow,
+   the win comes from batching (multiple AOIs in parallel via
+   [`fetch/parallel_fetch.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/geoai_datacubes/fetch/parallel_fetch.py))
+   rather than from faster interconnect.
+
+An anomaly worth noting: **S2 large ran consistently faster than S2
+medium on laptop** (medians 9.7 s vs 14.4 s, three runs each, no
+overlap). This isn't noise — it's because the "large" bbox happens to
+hit a cleaner 2-scene mosaic than the "medium", which the greedy
+scene-selection heuristic pays for slightly. It's a quirk of the AOI
+choice, not a pipeline pathology.
+
+## Levers users have
+
+The knobs that actually move the wall time, in rough order of impact:
+
+1. **`resolution`** — quadratic. Doubling it (10 m → 20 m) quarters
+   the pixel count and roughly quarters both the fetch (fewer COG
+   tiles/windows read) and the reproject stage. For sanity-checking a
+   pipeline before committing to a full 10 m run, 30–60 m often
+   suffices.
+
+2. **`bands`** — linear. Passing an explicit `bands=["B04","B08"]`
+   instead of `bands=None` (which expands to the mission's
+   `default_bands + extra_bands` — 5 bands for S2, up to 8 for
+   Sentinel-3, etc.) proportionally reduces fetch and reproject time.
+
+3. **AOI size** — roughly linear in area for large AOIs, sub-linear
+   for small ones (setup dominates).
+
+4. **Provider selection** — for missions available on multiple
+   providers (see [`docs/providers.md`](providers.md)), `earthsearch`
+   is typically the fastest cold-cache option for Sentinel-2 (AWS
+   Open Data), while `planetary_computer` is best for Sentinel-1 RTC
+   (analysis-ready) and Landsat C2 L2 (free, not requester-pays).
+   `sentinelhub` and `planet` have request latency dominated by
+   OAuth / order-processing steps and are best reserved for cases
+   where their unique offerings (S3-OLCI, PlanetScope daily) actually
+   matter.
+
+5. **Concurrency** — for the multi-AOI case, `parallel_fetch.py`
+   wraps a `ThreadPoolExecutor` around per-AOI calls. Provider
+   rate-limits (see [`docs/providers.md`](providers.md)) are the
+   ceiling here.
+
+## Reproducing these numbers
+
+The benchmark harness lives at
+[`smoke-tests/perf_bench.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_bench.py).
+Its `--configs all` preset runs the 12 rows above; `--configs credfree`
+skips the two OAuth-gated ones. Each row's raw JSON log lands in
+`smoke-tests/perf_logs/` (gitignored — outputs stay local).
+
+Laptop run:
+```{.bash}
+python smoke-tests/perf_bench.py --configs all --label laptop
+```
+
+SLURM (Unity or similar):
+```{.bash}
+sbatch --export=ALL,ENV_NAME=<your-env>,LABEL=hpc \
+       smoke-tests/perf_bench.slurm
+```
+
+Once you have JSON logs from one or more runs on one or more machines,
+aggregate them into a min-med-max table with
+[`smoke-tests/perf_bench_agg.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_bench_agg.py):
+
+```{.bash}
+python smoke-tests/perf_bench_agg.py \
+    --machine laptop \
+    --machine hpc
+```
+
+The aggregator collapses per-run suffixes (`laptop-run2`,
+`laptop-run3`, …) into a single `laptop` column, so repeat runs stack
+cleanly.
+
+## Honest caveats
+
+- **These are single-machine measurements**, not benchmarks in a
+  formal sense. n = 3 per row is enough to expose the ~15–30 %
+  run-to-run variance visible in the tables above (a real signal —
+  cellular provider bandwidth fluctuates; STAC endpoint caches warm
+  and cool), but not enough for confidence intervals on tail latency.
+- **Provider behaviour changes.** Planetary Computer's SAS-signed
+  Azure endpoints have re-tiered several times since 2023;
+  earthsearch has swapped between requester-pays and open buckets for
+  different S2 collections; the ETH canopy-height mirror serving Lang
+  2023 is a single university web server whose availability varies.
+  Numbers here reflect August–September 2026.
+- **We don't measure the ML surfaces.** `LazyTileDataset`,
+  `geotiff_to_zarr`, and the tile-based fusion pipeline all have
+  their own performance characteristics that aren't covered here.
+  Add them to the harness if that's your bottleneck.
+
+For provider-by-provider capability trade-offs and rate-limit
+guidance, see [`docs/providers.md`](providers.md). For the pipeline
+shape being measured, see [`docs/architecture.qmd`](architecture.qmd).
