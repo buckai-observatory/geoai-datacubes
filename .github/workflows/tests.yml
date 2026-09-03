@@ -106,3 +106,34 @@ jobs:
 
       - name: Run the minimal-install test suite
         run: pytest tests/test_minimal_install.py -v --color=yes
+
+  # Locked-env reproducibility check: install from pixi.lock (frozen, no
+  # solve) and run the full test suite. Guards two things:
+  # (a) pixi.lock stays coherent with pyproject.toml -- if a contributor
+  #     bumps a dep in pyproject.toml [tool.pixi.*] without re-running
+  #     `pixi lock`, this job goes red; and
+  # (b) the exact locked env passes tests, so a reviewer / user who
+  #     reproduces via `pixi install -e tests` gets the same result.
+  pixi-locked:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          # Use the version we developed the lockfile against; bumping
+          # this needs a matching `pixi lock` on someone's machine.
+          pixi-version: v0.77.1
+          environments: tests
+          # --frozen: hard-fail if pyproject.toml diverges from the lock.
+          # No implicit re-solve; a stale lockfile is a test failure,
+          # not a silent auto-update.
+          frozen: true
+          # cache=true reuses .pixi across runs on the same lockfile.
+          cache: true
+
+      - name: Run the test suite from the locked env
+        run: pixi run --frozen -e tests pytest -v --color=yes

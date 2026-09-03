@@ -135,6 +135,55 @@ HPC clusters with Apptainer / Singularity, the image can be pulled
 directly: `apptainer pull docker://ghcr.io/buckai-observatory/geoai-datacubes:latest`.
 See the [`Dockerfile`](../Dockerfile) for the exact build recipe.
 
+### Reproducible locked install with `pixi` (optional)
+
+If you want the *exact* environment we develop and test against —
+same package versions, cross-platform reproducible, one command —
+install [`pixi`](https://pixi.sh) and use the committed `pixi.lock`.
+The lockfile is regenerated on every dependency change and pinned in
+git; a CI job (`pixi-locked` in `.github/workflows/tests.yml`) checks
+it stays coherent with `pyproject.toml`.
+
+```bash
+# One-time: install pixi (a ~5 MB self-contained binary)
+curl -fsSL https://pixi.sh/install.sh | bash          # macOS / Linux
+# or: powershell  -c "iwr -useb https://pixi.sh/install.ps1 | iex"   (Windows)
+
+# In a fresh clone of the repo:
+pixi install                        # -> default env (core, no ML)
+pixi install -e tests               # -> default + [dev,ml,earthdata], test-runnable
+pixi install -e full                # -> everything (default + every extra)
+
+# Run things in a locked env without activating it:
+pixi run pytest                     # -> uses whichever env has pytest
+pixi run -e tests pytest -v
+pixi run test                       # -> shortcut for the same, see [tool.pixi.tasks]
+
+# Or activate a shell in the env:
+pixi shell -e tests
+```
+
+Named environments and what they include:
+
+| Env | Includes | Best for |
+|---|---|---|
+| `default` | Core only (fetch + fuse + tile + band math) | Data-acquisition-only users |
+| `ml` | + `[ml]` | Running the ML/DL side of the pipeline |
+| `earthdata` | + `[earthdata]` | NASA DAAC fetches (NISAR, ICESat-2, ...) |
+| `notebooks` | + `[notebooks]` | Running the shipped notebooks locally |
+| `dev` | + `[dev]` | Contributing (linter, pytest, pre-commit) |
+| `tests` | `dev` + `ml` + `earthdata` | What CI runs — reproduces the green build exactly |
+| `full` | Every feature | The kitchen sink |
+
+The pixi config lives in `pyproject.toml` under `[tool.pixi.*]`
+sections. You never need to edit `pixi.lock` by hand — after
+changing a dep (in either the pip `[project.dependencies]` block or
+the pixi feature blocks), run `pixi lock` to regenerate.
+
+`pixi.lock` covers **linux-64, osx-arm64, osx-64, win-64** as of this
+release. Adding another target is one command:
+`pixi project platform add <triple>` then `pixi lock`.
+
 ### Pip-only fallback (when conda / mamba isn't available)
 
 ```bash

@@ -199,3 +199,128 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "PIE"]
 ignore = ["E501"]   # let the formatter handle long lines, don't error on them
+
+
+# ============================================================
+# pixi: locked, cross-platform reproducible install
+# ============================================================
+# Optional; the mamba / pip paths in docs/install.md are still fully
+# supported. Adding pixi (https://pixi.sh) gives us a pinned lockfile
+# (`pixi.lock`, committed to git) so anyone can reproduce the exact
+# environment we develop and test against with one command:
+#
+#     pixi install                          # -> default env (core, no ML)
+#     pixi install -e full                  # -> everything (core + ml + ...)
+#     pixi run pytest                       # -> run tests in the env
+#     pixi shell                            # -> drop into the env's shell
+#
+# Motivating review comment: @betolink flagged dependency locking as
+# a reproducibility improvement in the JOSS review (Aug 2026, at
+# openjournals/joss-reviews#11034). This addresses it via pixi rather
+# than conda-lock because pixi handles conda + PyPI in a single lock
+# file and reads its config natively out of pyproject.toml -- one
+# source of truth, no drift.
+[tool.pixi.workspace]
+name          = "geoai-datacubes"
+channels      = ["conda-forge"]
+# Platforms in order of contributor frequency. Add another via
+# `pixi project platform add <triple>` and re-run `pixi install` to
+# refresh the lockfile.
+platforms     = ["osx-arm64", "linux-64", "osx-64", "win-64"]
+
+# Install the local package in editable mode into every pixi env.
+[tool.pixi.pypi-dependencies]
+geoai-datacubes = { path = ".", editable = true }
+
+# Core dependencies mirror pyproject.toml [project.dependencies], but
+# resolved from conda-forge (faster wheel resolution + native GDAL /
+# rasterio without the pip-only build headaches). Kept in sync manually;
+# CI would catch drift via the minimal-install job.
+[tool.pixi.dependencies]
+python              = ">=3.11,<3.13"
+numpy               = ">=1.23"
+pandas              = ">=2.0"
+matplotlib          = ">=3.6"
+tqdm                = ">=4.60"
+requests            = ">=2.28"
+pillow              = ">=9.0"
+rasterio            = ">=1.3"
+libgdal-jp2openjpeg = "*"          # JP2 codec for Sentinel-2 .jp2 assets
+pyproj              = ">=3.4"
+pystac              = ">=1.10"
+pystac-client       = ">=0.7"
+planetary-computer  = ">=1.0"
+zarr                = ">=2.16,<3"
+# conda-forge splits the LMDB C lib (`lmdb`) from the Python bindings
+# (`python-lmdb`). Our code does `import lmdb`, so we need the bindings.
+# The pip side (`lmdb>=1.4` in [project.dependencies]) resolves to the
+# same thing.
+python-lmdb         = "*"
+
+# Features = optional slices, mirroring [project.optional-dependencies].
+# Environments below compose them.
+[tool.pixi.feature.ml.dependencies]
+pytorch                     = ">=2.0"
+torchvision                 = ">=0.15"
+scikit-image                = ">=0.20"
+scikit-learn                = ">=1.3"
+xgboost                     = ">=2.0"
+joblib                      = ">=1.3"
+threadpoolctl               = ">=3.1"
+ultralytics                 = ">=8.4"
+transformers                = ">=4.30"
+huggingface_hub             = ">=0.20"
+segmentation-models-pytorch = "*"
+
+[tool.pixi.feature.geoai.dependencies]
+geoai-py       = ">=0.5"
+leafmap        = "*"
+torchgeo       = "*"
+omniwatermask  = ">=0.4"
+
+[tool.pixi.feature.earthdata.dependencies]
+earthaccess = ">=0.11"
+h5py        = ">=3.0"
+xarray      = ">=2023.1"
+h5netcdf    = ">=1.0"
+
+[tool.pixi.feature.earthengine.dependencies]
+earthengine-api = "*"
+
+[tool.pixi.feature.notebooks.dependencies]
+jupyterlab   = ">=4.0"
+ipywidgets   = ">=8.0"
+seaborn      = ">=0.12"
+geopandas    = ">=0.14"
+contextily   = ">=1.4"
+
+[tool.pixi.feature.planet.dependencies]
+python-dotenv = ">=1.0"
+sentinelhub   = ">=3.10"
+
+[tool.pixi.feature.dev.dependencies]
+ruff       = ">=0.5"
+pytest     = ">=7.0"
+pre-commit = ">=3.5"
+
+# Environments compose features into named installable envs.
+# `pixi install` alone activates `default` (core-only). `pixi install
+# -e full` activates the full stack. Named intermediate envs (`ml`,
+# `earthdata`, etc.) let contributors install exactly the slice they
+# need without pulling the ~4 GB `full` stack.
+[tool.pixi.environments]
+default    = { features = [],                      solve-group = "default" }
+ml         = { features = ["ml"],                  solve-group = "default" }
+earthdata  = { features = ["earthdata"],           solve-group = "default" }
+notebooks  = { features = ["notebooks"],           solve-group = "default" }
+dev        = { features = ["dev"],                 solve-group = "default" }
+tests      = { features = ["dev", "ml", "earthdata"], solve-group = "default" }
+full       = { features = ["ml", "geoai", "earthdata", "earthengine", "notebooks", "planet", "dev"], solve-group = "default" }
+
+# Tasks: shortcuts for common commands. Run with e.g. `pixi run test`.
+[tool.pixi.tasks]
+test               = { cmd = "pytest -v --color=yes", description = "Run the full test suite (needs `pixi install -e tests`)" }
+test-minimal       = { cmd = "pytest tests/test_minimal_install.py -v", description = "Run only the minimal-install (torch-less) tests" }
+lint               = { cmd = "ruff check geoai_datacubes tests", description = "Lint (advisory)" }
+fmt-check          = { cmd = "ruff format --check geoai_datacubes tests", description = "Format-check (advisory)" }
+jupyter            = { cmd = "jupyter lab", description = "Launch JupyterLab (needs `pixi install -e notebooks`)" }
