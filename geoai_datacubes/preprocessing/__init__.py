@@ -33,7 +33,32 @@ used by ``tile_geotiff(nan_handling="auto")`` and ML-ready normalisation):
 
 from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
-from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
+
+# LazyTileDataset (and geotiff_to_zarr, which lives in the same module)
+# require torch. Torch is optional -- it lives behind the [ml] extra so
+# fetch-and-fuse-only users can `pip install geoai-datacubes` without
+# pulling in ~2 GB of PyTorch. If torch is missing we expose stubs that
+# raise a clear ImportError only when the ML surface is actually used,
+# so `from geoai_datacubes.preprocessing import fuse_response_tiffs`
+# keeps working in a torch-free env.
+try:
+    from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
+except ImportError as _torch_missing:                                    # noqa: F841
+    _ml_extra_hint = (
+        "This name requires the [ml] extra (PyTorch is not installed). "
+        "Install with: `pip install geoai-datacubes[ml]` (or "
+        "`mamba install -n <env> -c conda-forge pytorch torchvision`). "
+        "Fetch and fuse work without [ml]; only the LazyTileDataset / "
+        "geotiff_to_zarr surface is gated."
+    )
+
+    class LazyTileDataset:                                               # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs):
+            raise ImportError(_ml_extra_hint)
+
+    def geotiff_to_zarr(*args, **kwargs):                                # type: ignore[no-redef]
+        raise ImportError(_ml_extra_hint)
+
 from .band_ops import (
     normalize_band, compute_ndvi, compute_ndwi, compute_dem_gradient_magnitude,
     cloud_mask,
