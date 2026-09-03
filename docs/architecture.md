@@ -10,29 +10,26 @@ provider class.
 From user parameters to a georeferenced multi-band GeoTIFF. All five
 provider classes converge on the same post-fetch stages
 (determine output grid → per-band read + reproject → write
-`<Mission>_full_size.tiff` + `userdata.json` sidecar), so downstream tools
-never need to care which provider served the scene.
+`<Mission>_full_size.tiff` + `userdata.json` sidecar), so downstream
+tools never need to care which provider served the scene.
 
 ```mermaid
 flowchart TD
-    U[["fetch_sentinel_data(<br/>mission, bands,<br/>roi, time_range)"]]
-    V["validate_query<br/><i>shape · ranges · antimeridian<br/>· ISO-8601 dates</i>"]
-    RES["resolve_aoi<br/><i>bbox · shapefile ·<br/>centre+miles · S2 tile</i>"]
-    D{"dispatch on provider<br/>(auto or explicit)"}
-
+    U["fetch_sentinel_data(mission, bands, roi, time_range)"]
+    V["validate_query"]
+    RES["resolve_aoi"]
+    D{"dispatch on provider"}
     ES["fetch_earthsearch"]
     PC["fetch_planetary_computer"]
     PL["fetch_planet"]
     SH["fetch_sentinelhub"]
     DH["fetch_direct_http"]
-
-    STAC["_fetch_via_stac<br/><i>search · rank · same-day mosaic</i>"]
+    STAC["_fetch_via_stac"]
     SEL["_select_scenes_for_mosaic"]
-    TILE["_fetch_via_direct_http<br/><i>tile_callback(roi, bands)</i>"]
-
-    GRID["Determine output grid<br/><i>UTM · resolution</i>"]
-    READ["Per-band read + reproject<br/><i>/vsicurl/ · rasterio.warp.reproject</i>"]
-    OUT[["&lt;Mission&gt;_full_size.tiff<br/>+ userdata.json"]]
+    TILE["_fetch_via_direct_http"]
+    GRID["determine output grid (UTM, resolution)"]
+    READ["per-band read and reproject via vsicurl"]
+    OUT["Mission_full_size.tiff plus userdata.json"]
 
     U --> V --> RES --> D
     D --> ES --> STAC
@@ -47,40 +44,50 @@ flowchart TD
     GRID --> READ --> OUT
 ```
 
+The stages in words:
+
+- `validate_query` — shape, lon/lat ranges, antimeridian, ISO-8601 dates
+  (added in [#21](https://github.com/buckai-observatory/geoai-datacubes/pull/21)).
+- `resolve_aoi` — normalises the AOI from bbox, shapefile, centre+miles,
+  or Sentinel-2 tile ID into a `[west, south, east, north]` bbox.
+- `_fetch_via_stac` — STAC search, ranking, and same-day mosaic
+  selection. Shared by `earthsearch` and `planetary_computer`.
+- `_fetch_via_direct_http` — per-tile discovery via a mission-supplied
+  `tile_callback`, then the same per-band read-and-reproject stage.
+- `fetch_planet` and `fetch_sentinelhub` — provider-specific request
+  paths, but write into the same output-grid + reproject stage.
+
 ## 2. Provider architecture
 
 `MISSION_PROFILES` (in `geoai_datacubes/fetch/missions.py`) is the single
-source of truth for which provider a mission uses, which bands it exposes,
-and how those bands map onto the provider's assets. `provider="auto"`
-picks the recommended provider per mission; a user can override it at
-call time.
+source of truth for which provider a mission uses, which bands it
+exposes, and how those bands map onto the provider's assets.
+`provider="auto"` picks the recommended provider per mission; a user can
+override it at call time.
 
 ```mermaid
 flowchart LR
-    MP[["MISSION_PROFILES<br/>26 missions"]]
+    MP["MISSION_PROFILES (26 missions)"]
+    ES["earthsearch"]
+    PC["planetary_computer"]
+    PL["planet"]
+    SH["sentinelhub"]
+    DH["direct_http"]
 
-    subgraph provs [Provider classes]
-        ES["earthsearch<br/><i>Element 84 STAC<br/>+ AWS Open Data</i>"]
-        PC["planetary_computer<br/><i>Microsoft PC STAC<br/>+ SAS-signed Azure</i>"]
-        PL["planet<br/><i>Data API<br/>+ Orders API</i>"]
-        SH["sentinelhub<br/><i>Process API<br/>(OAuth)</i>"]
-        DH["direct_http<br/><i>tile_callback →<br/>vsicurl COGs</i>"]
-    end
+    ES_M["Sentinel-2 L2A and L1C, Copernicus DEM, MERIT DEM, NASA DEM, ESA WorldCover"]
+    PC_M["Sentinel-1 RTC, Landsat-8 and 9 C2 L2, NAIP, 3DEP, MODIS, ALOS PALSAR and FNF, IO-LULC"]
+    PL_M["PlanetScope 3 m daily (requires credentials)"]
+    SH_M["Sentinel-2 L1C, Sentinel-3 OLCI (requires credentials)"]
+    DH_M["Hansen GFC, Lang 2023, Tolan 2024, GEDI L4B"]
 
-    MP --> ES
-    MP --> PC
-    MP --> PL
-    MP --> SH
-    MP --> DH
-
-    ES --> ES_M["Sentinel-2 L2A/L1C<br/>Copernicus / MERIT / NASA DEM<br/>ESA WorldCover"]
-    PC --> PC_M["Sentinel-1 RTC<br/>Landsat-8/9 C2 L2<br/>NAIP · 3DEP · MODIS<br/>ALOS PALSAR/FNF · IO-LULC"]
-    PL --> PL_M["PlanetScope 3&thinsp;m<br/><i>daily · requires credentials</i>"]
-    SH --> SH_M["Sentinel-2 L1C<br/>Sentinel-3 OLCI<br/><i>requires credentials</i>"]
-    DH --> DH_M["Hansen GFC<br/>Lang&nbsp;2023 canopy height<br/>Tolan&nbsp;2024 canopy height<br/>GEDI L4B"]
+    MP --> ES --> ES_M
+    MP --> PC --> PC_M
+    MP --> PL --> PL_M
+    MP --> SH --> SH_M
+    MP --> DH --> DH_M
 ```
 
-See [`docs/data_layers.md`](data_layers.md) for the full 26-mission table
-with per-mission bands, native resolution, value ranges, and provider
-assignment. See [`docs/providers.md`](providers.md) for provider
-trade-offs, credential setup, and per-provider rate-limit guidance.
+Provider trade-offs, credential setup, and per-provider rate-limit
+guidance live in [`docs/providers.md`](providers.md). The full
+26-mission table (per-mission bands, native resolution, value ranges,
+provider assignment) lives in [`docs/data_layers.md`](data_layers.md).
