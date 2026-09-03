@@ -13,7 +13,7 @@ provider classes converge on the same post-fetch stages
 `<Mission>_full_size.tiff` + `userdata.json` sidecar), so downstream
 tools never need to care which provider served the scene.
 
-```mermaid
+```{mermaid}
 flowchart TD
     U["fetch_sentinel_data(mission, bands, roi, time_range)"]
     V["validate_query"]
@@ -65,7 +65,7 @@ exposes, and how those bands map onto the provider's assets.
 `provider="auto"` picks the recommended provider per mission; a user can
 override it at call time.
 
-```mermaid
+```{mermaid}
 flowchart LR
     MP["MISSION_PROFILES (26 missions)"]
     ES["earthsearch"]

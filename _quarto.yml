@@ -9,7 +9,7 @@ project:
     - "docs/providers.md"
     - "docs/data_layers.md"
     - "docs/adding_a_mission.md"
-    - "docs/architecture.md"
+    - "docs/architecture.qmd"
     - "docs/configuration.md"
     - "docs/fusion.md"
     - "docs/HPC_QUICKSTART.md"
@@ -44,7 +44,7 @@ website:
           - docs/adding_a_mission.md
       - text: Core pipeline
         menu:
-          - docs/architecture.md
+          - docs/architecture.qmd
           - docs/configuration.md
           - docs/fusion.md
       - text: HPC
@@ -86,7 +86,7 @@ website:
       - section: "Core pipeline"
         icon: cpu
         contents:
-          - docs/architecture.md
+          - docs/architecture.qmd
           - docs/configuration.md
           - docs/fusion.md
       - section: "Notebooks (open in Colab)"
