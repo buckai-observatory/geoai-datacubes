@@ -71,3 +71,4 @@ _site/
 
 /.quarto/
 **/*.quarto_ipynb
+smoke-tests/perf_logs/
