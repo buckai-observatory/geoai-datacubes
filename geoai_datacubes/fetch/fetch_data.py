@@ -29,12 +29,14 @@ and exporter work unchanged regardless of provider.
 import json
 import os
 import re
+import sys
 
 import numpy as np
 import rasterio
 import requests
 from rasterio.transform import from_bounds
 from rasterio.warp import Resampling, reproject, transform_bounds
+from tqdm.auto import tqdm
 
 from .missions import get_profile, get_provider_config
 
@@ -629,24 +631,30 @@ def _fetch_via_stac(
     #    products (DEM, WorldCover) and now also non-static missions where
     #    a single scene did not cover the AOI (e.g. Sentinel-1 orbit strips).
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
-    for i, b in enumerate(final_bands):
+    band_bar = tqdm(
+        enumerate(final_bands), total=len(final_bands),
+        desc=f"{mission} bands", unit="band",
+        disable=not sys.stdout.isatty(), leave=False,
+    )
+    for i, b in band_bar:
         rs = _resampling_for_band(b, profile["cloud_mask"])
         asset_key, band_index = _resolve_band_mapping(asset_map[b])
         label = f"{asset_key}[band{band_index}]" if band_index != 1 else asset_key
         if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_key]["href"]) for it in items]
-            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}"
-                  f"mosaic of {len(urls)} scene(s)")
+            tqdm.write(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}"
+                       f"mosaic of {len(urls)} scene(s)")
             stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
                                               (out_h, out_w), rs,
                                               band_index=band_index)
         else:
             url = url_resolver(representative["assets"][asset_key]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
+            tqdm.write(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
             stack[i] = _read_band_to_grid(url, dst_crs, dst_transform,
                                             (out_h, out_w), rs,
                                             band_index=band_index)
+        band_bar.set_postfix_str(b)
 
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which

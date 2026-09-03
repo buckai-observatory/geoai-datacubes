@@ -36,12 +36,14 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import rasterio
+from tqdm.auto import tqdm
 from rasterio.warp import (
     calculate_default_transform,
     reproject,
@@ -186,7 +188,11 @@ def _fetch_via_direct_http(
         # into a single array with a no-data-aware "first-non-nodata-wins"
         # mosaic (sufficient for non-overlapping global tile grids).
         out_arr = np.full((out_h, out_w), np.nan, dtype=np.float32)
-        for ref in refs:
+        tile_bar = tqdm(
+            refs, desc=f"{band:>18s}", unit="tile",
+            disable=not sys.stdout.isatty(), leave=False,
+        )
+        for ref in tile_bar:
             url = ref["url"]
             t0 = time.time()
             try:
@@ -194,8 +200,8 @@ def _fetch_via_direct_http(
             except rasterio.errors.RasterioIOError as e:
                 # Tile may legitimately be absent (e.g. Hansen GFC ocean
                 # tiles are not published). Log and continue.
-                print(f"  WARN   {band:18s} skipping tile {ref.get('tile_name', '?')} "
-                      f"(IO error: {type(e).__name__})")
+                tqdm.write(f"  WARN   {band:18s} skipping tile {ref.get('tile_name', '?')} "
+                           f"(IO error: {type(e).__name__})")
                 continue
 
             with src:
@@ -214,8 +220,9 @@ def _fetch_via_direct_http(
                 # First-non-nodata-wins mosaic.
                 m = np.isnan(out_arr) & ~np.isnan(dst_buf)
                 out_arr[m] = dst_buf[m]
-            print(f"  ↓ {band:18s}  {ref.get('tile_name', '?'):14s}  "
-                  f"{resamp.name:9s}  {time.time()-t0:5.1f}s")
+            tile_bar.set_postfix_str(
+                f"{ref.get('tile_name', '?')} {time.time()-t0:.1f}s"
+            )
 
         band_arrays[band] = out_arr
 
