@@ -129,6 +129,12 @@ def fetch_sentinel_data(
     # caller asked for None loses helpful defaults. Each provider handles
     # this fork.
 
+    # Shared up-front validation of AOI + time_range so every provider
+    # path gets the same actionable error message on antimeridian-crossing
+    # AOIs, out-of-range lon/lat, and inverted time windows.
+    from .aoi import validate_query
+    validate_query(roi, time_range)
+
     if provider == "auto":
         provider = PROVIDER_AUTO.get(mission, "earthsearch")
         print(f"ℹ️  auto-provider: {mission!r} -> {provider!r}")

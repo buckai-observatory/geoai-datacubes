@@ -61,6 +61,34 @@ tiling, export) doesn't care which one was used.
 Switching to a paid / advanced provider (Sentinel Hub or Planet) needs
 a one-time credential setup; see [`credentials.md`](credentials.md).
 
+## Usage rates and quotas at a glance
+
+Each provider hosts its own throttle / rate-limit story. The pipeline
+never adds its own quota on top, so if a provider 429s or slows you
+down that's the provider's ceiling, not ours. Rough shape:
+
+| Provider | Credentials | Practical ceiling for interactive / notebook use | Notes |
+|---|---|---|---|
+| `earthsearch` | None | Anonymous S3 throttles kick in at high concurrency. Fine for single AOIs; may 503 intermittently during many-scene mosaics. | AWS Open Data buckets in fixed regions — geographic latency dominates cost outside the bucket's home region. See "Earth Search" section below. |
+| `planetary_computer` | None | Higher per-asset throttle ceilings than anonymous S3; SAS-signed URLs cached via a CDN. Comfortable for hundreds of concurrent reads. | Egress inside Azure is free; outside is bandwidth-limited by the CDN. See "Microsoft Planetary Computer" below. |
+| `earthdata` | Free NASA EDL + per-DAAC app approval | NASA does not publish a hard rate limit, but very-high concurrency to a single DAAC can trigger rate-limit responses. Typical laptop workflows are fine. | See [`providers/earthdata.md`](providers/earthdata.md) for the auth walkthrough and per-mission download-size caveats. |
+| `earth_engine` | Google account + GCP project with EE API enabled | Free-tier EE has a soft quota of ~1000 requests/day and per-op compute limits. Interactive notebook use is comfortable; large batch exports need EE's own export queue. | See [`providers/earth_engine.md`](providers/earth_engine.md). |
+| `direct_http` | None | No provider-side rate limit for the Hansen / ArcticDEM / GEBCO / PGC-hosted anonymous tiles; you're bandwidth-limited by their web-server region. | Every direct_http mission is a static-mosaic per tile, so cache-friendly. |
+| `local_files` | N/A | Filesystem I/O only; no network. | See [`providers/local_files.md`](providers/local_files.md). |
+| `sentinelhub` | Free Sentinel Hub OAuth | Free tier gives ~30k "processing units" per month; heavy runs consume the tier quickly. Paid tiers scale linearly. | Server-side clip + band math means fewer bytes moved per PU than STAC-fetch-then-clip. |
+| `planet` | `PL_API_KEY` (commercial) | Commercial usage-based billing; NICFI / Education programs offer higher no-cost caps. Consult your Planet contract before large orders. | Orders API adds a queue-and-clip step. |
+
+**Estimating cost before you fetch.** For track-heavy earthdata products
+with big per-file sizes (Sentinel-5P TROPOMI ~600 MB/file, ATL03
+500 MB – 2 GB/file), the earthdata fetcher prints an estimated total
+download size before the download starts and enforces per-mission
+`max_download_gb` / `max_granules` caps set in `MISSION_PROFILES`
+(introduced in v0.2 after an ATL03 fetch accidentally pulled 28 GB in a
+smoke test). Users doing intentional bulk aggregation can override
+these in code. Adding the same estimate + cap to the STAC provider
+paths is tracked as a v0.3 UX improvement (raised during JOSS review at
+openjournals/joss-reviews#11034).
+
 ---
 
 ## Earth Search (Element 84, no credentials)

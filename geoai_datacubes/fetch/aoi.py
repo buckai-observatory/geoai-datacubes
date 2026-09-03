@@ -98,6 +98,87 @@ def _bbox_from_center_side(lat, lon, side_miles):
     return [lon - half_lon, lat - half_lat, lon + half_lon, lat + half_lat]
 
 
+def validate_query(roi, time_range=None):
+    """Validate an AOI + optional time_range early, before any provider
+    call. Raises ``ValueError`` with an actionable message on any of:
+
+    - roi is not a 4-tuple ``[lon_min, lat_min, lon_max, lat_max]``
+    - lon out of [-180, 180] or lat out of [-90, 90]
+    - lat_min >= lat_max (empty or inverted latitude range)
+    - lon_min > lon_max, i.e. the AOI crosses the +/- 180 antimeridian.
+      A single call across the antimeridian is not supported by our
+      current provider paths (the STAC / earthdata bboxes are read as
+      "regular" west->east). Users should split into two AOIs on either
+      side of the antimeridian and fetch each separately.
+    - time_range is not a 2-element (start, end) tuple/list of ISO-8601
+      date strings that pandas can parse
+    - time_range start >= end (empty or inverted window)
+
+    Called from ``fetch_sentinel_data`` before dispatch so every provider
+    path shares the same up-front sanity check. Deliberately does NOT
+    check for provider-specific temporal coverage (e.g. NISAR-L only
+    2026-06-17 onward) -- that lives in the per-provider search step
+    where the actionable message can name the product.
+
+    Motivating review comment: reviewer noted that queries across the
+    antimeridian and inverted time_ranges silently returned unexpected
+    results downstream. See openjournals/joss-reviews#11034 (Aug 24 2026).
+    """
+    if not (isinstance(roi, (list, tuple)) and len(roi) == 4):
+        raise ValueError(
+            f"AOI must be a 4-element [lon_min, lat_min, lon_max, lat_max] "
+            f"in WGS84 degrees, got {roi!r}. See docs/data_layers.md for "
+            f"the four supported AOI input formats.")
+    try:
+        lon_min, lat_min, lon_max, lat_max = (float(x) for x in roi)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"AOI values must be numeric, got {roi!r}: {e}") from e
+
+    if not -180.0 <= lon_min <= 180.0 or not -180.0 <= lon_max <= 180.0:
+        raise ValueError(
+            f"AOI longitudes must be in [-180, 180] degrees, got "
+            f"lon_min={lon_min}, lon_max={lon_max}. "
+            "If your source used [0, 360], subtract 360 from anything > 180.")
+    if not -90.0 <= lat_min <= 90.0 or not -90.0 <= lat_max <= 90.0:
+        raise ValueError(
+            f"AOI latitudes must be in [-90, 90] degrees, got "
+            f"lat_min={lat_min}, lat_max={lat_max}.")
+    if lat_min >= lat_max:
+        raise ValueError(
+            f"AOI has empty or inverted latitude range: "
+            f"lat_min={lat_min} >= lat_max={lat_max}.")
+    if lon_min > lon_max:
+        raise ValueError(
+            f"AOI has lon_min={lon_min} > lon_max={lon_max}. This most "
+            "commonly means the AOI is meant to cross the +/- 180 "
+            "antimeridian. That is not supported by a single fetch -- "
+            "split into two AOIs on either side of the antimeridian "
+            "(e.g. [lon_min, lat_min, 180, lat_max] and "
+            "[-180, lat_min, lon_max, lat_max]) and fetch each "
+            "separately.")
+
+    if time_range is None:
+        return
+    if not (isinstance(time_range, (list, tuple)) and len(time_range) == 2):
+        raise ValueError(
+            f"time_range must be a (start, end) tuple of ISO-8601 date "
+            f"strings, got {time_range!r}.")
+    try:
+        import pandas as pd
+        t0 = pd.to_datetime(time_range[0])
+        t1 = pd.to_datetime(time_range[1])
+    except Exception as e:
+        raise ValueError(
+            f"time_range values must be ISO-8601 date strings that "
+            f"pandas can parse, got {time_range!r}: {e}") from e
+    if t0 >= t1:
+        raise ValueError(
+            f"time_range has start >= end: {time_range[0]!r} >= "
+            f"{time_range[1]!r}. Provide (start, end) with start "
+            "strictly before end.")
+
+
 def _bbox_from_s2_tile(lat, lon):
     """
     Look up any Sentinel-2 L2A item that intersects the point and return its

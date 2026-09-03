@@ -37,7 +37,7 @@ by all notebooks in this repo:
 mamba create -y -n geoai-cubes -c conda-forge \
     python=3.11 \
     geoai-py leafmap torchgeo omniwatermask \
-    rasterio gdal pyproj shapely \
+    rasterio gdal libgdal-jp2openjpeg pyproj shapely \
     pystac pystac-client planetary-computer \
     "pytorch>=2.0" "torchvision>=0.15" \
     zarr lmdb scikit-image pillow \
@@ -125,6 +125,49 @@ want to use the package without modifying it, drop the `-e`. The flat
 `requirements.txt` file is preserved for tooling that doesn't read
 `pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh --pip`
 import check).
+
+### Known install-time gotchas
+
+<details>
+<summary><b>Missing JPEG-2000 codec: <code>ERROR 4: Unable to open ... JP2OpenJPEG driver is unavailable</code></b></summary>
+
+**Why it matters.** ESA distributes Sentinel-2 bands as JPEG-2000
+(`.jp2`) files. Some public STAC buckets (notably Element 84's Earth
+Search Sentinel-2 L2A collection) serve these `.jp2` assets directly
+rather than converting to Cloud-Optimised GeoTIFF. Reading them
+requires the GDAL `JP2OpenJPEG` driver, which in turn requires the
+`libopenjp2` shared library to be present at runtime.
+
+**Status by installer** (as of 2026):
+
+| Installer | Ships JP2 support by default? | If not, fix |
+|---|---|---|
+| **conda-forge / mamba** | ❌ Split package — `gdal` doesn't imply the codec | Already added to the recommended `mamba create` line in Section 3. If you rolled your own env, `mamba install -n <env> -c conda-forge libgdal-jp2openjpeg`. |
+| **PyPI wheel (`pip install rasterio`)** | ✅ Yes — manylinux / macOS / Windows wheels bundle a GDAL built `--with-openjpeg` | Nothing to do. Verify with the diagnostic at the bottom of this callout. |
+| **apt (`libgdal-dev` on Ubuntu 22.04+)** | ✅ Yes | Nothing to do. |
+| **Homebrew (`brew install gdal`)** | ✅ Yes — the formula lists openjpeg as a dependency | Nothing to do. |
+| **MacPorts** | ❌ Base port lacks it | `sudo port install gdal +openjpeg` |
+| **Colab** | ✅ Yes — bundled GDAL wheel includes every codec | Nothing to do. |
+
+**Diagnostic** — regardless of installer, this one-liner tells you
+whether JP2 is available in your current Python env:
+
+```python
+from osgeo import gdal
+print([gdal.GetDriver(i).GetDescription()
+       for i in range(gdal.GetDriverCount())
+       if 'JP2' in gdal.GetDriver(i).GetDescription()])
+# Expected: ['JP2OpenJPEG'] (or similar)
+# Empty list -> codec is missing
+```
+
+**Symptom you'll actually see when it's missing**:
+`rasterio.errors.RasterioIOError: ... JP2OpenJPEG driver is unavailable`
+during a Sentinel-2 fetch.
+
+Reported during JOSS review: openjournals/joss-reviews#11034.
+
+</details>
 
 ## 4. Choose what to download
 
