@@ -170,6 +170,20 @@ def run_one(cfg: Config, workdir: Path, cache_bytes: int) -> dict:
     wall = time.time() - t0
 
     size = _tiff_size_bytes(scene_dir, cfg.mission) if ok else None
+    # Pixel count of the output multiband tiff (useful for "how many
+    # pixels/s did the pipeline produce" — a scale-invariant metric
+    # since it doesn't mix output MB with source-download MB).
+    pixels = None
+    if ok:
+        for p in scene_dir.rglob(f"{cfg.mission}_full_size.tiff"):
+            try:
+                import rasterio as _rio
+                with _rio.open(p) as src:
+                    pixels = int(src.count) * int(src.width) * int(src.height)
+            except Exception:
+                pass
+            break
+
     return {
         "label":       cfg.label,
         "mission":     cfg.mission,
@@ -180,9 +194,10 @@ def run_one(cfg: Config, workdir: Path, cache_bytes: int) -> dict:
         "aoi_bbox":    list(bbox),
         "time_range":  list(cfg.time_range) if cfg.time_range else None,
         "wall_s":      round(wall, 2),
-        "tiff_bytes":  size,
-        "throughput_MBps": (round((size / (1024*1024)) / wall, 2)
-                            if size and wall > 0 else None),
+        "out_tiff_MB": (round(size / (1024*1024), 1) if size else None),
+        "out_pixels_M": (round(pixels / 1_000_000, 2) if pixels else None),
+        "px_per_s_M": (round((pixels / 1_000_000) / wall, 2)
+                       if pixels and wall > 0 else None),
         "ok":          ok,
         "error":       err,
     }
@@ -205,22 +220,28 @@ def _skip_reason(cfg: Config) -> Optional[str]:
 def render_table(rows: List[dict], label_tag: str) -> str:
     header = (
         f"| Row | Mission | Provider | AOI | Bands | Res (m) | "
-        f"Wall (s) | Size (MB) | Throughput (MB/s) | Status |"
+        f"Wall (s) | Out (MB) | Out (Mpx) | Mpx/s | Status |"
     )
-    sep = "|---|---|---|---|---|---|---:|---:|---:|---|"
+    sep = "|---|---|---|---|---|---|---:|---:|---:|---:|---|"
     body = []
     for r in rows:
         bands = ",".join(r["bands"]) if r["bands"] else "default"
-        size_mb = (round(r["tiff_bytes"] / (1024*1024), 1)
-                   if r.get("tiff_bytes") else "—")
-        tput = r.get("throughput_MBps") or "—"
         status = "ok" if r["ok"] else (r.get("error") or "").split(":")[0][:30]
         body.append(
             f"| {r['label']} | {r['mission']} | `{r['provider']}` | "
             f"`{r['aoi_key']}` | {bands} | {r['resolution']} | "
-            f"{r['wall_s']} | {size_mb} | {tput} | {status} |"
+            f"{r['wall_s']} | {r.get('out_tiff_MB') or '—'} | "
+            f"{r.get('out_pixels_M') or '—'} | "
+            f"{r.get('px_per_s_M') or '—'} | {status} |"
         )
-    return "\n".join([f"### Results — `{label_tag}`", "", header, sep, *body])
+    footer = (
+        "\n_Out (MB) is the on-disk multi-band mosaic GeoTIFF size, not raw "
+        "bytes downloaded from the source (COGs are window-read, so upstream "
+        "traffic is typically 2-10x the output). Out (Mpx) is `count × width "
+        "× height` of that tiff. Mpx/s is the corresponding produced-pixel "
+        "rate; a scale-invariant proxy for pipeline throughput._"
+    )
+    return "\n".join([f"### Results — `{label_tag}`", "", header, sep, *body, footer])
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +308,9 @@ def main():
                            "throughput_MBps": None,
                            "ok": False, "error": "harness-error"}
                 marker = "OK  " if row["ok"] else "FAIL"
-                mb = (round(row["tiff_bytes"] / (1024*1024), 1) if row.get("tiff_bytes") else "?")
-                print(f"    {marker}  {row['wall_s']:>6.2f}s  {mb:>6} MB")
+                mb = row.get("out_tiff_MB") or "?"
+                mpx = row.get("out_pixels_M") or "?"
+                print(f"    {marker}  {row['wall_s']:>6.2f}s  {str(mb):>6} MB  {str(mpx):>6} Mpx")
             fh.write(json.dumps({"kind": "row", **row}) + "\n")
             rows.append(row)
 
