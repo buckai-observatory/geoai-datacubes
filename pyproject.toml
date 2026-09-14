@@ -144,6 +144,13 @@ dev = [
     "ruff>=0.5",
     "pytest>=7.0",
     "pre-commit>=3.5",
+    # Docs: auto-generated API reference. quartodoc pins to griffe <2
+    # because the numpy-docstring parser signature changed in 2.x
+    # (parse_numpy no longer accepts allow_section_blank_line, which
+    # quartodoc 0.11.x still passes). Remove the griffe cap when
+    # quartodoc bumps.
+    "quartodoc>=0.10",
+    "griffe<2",
 ]
 
 # Convenience: everything above in one go.

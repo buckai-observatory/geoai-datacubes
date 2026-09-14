@@ -19,6 +19,22 @@ project:
     - "CONTRIBUTING.md"
     - "CONTRIBUTORS.md"
     - "CODE_OF_CONDUCT.md"
+    # Auto-generated API reference (see quartodoc: block below).
+    # The pre-render hook (`quartodoc build`) emits docs/api/*.qmd on
+    # every render; the glob picks them up automatically.
+    - "docs/api/*.qmd"
+  pre-render:
+    # Regenerate docs/api/ from docstrings before rendering, so the
+    # site is always in sync with the current package code. Uses
+    # `python -m quartodoc` (not the bare `quartodoc` CLI) so it
+    # picks up whatever Python is on PATH -- necessary because
+    # Quarto's pre-render step doesn't inherit shell aliases, and
+    # `quartodoc` may live in a conda env that isn't on the default
+    # PATH. In CI (see .github/workflows/quarto-pages.yml) `python`
+    # is the workflow's setup-python interpreter with `[dev]`
+    # installed; locally you need to run from a shell that has
+    # activated the env with quartodoc installed.
+    - python -m quartodoc build
   post-render: scripts/quarto-cleanup.sh
 
 website:
@@ -49,6 +65,8 @@ website:
           - docs/configuration.md
           - docs/fusion.md
           - docs/performance.qmd
+      - text: API
+        href: docs/api/index.qmd
       - text: HPC
         menu:
           - docs/HPC_QUICKSTART.md
@@ -92,6 +110,11 @@ website:
           - docs/configuration.md
           - docs/fusion.md
           - docs/performance.qmd
+      - section: "API reference"
+        icon: braces
+        contents:
+          - text: "Auto-generated from docstrings"
+            href: docs/api/index.qmd
       - section: "Notebooks (open in Colab)"
         icon: journal-code
         contents:
@@ -126,3 +149,100 @@ format:
     toc-depth: 3
     code-copy: true
     css: site_styles.css
+
+# Auto-generated Python API reference. Runs before every render via
+# quartodoc's Quarto pre-render hook (see quartodoc.build below).
+# The `sidebar:` line writes a fragment we splice into the sidebar
+# under `Project reference` -> `API reference`.
+quartodoc:
+  package: geoai_datacubes
+  dir: docs/api
+  title: "API reference"
+  sidebar: docs/api/_sidebar.yml
+  render_interlinks: true
+  sections:
+    - title: "Data acquisition"
+      desc: "Download raw imagery + ancillary layers from public + commercial providers."
+      contents:
+        - fetch.fetch_sentinel_data
+        - fetch.resolve_aoi
+        - fetch.MISSION_PROFILES
+        - fetch.get_profile
+        - fetch.get_provider_config
+        - fetch.validate_query
+        - fetch.fetch_earthsearch
+        - fetch.fetch_planetary_computer
+        - fetch.fetch_direct_http
+        - fetch.fetch_planet
+        - fetch.fetch_sentinelhub
+    - title: "Pre-processing: fuse, tile, export"
+      desc: "Turn raw fetched imagery into AI-ready data cubes."
+      contents:
+        - preprocessing.fuse_response_tiffs
+        - preprocessing.tile_geotiff
+        - preprocessing.AVAILABLE_AUGMENTATIONS
+        - preprocessing.LazyTileDataset
+        - preprocessing.geotiff_to_zarr
+        - preprocessing.export_to_zarr
+        - preprocessing.export_to_lmdb
+    - title: "Band math + metadata"
+      desc: "Per-band normalisation, cloud masking, mission-aware NaN handling."
+      contents:
+        - preprocessing.normalize_band
+        - preprocessing.compute_ndvi
+        - preprocessing.compute_ndwi
+        - preprocessing.compute_dem_gradient_magnitude
+        - preprocessing.cloud_mask
+        - preprocessing.infer_band_kind
+        - preprocessing.get_band_kind
+        - preprocessing.get_band_norm
+        - preprocessing.apply_band_norm
+        - preprocessing.split_mission_band
+        - preprocessing.select_bands
+        - preprocessing.write_label_uint8
+        - preprocessing.BAND_PRESETS
+    - title: "ML / DL helpers"
+      desc: "Downstream task helpers built on top of the cubes."
+      contents:
+        - ml_dl.TinyUNet
+        - ml_dl.WaterUNet
+        - ml_dl.harvest_pixels
+        - ml_dl.balance_pos_neg
+        - ml_dl.tune_threshold
+        - ml_dl.binary_pixel_metrics
+        - ml_dl.predict_with_threshold
+        - ml_dl.full_metrics
+        - ml_dl.class_filtered_indices
+        - ml_dl.pick_class_balanced_tiles
+        - ml_dl.YOLOBuildingDetector
+        - ml_dl.polygons_to_yolo_tiles
+        - ml_dl.train_yolo_detector
+        - ml_dl.validate_yolo_model
+        - ml_dl.box_iou
+        - ml_dl.draw_yolo_boxes
+        - ml_dl.pick_tiles_with_boxes
+        - ml_dl.write_yolo_data_yaml
+        - ml_dl.yolo_lines_to_pixel_boxes
+    - title: "Visualisation"
+      desc: "Scene, tile, and split-layout figures used across the notebooks."
+      contents:
+        - viz.open_response
+        - viz.print_response_summary
+        - viz.stretch01
+        - viz.joint_rgb
+        - viz.show_bands
+        - viz.show_rgb
+        - viz.decode_scl
+        - viz.decode_bqa
+        - viz.plot_cloud_pair
+        - viz.count_tiles
+        - viz.open_tile
+        - viz.best_demo_tile
+        - viz.describe_tile
+        - viz.tile_grid_overlay
+        - viz.visualize_nan_handling_modes
+        - viz.plot_split_layout
+        - viz.city_panel
+
+metadata-files:
+  - docs/api/_sidebar.yml
