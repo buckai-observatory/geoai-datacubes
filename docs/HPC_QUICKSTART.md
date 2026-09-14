@@ -347,8 +347,6 @@ a few tens of GB and it's resilient to network interruption.
 - [`docs/providers.md`](providers.md) — provider trade-offs, useful
   for choosing between Earth Search and Planetary Computer at
   cluster scale.
-- [`docs/HPC_RUNBOOK.md`](HPC_RUNBOOK.md) — long-form multi-mission
-  cube-assembly runbook (local-only; not in the public repo).
 - [`smoke-tests/README.md`](../smoke-tests/README.md) — every
   per-mission fetch script + the pipeline-smoke test that this
   quickstart's data-acquisition section is built on.

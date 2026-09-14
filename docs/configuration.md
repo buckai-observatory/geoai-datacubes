@@ -1,7 +1,7 @@
 # Configuration & parameters
 
 These are the main knobs you can turn (set in
-[`geoai_datacubes/main.py`](../geoai_datacubes/main.py)).
+[`geoai_datacubes/main.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/geoai_datacubes/main.py)).
 
 | Parameter | What it controls | Example |
 |---|---|---|
