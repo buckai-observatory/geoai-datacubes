@@ -19,7 +19,7 @@ mosaicking, NaN edges, categorical-band nearest-neighbour resampling,
 cloud filtering, and band selection automatically.
 """
 
-from .aoi import resolve_aoi
+from .aoi import resolve_aoi, validate_query
 from .missions import MISSION_PROFILES, get_profile, get_provider_config
 from .fetch_data import (
     fetch_sentinel_data,
@@ -27,11 +27,13 @@ from .fetch_data import (
     fetch_planetary_computer,
     fetch_sentinelhub,
     fetch_planet,
+    fetch_direct_http,
 )
 from .parallel_fetch import fetch_many_in_parallel
 
 __all__ = [
     "resolve_aoi",
+    "validate_query",
     "MISSION_PROFILES",
     "get_profile",
     "get_provider_config",
@@ -40,5 +42,6 @@ __all__ = [
     "fetch_planetary_computer",
     "fetch_sentinelhub",
     "fetch_planet",
+    "fetch_direct_http",
     "fetch_many_in_parallel",
 ]

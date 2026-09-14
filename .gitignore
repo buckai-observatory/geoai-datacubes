@@ -72,3 +72,5 @@ _site/
 /.quarto/
 **/*.quarto_ipynb
 smoke-tests/perf_logs/
+docs/api/
+objects.json
