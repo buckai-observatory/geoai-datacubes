@@ -50,7 +50,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ## Install
 
-The recommended path is a single `mamba` command from conda-forge plus one `pip install`:
+The recommended path is a single `mamba` (or `conda`) command from conda-forge plus one `pip install`. `mamba` is a drop-in `conda` replacement that solves environments much faster; if you already have `conda` installed, substitute `conda` for `mamba` in the commands below and everything works the same.
 
 ```bash
 mamba create -y -n geoai-cubes -c conda-forge \
