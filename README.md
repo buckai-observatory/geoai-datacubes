@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/geoai-datacubes.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/geoai-datacubes/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
 [![status](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00/status.svg)](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00)
-[![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
+[![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://ai-observatory.osu.edu)
 
 **Full documentation:** <https://buckai-observatory.github.io/geoai-datacubes/>
 
@@ -27,7 +27,7 @@
 
 ## What is this?
 
-`geoai-datacubes` is an open-source tool developed at the [**BuckAI Observatory**](https://buckai-observatory.org) at **The Ohio State University**, intended for the worldwide Earth-observation and AI research communities. It gives you ready-to-use pipelines that **download satellite imagery** for any region and time you choose, then **pre-process it into AI-ready "data cubes"** — cloud-filtered, normalised, tiled, augmented, and split into training / validation / test sets that you can feed straight into a machine-learning model.
+`geoai-datacubes` is an open-source tool developed at the [**BuckAI Observatory**](https://ai-observatory.osu.edu) at **The Ohio State University**, intended for the worldwide Earth-observation and AI research communities. It gives you ready-to-use pipelines that **download satellite imagery** for any region and time you choose, then **pre-process it into AI-ready "data cubes"** — cloud-filtered, normalised, tiled, augmented, and split into training / validation / test sets that you can feed straight into a machine-learning model.
 
 The repo is designed to lower the entry barrier into Earth-observation ML for anyone — researchers, postdocs, graduate students, undergraduate research assistants, or industry / non-profit practitioners. If you have never touched an HPC or a satellite API before, you can still follow the steps below and produce a usable dataset without first having to stitch together half a dozen vendor SDKs. Tooling the BuckAI Observatory builds is open-sourced under permissive licences so that this kind of accessible AI infrastructure can benefit the broader research community, not just OSU's.
 
@@ -45,6 +45,17 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 - **Robust pre-processing** — smear-protected reprojection, polygon-aware Sentinel-1 same-day mosaicking, cloud / shadow / haze masking via mission-aware QA bands (Sentinel-2 SCL, Landsat BQA, PlanetScope UDM2).
 - **Spatially-aware train / val / test splits** (`random`, `block`, `stripes`, `regions`) selectable as a single argument, closing the leakage hole that random tile splits leave open on autocorrelated imagery.
 - **On-the-fly PyTorch tile sampling** via `LazyTileDataset` — sweep tile size, stride, augmentation, NaN handling, and split assignment at training time without materialising tiles to disk.
+
+---
+
+## Two ways to use `geoai-datacubes`
+
+The package supports two typical workflows; you can pick either, and you can move between them freely.
+
+- **Notebook path** — the on-ramp for anyone new to satellite data or ML/DL. The bundled notebooks (`notebooks/00_geoai_datacubes_tour.ipynb` and its siblings, above) are documented, interactive, and easy to adapt. Open one in Colab, swap the AOI and time range to your area of interest, and iterate. This is the recommended starting point for students and researchers coming from adjacent fields.
+- **Script / library path** — for users comfortable with remote sensing or ML who want to compose the pipeline into their own code. Import the package as a library, chain the fetch / fuse / tile helpers into your own workflow, embed it in a bigger pipeline, or run headless on an HPC cluster. Notebooks can also be stripped down to a plain Python script for SLURM runs — [`smoke-tests/perf_bench.slurm`](smoke-tests/perf_bench.slurm) is one worked example of that pattern.
+
+Both paths share the same underlying package — the notebooks are just curated call-sites of the same public API a script user would call directly.
 
 ---
 
@@ -131,9 +142,9 @@ Released under the **MIT License** — see [`LICENSE`](LICENSE) for the full tex
 
 ## Acknowledgements & contact
 
-Built and maintained by the [**BuckAI Observatory**](https://buckai-observatory.org) at The Ohio State University.
+Built and maintained by the [**BuckAI Observatory**](https://ai-observatory.osu.edu) at The Ohio State University.
 
-- Website: <https://buckai-observatory.org>
+- Website: <https://ai-observatory.osu.edu>
 - More tools & tutorials: BuckAI Observatory [resources page](https://buckai-observatory.org/resources.html)
 
 This project was developed over approximately one year by **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**; **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou**; and **Moortgat, Joachim** (principal investigator) at OSU. See [`CHANGELOG.md`](CHANGELOG.md) for the full timeline and [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of who contributed what. Code development since May 2026 was substantially accelerated by [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, used under continuous human direction and review.

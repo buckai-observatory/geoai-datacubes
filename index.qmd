@@ -29,7 +29,7 @@ Or open the [grand tour notebook](https://colab.research.google.com/github/bucka
 
 ## What this is
 
-`geoai-datacubes` is the [BuckAI Observatory](https://buckai-observatory.org)'s data-preparation front-end for Earth-observation machine learning. It unifies **26 satellite missions and derived products** behind a single configuration-driven pipeline: you specify a region, a time window, and a set of bands; it fetches the imagery from whichever provider is fastest, co-registers everything onto a common UTM grid, applies per-band normalisation from a declarative metadata registry, and hands you a multi-band GeoTIFF or Zarr cube that a PyTorch `Dataset` can stream training tiles from without ever materialising them to disk.
+`geoai-datacubes` is the [BuckAI Observatory](https://ai-observatory.osu.edu)'s data-preparation front-end for Earth-observation machine learning. It unifies **26 satellite missions and derived products** behind a single configuration-driven pipeline: you specify a region, a time window, and a set of bands; it fetches the imagery from whichever provider is fastest, co-registers everything onto a common UTM grid, applies per-band normalisation from a declarative metadata registry, and hands you a multi-band GeoTIFF or Zarr cube that a PyTorch `Dataset` can stream training tiles from without ever materialising them to disk.
 
 The library exists because the bottleneck in most satellite-ML research isn't the model — it's the data-preparation pipeline. Foundation-model wrappers are one `pip install` away; a working multi-mission fetch + fusion + normalisation + spatially-aware-split pipeline is not.
 
@@ -146,9 +146,22 @@ If you use `geoai-datacubes` in your research, please cite the archived software
 
 A software paper is currently [under review](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00) at the *Journal of Open Source Software* — this page will link to the accepted paper once published.
 
+## Who's using this
+
+`geoai-datacubes` is developed at The Ohio State University as part of a broader OSU-wide push around AI research and adoption. The project's closest institutional home is the [**BuckAI Observatory**](https://ai-observatory.osu.edu) — a college-wide applied-AI center with ~30 affiliated faculty PIs and their students / postdocs, many of whom work with satellite Earth-observation data. BuckAI's explicit goal is to remove barriers to AI adoption by providing shared community tools, so researchers don't need to reinvent data-plumbing wheels one lab at a time.
+
+The package also sits inside the larger OSU-wide AI ecosystem: the [**AI(x) Hub**](https://aihub.osu.edu) (OSU's university-wide AI center), the [**Translational Data Analytics Institute (TDAI)**](https://tdai.osu.edu), and the NSF-funded [**ICICLE**](https://icicle.osu.edu) institute headquartered in OSU's Computer Science and Engineering department. Between these, OSU has hundreds of faculty engaged in AI research overall, of whom on the order of a hundred routinely use satellite or remote-sensing data of some form. `geoai-datacubes` is expected to feed into a growing set of AI-focused courses and research programs across those groups.
+
+Two published examples anchor current use:
+
+- Hsu & Moortgat 2026, *Remote Sensing* 18(11):1768, [10.3390/rs18111768](https://doi.org/10.3390/rs18111768) — Sentinel-2 satellite-derived bathymetry, with the pipeline used for the S2 acquisition and preprocessing stages.
+- Chowdhury et al. 2026, *WACV*, [10.1109/WACV61042.2026.00205](https://doi.org/10.1109/WACV61042.2026.00205) — the ML-side companion work.
+
+`geoai-datacubes` reached its first public PyPI release (v0.1.0) in June 2026, so it is at an early stage as an open-source tool. This JOSS submission is precisely the vehicle through which we aim to make it visible and accessible to the broader Earth-observation and AI community.
+
 ## About
 
-Built by the [BuckAI Observatory](https://buckai-observatory.org) at The Ohio State University. Companion resources:
+Built by the [BuckAI Observatory](https://ai-observatory.osu.edu) at The Ohio State University. Companion resources:
 
 - 🖥️ [**BuckAI HPC Handbook**](https://buckai-observatory.org/buckai-hpc-handbook/) — using OSU's Unity cluster.
 - 📖 [**BuckAI Open-Source Handbook**](https://buckai-observatory.org/buckai-open-source-handbook/) — walk-through for taking research code to a citable, installable, peer-reviewed package.
