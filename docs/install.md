@@ -15,6 +15,8 @@ We recommend [mamba](https://github.com/conda-forge/miniforge) (a drop-in conda 
 
 If you already have conda installed and prefer not to switch, substitute `conda` for `mamba` in the commands below.
 
+> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead.** It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
+
 ## 3. Install the package
 
 The package ships with a `pyproject.toml` that declares the **core data
