@@ -1,0 +1,88 @@
+{
+  "test": "fetch_esa-worldcover",
+  "mission": "ESA-WorldCover",
+  "started_at": "2026-09-16T17:32:56",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "LULC"
+  ],
+  "time_range": [
+    "2021-01-01",
+    "2021-12-31"
+  ],
+  "resolution_m": 10,
+  "save_folder": "/tmp/geoai_smoke_final_54848/ESA-WorldCover",
+  "acceptance": {
+    "max_nan_fraction": 0.02,
+    "categorical_values": [
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70,
+      80,
+      90,
+      95,
+      100
+    ]
+  },
+  "elapsed_sec": 3.3,
+  "bands_returned": [
+    "LULC"
+  ],
+  "scene": "ESA-WorldCover_esa-worldcover_mosaic_2021-01-01",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/ESA-WorldCover/ESA-WorldCover_esa-worldcover_mosaic_2021-01-01/ESA-WorldCover_full_size.tiff",
+    "shape": [
+      260,
+      177,
+      1
+    ],
+    "bands": [
+      "LULC"
+    ],
+    "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      9.973988943068655,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -9.96908113331749,
+      4431748.439527453
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "LULC",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 10.0,
+        "max": 90.0,
+        "mean": 40.619041442871094,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          10,
+          30,
+          40,
+          50,
+          60,
+          80,
+          90
+        ]
+      }
+    ],
+    "size_bytes": 9419
+  },
+  "finished_at": "2026-09-16T17:32:59"
+}

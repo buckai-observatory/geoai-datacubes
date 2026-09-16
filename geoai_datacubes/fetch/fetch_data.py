@@ -309,16 +309,46 @@ def _scene_overlap_ratio(item, aoi_bbox):
         return _bbox_overlap_ratio(item.get("bbox") or [], aoi_bbox)
 
 
-def _resampling_for_band(band_name, cloud_mask_spec):
-    """SCL / BQA / quality-class bands MUST use nearest-neighbour resampling."""
+def _resampling_for_band(band_name, cloud_mask_spec, profile=None):
+    """Categorical / QA bands MUST use nearest-neighbour resampling.
+
+    Resolution order:
+
+    1. If the caller passed the mission ``profile`` and its
+       ``band_meta[band_name]["kind"]`` is ``"categorical"`` or
+       ``"qa"``, use nearest. This is the authoritative source of
+       truth -- every mission profile in ``missions.py`` declares
+       band kinds explicitly.
+    2. Else, if the band matches the cloud-mask band declared by the
+       profile, use nearest.
+    3. Else, fall back to a hardcoded set of common categorical /
+       QA band names. This branch exists so third-party mission
+       registrations without band_meta still get the right resampler.
+    4. Else, bilinear (continuous / spectral / SAR / elevation).
+
+    Bug history: prior to 2026-09-16 this function only consulted the
+    hardcoded fallback set, which omitted ``C`` (ALOS-FNF forest /
+    non-forest), ``lcpri`` (LCMAP primary class), ``cropland``
+    (USDA-CDL), and Hansen's ``lossyear`` / ``datamask`` -- so those
+    categorical bands got bilinear resampling and were fractional in
+    the output. Surfaced by the tightened smoke-test acceptance rules
+    (openjournals/joss-reviews#11034 item 1, issue #19). The kind-first
+    dispatch closes the whole class of miss.
+    """
     if cloud_mask_spec and band_name == cloud_mask_spec.get("band"):
         return Resampling.nearest
+    if profile is not None:
+        bmeta = (profile.get("band_meta") or {}).get(band_name) or {}
+        if bmeta.get("kind") in ("categorical", "qa"):
+            return Resampling.nearest
     if band_name in {"SCL", "BQA", "LULC", "Fmask",
                      "extent", "transitions",
-                     "QC", "QC_Day", "QC_Night", "STATE", "DOY"}:
-        # Categorical / classification / QA bands -- MUST be nearest neighbour.
-        # Includes HLS Fmask, JRC-GSW `extent` and `transitions`, and the
-        # MODIS QC / STATE / day-of-year sidecars (all packed-bit integers).
+                     "QC", "QC_Day", "QC_Night", "STATE", "DOY",
+                     # Added 2026-09-16 as a fallback for callers that
+                     # don't pass ``profile``. Keep in sync with the
+                     # ``kind: categorical`` bands in missions.py.
+                     "C", "lcpri", "cropland",
+                     "lossyear", "datamask"}:
         return Resampling.nearest
     return Resampling.bilinear
 
@@ -647,7 +677,7 @@ def _fetch_via_stac(
         disable=not sys.stdout.isatty(), leave=False,
     )
     for i, b in band_bar:
-        rs = _resampling_for_band(b, profile["cloud_mask"])
+        rs = _resampling_for_band(b, profile["cloud_mask"], profile)
         asset_key, band_index = _resolve_band_mapping(asset_map[b])
         label = f"{asset_key}[band{band_index}]" if band_index != 1 else asset_key
         if len(items) > 1:

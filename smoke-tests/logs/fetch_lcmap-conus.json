@@ -1,7 +1,7 @@
 {
   "test": "fetch_lcmap-conus",
   "mission": "LCMAP-CONUS",
-  "started_at": "2026-06-22T09:34:38",
+  "started_at": "2026-09-16T17:35:18",
   "status": "passed",
   "aoi": [
     -83.04,
@@ -18,15 +18,39 @@
     "2020-12-31"
   ],
   "resolution_m": 30,
-  "save_folder": "/tmp/geoai_smoke/LCMAP-CONUS",
-  "elapsed_sec": 2.9,
+  "save_folder": "/tmp/geoai_smoke_final_54848/LCMAP-CONUS",
+  "acceptance": {
+    "max_nan_fraction": 0.05,
+    "bands": {
+      "lcpri": {
+        "categorical_values": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "value_range": null
+      },
+      "lcpconf": {
+        "value_range": [
+          0.0,
+          255.0
+        ]
+      }
+    }
+  },
+  "elapsed_sec": 4.6,
   "bands_returned": [
     "lcpri",
     "lcpconf"
   ],
   "scene": "LCMAP-CONUS_2020-01-01_LCMAP_CU_024009_2020_V13_CCDC",
   "geotiff": {
-    "path": "/tmp/geoai_smoke/LCMAP-CONUS/LCMAP-CONUS_2020-01-01_LCMAP_CU_024009_2020_V13_CCDC/LCMAP-CONUS_full_size.tiff",
+    "path": "/tmp/geoai_smoke_final_54848/LCMAP-CONUS/LCMAP-CONUS_2020-01-01_LCMAP_CU_024009_2020_V13_CCDC/LCMAP-CONUS_full_size.tiff",
     "shape": [
       93,
       68,
@@ -37,8 +61,49 @@
       "lcpconf"
     ],
     "crs": "PROJCS[\"AEA        WGS84\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Albers_Conic_Equal_Area\"],PARAMETER[\"latitude_of_center\",23],PARAMETER[\"longitude_of_center\",-96],PARAMETER[\"standard_parallel_1\",29.5],PARAMETER[\"standard_parallel_2\",45.5],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      29.811562000674552,
+      0.0,
+      1093038.8899713724,
+      0.0,
+      -29.928449898197126,
+      1963871.0387623399
+    ],
     "nan_fraction_centre_window": 0.0,
-    "size_bytes": 20445
+    "per_band": [
+      {
+        "index": 1,
+        "description": "lcpri",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 1.0,
+        "max": 8.0,
+        "mean": 1.2061985731124878,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          8
+        ]
+      },
+      {
+        "index": 2,
+        "description": "lcpconf",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 36.13953399658203,
+        "max": 201.82083129882812,
+        "mean": 92.96714782714844,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 18572
   },
-  "finished_at": "2026-06-22T09:34:41"
+  "finished_at": "2026-09-16T17:35:23"
 }

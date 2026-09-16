@@ -1,0 +1,88 @@
+{
+  "test": "fetch_jrc-gsw",
+  "mission": "JRC-GSW",
+  "started_at": "2026-09-16T17:32:59",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "occurrence",
+    "extent"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 30,
+  "save_folder": "/tmp/geoai_smoke_final_54848/JRC-GSW",
+  "acceptance": {
+    "max_nan_fraction": 0.02,
+    "value_range": [
+      0.0,
+      100.0
+    ]
+  },
+  "elapsed_sec": 7.4,
+  "bands_returned": [
+    "occurrence",
+    "extent"
+  ],
+  "scene": "JRC-GSW_jrc-gsw_mosaic_2020-07-01",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/JRC-GSW/JRC-GSW_jrc-gsw_mosaic_2020-07-01/JRC-GSW_full_size.tiff",
+    "shape": [
+      87,
+      59,
+      2
+    ],
+    "bands": [
+      "occurrence",
+      "extent"
+    ],
+    "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      29.921966829205967,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -29.792656260489046,
+      4431748.439527453
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "occurrence",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 0.0,
+        "max": 76.0,
+        "mean": 0.9697738289833069,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "extent",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.024547047913074493,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          0,
+          1
+        ]
+      }
+    ],
+    "size_bytes": 3404
+  },
+  "finished_at": "2026-09-16T17:33:07"
+}
