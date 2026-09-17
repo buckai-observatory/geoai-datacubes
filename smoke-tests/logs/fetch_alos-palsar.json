@@ -1,7 +1,7 @@
 {
   "test": "fetch_alos-palsar",
   "mission": "ALOS-PALSAR",
-  "started_at": "2026-08-22T20:00:09",
+  "started_at": "2026-09-16T17:34:47",
   "status": "known_limitation",
   "aoi": [
     -83.04,
@@ -18,7 +18,7 @@
     "2020-12-31"
   ],
   "resolution_m": 25,
-  "save_folder": "/tmp/geoai_smoke/ALOS-PALSAR",
+  "save_folder": "/tmp/geoai_smoke_final_54848/ALOS-PALSAR",
   "acceptance": {
     "max_nan_fraction": 0.2,
     "value_range": [
@@ -27,14 +27,14 @@
     ],
     "known_limitation": "ALOS-PALSAR PC mosaic is sparse over this Columbus OH AOI (N41W084 tile edge); real coverage checks need a mid-tile rural AOI. Kept as known_limitation until the smoke suite gets a separate rural-Midwest AOI for L-band SAR."
   },
-  "elapsed_sec": 54.5,
+  "elapsed_sec": 6.8,
   "bands_returned": [
     "HH",
     "HV"
   ],
   "scene": "ALOS-PALSAR_2020-01-01_N41W084_20_F02DAR_MOS",
   "geotiff": {
-    "path": "/tmp/geoai_smoke/ALOS-PALSAR/ALOS-PALSAR_2020-01-01_N41W084_20_F02DAR_MOS/ALOS-PALSAR_full_size.tiff",
+    "path": "/tmp/geoai_smoke_final_54848/ALOS-PALSAR/ALOS-PALSAR_2020-01-01_N41W084_20_F02DAR_MOS/ALOS-PALSAR_full_size.tiff",
     "shape": [
       104,
       71,
@@ -46,25 +46,38 @@
     ],
     "crs": "EPSG:32617",
     "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      24.864732998917635,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -24.922702833293723,
+      4431748.439527453
+    ],
     "nan_fraction_centre_window": 0.9438,
     "per_band": [
       {
         "index": 1,
         "description": "HH",
         "nan_fraction": 0.9438,
+        "infinite_fraction": 0.0,
         "min": 2069.705078125,
         "max": 17420.845703125,
         "mean": 5804.30126953125,
-        "native_dtype": "float32"
+        "native_dtype": "float32",
+        "unique_int_codes": null
       },
       {
         "index": 2,
         "description": "HV",
         "nan_fraction": 0.9438,
+        "infinite_fraction": 0.0,
         "min": 720.0978393554688,
         "max": 7996.2822265625,
         "mean": 2128.6650390625,
-        "native_dtype": "float32"
+        "native_dtype": "float32",
+        "unique_int_codes": null
       }
     ],
     "size_bytes": 5376
@@ -74,5 +87,5 @@
     "HV: nan_fraction 0.9438 exceeds cap 0.2"
   ],
   "known_limitation_reason": "ALOS-PALSAR PC mosaic is sparse over this Columbus OH AOI (N41W084 tile edge); real coverage checks need a mid-tile rural AOI. Kept as known_limitation until the smoke suite gets a separate rural-Midwest AOI for L-band SAR.",
-  "finished_at": "2026-08-22T20:01:04"
+  "finished_at": "2026-09-16T17:34:54"
 }

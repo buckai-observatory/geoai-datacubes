@@ -1,7 +1,7 @@
 {
-  "test": "fetch_copernicus-dem",
-  "mission": "Copernicus-DEM",
-  "started_at": "2026-09-16T17:32:50",
+  "test": "fetch_3dep",
+  "mission": "3DEP",
+  "started_at": "2026-09-16T17:33:07",
   "status": "passed",
   "aoi": [
     -83.04,
@@ -16,25 +16,25 @@
     "2020-01-01",
     "2020-12-31"
   ],
-  "resolution_m": 30,
-  "save_folder": "/tmp/geoai_smoke_final_54848/Copernicus-DEM",
+  "resolution_m": 10,
+  "save_folder": "/tmp/geoai_smoke_final_54848/3DEP",
   "acceptance": {
-    "max_nan_fraction": 0.02,
+    "max_nan_fraction": 0.05,
     "value_range": [
       -500.0,
-      9000.0
+      5000.0
     ]
   },
-  "elapsed_sec": 5.7,
+  "elapsed_sec": 7.1,
   "bands_returned": [
     "DEM"
   ],
-  "scene": "Copernicus-DEM_cop-dem-glo-30_mosaic_2021-04-22",
+  "scene": "3DEP_3dep-seamless_mosaic_2020-02-28",
   "geotiff": {
-    "path": "/tmp/geoai_smoke_final_54848/Copernicus-DEM/Copernicus-DEM_cop-dem-glo-30_mosaic_2021-04-22/Copernicus-DEM_full_size.tiff",
+    "path": "/tmp/geoai_smoke_final_54848/3DEP/3DEP_3dep-seamless_mosaic_2020-02-28/3DEP_full_size.tiff",
     "shape": [
-      87,
-      59,
+      260,
+      177,
       1
     ],
     "bands": [
@@ -44,11 +44,11 @@
     "transform_present": true,
     "transform_is_georeferenced": true,
     "transform_affine": [
-      29.921966829205967,
+      9.973988943068655,
       0.0,
       325847.03797238035,
       0.0,
-      -29.792656260489046,
+      -9.96908113331749,
       4431748.439527453
     ],
     "nan_fraction_centre_window": 0.0,
@@ -58,14 +58,14 @@
         "description": "DEM",
         "nan_fraction": 0.0,
         "infinite_fraction": 0.0,
-        "min": 210.7362823486328,
-        "max": 249.26846313476562,
-        "mean": 229.16778564453125,
+        "min": 216.38095092773438,
+        "max": 242.921875,
+        "mean": 228.57431030273438,
         "native_dtype": "float32",
         "unique_int_codes": null
       }
     ],
-    "size_bytes": 18594
+    "size_bytes": 149336
   },
-  "finished_at": "2026-09-16T17:32:56"
+  "finished_at": "2026-09-16T17:33:14"
 }

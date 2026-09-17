@@ -90,6 +90,90 @@ openjournals/joss-reviews#11034).
 
 ---
 
+## Known limitations of the reviewed release (v0.1)
+
+The **v0.1 release** covers the missions and providers documented in
+the capability matrix above. Two provider-level scope caveats worth
+knowing before you commit a downstream project to the current release:
+
+### 1. MODIS via Planetary Computer returns native sinusoidal projection
+
+`MODIS_SR` and `MODIS_LST` on the default `PROVIDER = "auto"` path
+route to Planetary Computer, which serves MODIS Terra/Aqua reflectance
+and land-surface temperature in the **native sinusoidal projection**.
+For AOIs that fall near a MODIS granule / tile boundary, the on-the-fly
+reprojection to UTM produces a valid GeoTIFF with **high NaN
+coverage** — reproducibly ~83% in the default smoke-test AOI over
+Columbus, OH. This is not a fetch bug: the STAC provider is returning
+the correct raw scenes, and our reprojection is faithful; the sparsity
+is a real property of a sinusoidal-tiled product clipped to a small
+non-central sub-window.
+
+**When this bites you.** Any workflow that runs `MODIS_SR` /
+`MODIS_LST` through the default STAC provider on an AOI smaller than
+a MODIS granule and near a tile edge will see the same sparse
+coverage. The smoke-test log for these missions may therefore be
+marked as a **hard `failed`** on the `max_nan_fraction` cap rather
+than as a silent pass — that is intentional; the acceptance rules
+were tightened in response to [`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19).
+
+**Workarounds now (v0.1):**
+
+* Enlarge the AOI so it straddles two or more granules and pick a
+  central subset from the fused mosaic.
+* For land-cover / vegetation-index applications where 250 m or 500 m
+  aggregated products are sufficient, prefer `Sentinel-2` +
+  `Copernicus-DEM` on the default STAC path.
+
+**Resolution in v0.2 (post-review, on `feature/earth-engine-provider`).**
+An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on the
+v0.2 branch returns MODIS reflectance and LST **directly in UTM** with
+proper cross-tile mosaicking, closing the sparsity gap for these
+missions. This is tracked at
+[`#10`](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
+and lives on the `feature/earth-engine-provider` branch, not on the
+reviewed `main` branch. It ships when v0.2 lands on `main` after this
+review closes.
+
+### 2. Sentinel Hub authenticated path is supported but not exercised in CI
+
+`PROVIDER = "sentinelhub"` gives access to the paid / free-tier
+Sentinel Hub Process API for server-side band math, custom evalscripts,
+and heavy-throughput production runs (see the "Sentinel Hub"
+deep-dive section below). The code path is implemented and functional
+for callers with a free-tier OAuth credential, and the interactive
+walkthrough in [`credentials.md`](credentials.md) covers first-time
+setup.
+
+**What's not covered by v0.1 automated tests.** No smoke test in
+[`smoke-tests/`](../smoke-tests/) exercises the `sentinelhub` provider
+path — every current smoke test is either `earthsearch`,
+`planetary_computer`, or `direct_http`, so that the CI matrix runs
+credential-free. The Sentinel Hub path therefore has less regression
+coverage than the free-provider paths for v0.1. Users who need it
+should treat it as **community-verified** rather than
+**CI-verified** — bug reports are welcome and will be fixed with the
+same turnaround as the free-provider paths.
+
+**Adding CI coverage** without leaking a shared free-tier OAuth
+credential is tracked at
+[`#1`](https://github.com/buckai-observatory/geoai-datacubes/issues/1)
+and is planned for a future release. It is not blocking users today;
+it is an internal-QA improvement.
+
+### Reviewed scope summary
+
+Everything else in the capability matrix runs in the CI smoke suite
+against the default provider routing on the AOI in
+[`smoke-tests/_run_fetch.py`](../smoke-tests/_run_fetch.py), with
+per-mission acceptance criteria enforced (nan-fraction cap, value
+range, categorical-code enumeration; see
+[`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19)).
+A machine-readable summary of the most recent run lives at
+[`smoke-tests/logs/`](../smoke-tests/logs/).
+
+---
+
 ## Earth Search (Element 84, no credentials)
 
 **What it is.** A free STAC API in front of **AWS Open Data buckets** in

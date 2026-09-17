@@ -1,0 +1,187 @@
+{
+  "started_at": "2026-09-16T21:32:48Z",
+  "finished_at": "2026-09-16T21:35:30Z",
+  "tests": [
+    {
+      "test": "pipeline_nan_auto",
+      "status": "passed",
+      "elapsed_sec": 0.3,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_copernicus-dem",
+      "status": "passed",
+      "elapsed_sec": 5.7,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_esa-worldcover",
+      "status": "passed",
+      "elapsed_sec": 3.3,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_jrc-gsw",
+      "status": "passed",
+      "elapsed_sec": 7.4,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_3dep",
+      "status": "passed",
+      "elapsed_sec": 7.1,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_naip",
+      "status": "passed",
+      "elapsed_sec": 17.2,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_sentinel-2",
+      "status": "passed",
+      "elapsed_sec": 6.7,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_sentinel-2-l1c",
+      "status": "passed",
+      "elapsed_sec": 32.1,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_sentinel-1",
+      "status": "passed",
+      "elapsed_sec": 5.8,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_landsat",
+      "status": "passed",
+      "elapsed_sec": 6.1,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_modis-sr",
+      "status": "known_limitation",
+      "elapsed_sec": 5.1,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_modis-lst",
+      "status": "known_limitation",
+      "elapsed_sec": 4.9,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_hls-s30",
+      "status": "passed",
+      "elapsed_sec": 6.5,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_hls-l30",
+      "status": "passed",
+      "elapsed_sec": 5.6,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_planetscope-4b",
+      "status": "skipped",
+      "elapsed_sec": null,
+      "reason": "PL_API_KEY not set in environment (Planet commercial API)",
+      "error": null
+    },
+    {
+      "test": "fetch_planetscope-8b",
+      "status": "skipped",
+      "elapsed_sec": null,
+      "reason": "PL_API_KEY not set in environment (Planet commercial API)",
+      "error": null
+    },
+    {
+      "test": "fetch_alos-palsar",
+      "status": "known_limitation",
+      "elapsed_sec": 6.8,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_alos-fnf",
+      "status": "passed",
+      "elapsed_sec": 4.2,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_hansen-gfc",
+      "status": "passed",
+      "elapsed_sec": 7.9,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_copernicus-dem-90",
+      "status": "passed",
+      "elapsed_sec": 6.2,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_usda-cdl",
+      "status": "passed",
+      "elapsed_sec": 4.8,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_lcmap-conus",
+      "status": "passed",
+      "elapsed_sec": 4.6,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_io-lulc",
+      "status": "passed",
+      "elapsed_sec": 3.7,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_chloris-biomass",
+      "status": "passed",
+      "elapsed_sec": 3.2,
+      "reason": null,
+      "error": null
+    },
+    {
+      "test": "fetch_sentinel-5p",
+      "status": "skipped",
+      "elapsed_sec": null,
+      "reason": "Sentinel-5P is a documented stub; STAC items are NetCDF, not COG",
+      "error": null
+    }
+  ],
+  "tally": {
+    "passed": 19,
+    "known_limitation": 3,
+    "skipped": 3
+  },
+  "total": 25
+}

@@ -71,6 +71,13 @@ _site/
 
 /.quarto/
 **/*.quarto_ipynb
-smoke-tests/perf_logs/
+# Fresh user perf-benchmark runs stay local by default so contributors
+# don't accidentally add every laptop timing they collect. The committed
+# reference dataset from the paper's benchmark tables is exempted
+# explicitly below (see smoke-tests/perf_logs/README.md).
+smoke-tests/perf_logs/*.jsonl
+!smoke-tests/perf_logs/reference_2026-09-03/
+!smoke-tests/perf_logs/reference_2026-09-03/*.jsonl
+!smoke-tests/perf_logs/README.md
 docs/api/
 objects.json

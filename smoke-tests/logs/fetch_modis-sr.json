@@ -1,0 +1,91 @@
+{
+  "test": "fetch_modis-sr",
+  "mission": "MODIS_SR",
+  "started_at": "2026-09-16T17:34:24",
+  "status": "known_limitation",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "B01",
+    "B02"
+  ],
+  "time_range": [
+    "2024-06-15",
+    "2024-07-15"
+  ],
+  "resolution_m": 500,
+  "save_folder": "/tmp/geoai_smoke_final_54848/MODIS_SR",
+  "acceptance": {
+    "max_nan_fraction": 0.2,
+    "value_range": [
+      -500.0,
+      20000.0
+    ],
+    "known_limitation": "MODIS PC path returns native sinusoidal; small non-central AOIs are sparse after UTM reprojection. See docs/providers.md 'Known limitations' and issue #10. Resolved on feature/earth-engine-provider via the EE provider."
+  },
+  "elapsed_sec": 5.1,
+  "bands_returned": [
+    "B01",
+    "B02"
+  ],
+  "scene": "MODIS_SR_2024-07-11_MYD09A1.A2024193.h11v05.061.2024202041147",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/MODIS_SR/MODIS_SR_2024-07-11_MYD09A1.A2024193.h11v05.061.2024202041147/MODIS_SR_full_size.tiff",
+    "shape": [
+      6,
+      9,
+      2
+    ],
+    "bands": [
+      "B01",
+      "B02"
+    ],
+    "crs": "PROJCS[\"unnamed\",GEOGCS[\"Unknown datum based upon the custom spheroid\",DATUM[\"Not specified (based on custom spheroid)\",SPHEROID[\"Custom spheroid\",6371007.181,0]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Sinusoidal\"],PARAMETER[\"longitude_of_center\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      454.0054490419312,
+      0.0,
+      -7073894.325465019,
+      0.0,
+      -426.2476992437926,
+      4449803.5900016725
+    ],
+    "nan_fraction_centre_window": 0.8333,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "B01",
+        "nan_fraction": 0.8333,
+        "infinite_fraction": 0.0,
+        "min": 778.8232421875,
+        "max": 2745.942138671875,
+        "mean": 1305.912109375,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "B02",
+        "nan_fraction": 0.8333,
+        "infinite_fraction": 0.0,
+        "min": 1822.86376953125,
+        "max": 3084.549072265625,
+        "mean": 2212.384765625,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 2210
+  },
+  "violations": [
+    "B01: nan_fraction 0.8333 exceeds cap 0.2",
+    "B02: nan_fraction 0.8333 exceeds cap 0.2"
+  ],
+  "known_limitation_reason": "MODIS PC path returns native sinusoidal; small non-central AOIs are sparse after UTM reprojection. See docs/providers.md 'Known limitations' and issue #10. Resolved on feature/earth-engine-provider via the EE provider.",
+  "finished_at": "2026-09-16T17:34:29"
+}

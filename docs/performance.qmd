@@ -147,36 +147,62 @@ The knobs that actually move the wall time, in rough order of impact:
 
 ## Reproducing these numbers
 
-The benchmark harness lives at
+**The raw per-run JSONL records underlying every table above ship
+committed with the repository** at
+[`smoke-tests/perf_logs/reference_2026-09-03/`](https://github.com/buckai-observatory/geoai-datacubes/tree/main/smoke-tests/perf_logs/reference_2026-09-03) —
+13 files, 57 successful timing observations across the two machines.
+The per-file header carries the machine spec (hostname, arch, CPU
+count, memory, Python version); each subsequent row carries the
+timing, output size, produced-pixel count, and any error message for
+one fetch call. See
+[`smoke-tests/perf_logs/README.md`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_logs/README.md)
+for the layout and provenance details.
+
+To **independently re-aggregate the published tables from the
+committed raw records**:
+
+```{.bash}
+python smoke-tests/perf_bench_agg.py \
+    --out smoke-tests/perf_logs \
+    --machine laptop-cellular \
+    --machine unity-cluster
+```
+
+The two machine keys map to the doc's "Laptop" and "HPC" columns
+respectively. The aggregator recurses into
+`perf_logs/reference_2026-09-03/` automatically (via `rglob`) and
+collapses per-run suffixes (`laptop-cellular-run2`,
+`laptop-cellular-run3`, …) so all three repeats stack into one
+min-median-max entry per row.
+
+To **produce your own timing on a new machine**, the fetch harness
+lives at
 [`smoke-tests/perf_bench.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_bench.py).
-Its `--configs credfree` preset runs the 10 rows above. Each row's raw
-JSON log lands in `smoke-tests/perf_logs/` (gitignored — outputs stay
-local).
+Its `--configs credfree` preset runs the 10 rows above. Fresh runs
+land as
+`smoke-tests/perf_logs/perf_bench_<label>_<utc_ts>.jsonl` and are
+gitignored by default (see the `.gitignore` rule) so contributors
+don't accidentally commit every local timing.
 
 Laptop run:
 ```{.bash}
-python smoke-tests/perf_bench.py --configs credfree --label laptop
+python smoke-tests/perf_bench.py --configs credfree --label mylaptop
 ```
 
 SLURM:
 ```{.bash}
-sbatch --export=ALL,ENV_NAME=<your-env>,LABEL=hpc \
+sbatch --export=ALL,ENV_NAME=<your-env>,LABEL=mycluster \
        smoke-tests/perf_bench.slurm
 ```
 
-Once you have JSON logs from one or more runs on one or more machines,
-aggregate them into a min-med-max table with
-[`smoke-tests/perf_bench_agg.py`](https://github.com/buckai-observatory/geoai-datacubes/blob/main/smoke-tests/perf_bench_agg.py):
+Point the aggregator at your own logs the same way:
 
 ```{.bash}
 python smoke-tests/perf_bench_agg.py \
-    --machine laptop \
-    --machine hpc
+    --out smoke-tests/perf_logs \
+    --machine mylaptop \
+    --machine mycluster
 ```
-
-The aggregator collapses per-run suffixes (`laptop-run2`,
-`laptop-run3`, …) into a single `laptop` column, so repeat runs stack
-cleanly.
 
 ## Caveats
 

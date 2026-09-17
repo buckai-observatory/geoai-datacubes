@@ -67,7 +67,7 @@ The recommended path is a single `mamba` (or `conda`) command from conda-forge p
 mamba create -y -n geoai-cubes -c conda-forge \
     python=3.11 \
     geoai-py leafmap torchgeo omniwatermask \
-    rasterio gdal pyproj shapely \
+    rasterio gdal libgdal-jp2openjpeg pyproj shapely \
     pystac pystac-client planetary-computer \
     "pytorch>=2.0" "torchvision>=0.15" \
     zarr lmdb scikit-image pillow \
@@ -77,6 +77,8 @@ mamba create -y -n geoai-cubes -c conda-forge \
 mamba activate geoai-cubes
 pip install geoai-datacubes              # or: pip install -e . from a clone
 ```
+
+`libgdal-jp2openjpeg` is the JPEG-2000 GDAL plugin — needed for Earth Search's Sentinel-2 L1C assets, which are hosted as `.jp2`. Every other mission is COG-native and does not need it; if you skip it, all missions except S2 L1C still work.
 
 For Docker, pip-only, slimmer installs via `[ml]` / `[geoai]` / `[notebooks]` / `[planet]` extras, and the first-run recipe, see **[`docs/install.md`](docs/install.md)**. PlanetScope and Sentinel Hub credential setup is in **[`docs/credentials.md`](docs/credentials.md)**.
 

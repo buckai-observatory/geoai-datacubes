@@ -123,7 +123,10 @@ def main():
     args = ap.parse_args()
 
     log_dir = Path(args.out)
-    paths = sorted(log_dir.glob("perf_bench_*.jsonl"))
+    # rglob so a committed reference dataset in a dated subfolder
+    # (e.g. perf_logs/reference_2026-09-03/*.jsonl) is discovered
+    # alongside any fresh ungrouped logs at the top level.
+    paths = sorted(log_dir.rglob("perf_bench_*.jsonl"))
     if not paths:
         print(f"no perf_bench_*.jsonl in {log_dir}")
         return

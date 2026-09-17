@@ -1,7 +1,7 @@
 {
   "test": "fetch_usda-cdl",
   "mission": "USDA-CDL",
-  "started_at": "2026-06-22T09:34:34",
+  "started_at": "2026-09-16T17:35:13",
   "status": "passed",
   "aoi": [
     -83.04,
@@ -18,15 +18,30 @@
     "2020-12-31"
   ],
   "resolution_m": 30,
-  "save_folder": "/tmp/geoai_smoke/USDA-CDL",
-  "elapsed_sec": 2.8,
+  "save_folder": "/tmp/geoai_smoke_final_54848/USDA-CDL",
+  "acceptance": {
+    "max_nan_fraction": 0.05,
+    "bands": {
+      "cropland": {
+        "categorical_values": null,
+        "value_range": null
+      },
+      "confidence": {
+        "value_range": [
+          0.0,
+          100.0
+        ]
+      }
+    }
+  },
+  "elapsed_sec": 4.8,
   "bands_returned": [
     "cropland",
     "confidence"
   ],
   "scene": "USDA-CDL_2020-01-01_cropland_2020_1063905_2002575_90000",
   "geotiff": {
-    "path": "/tmp/geoai_smoke/USDA-CDL/USDA-CDL_2020-01-01_cropland_2020_1063905_2002575_90000/USDA-CDL_full_size.tiff",
+    "path": "/tmp/geoai_smoke_final_54848/USDA-CDL/USDA-CDL_2020-01-01_cropland_2020_1063905_2002575_90000/USDA-CDL_full_size.tiff",
     "shape": [
       93,
       68,
@@ -37,8 +52,62 @@
       "confidence"
     ],
     "crs": "EPSG:5070",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      29.8116448525312,
+      0.0,
+      1093038.7450939321,
+      0.0,
+      -29.92846343635271,
+      1963871.2119836616
+    ],
     "nan_fraction_centre_window": 0.0,
-    "size_bytes": 29944
+    "per_band": [
+      {
+        "index": 1,
+        "description": "cropland",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 1.0,
+        "max": 254.0,
+        "mean": 121.66825103759766,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          1,
+          5,
+          24,
+          26,
+          36,
+          37,
+          61,
+          111,
+          121,
+          122,
+          123,
+          124,
+          131,
+          141,
+          143,
+          176,
+          190,
+          195,
+          254
+        ]
+      },
+      {
+        "index": 2,
+        "description": "confidence",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 23.12948989868164,
+        "max": 100.0,
+        "mean": 92.57450103759766,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 17684
   },
-  "finished_at": "2026-06-22T09:34:37"
+  "finished_at": "2026-09-16T17:35:18"
 }

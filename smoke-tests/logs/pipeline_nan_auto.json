@@ -1,8 +1,8 @@
 {
   "test": "pipeline_nan_auto",
-  "started_at": "2026-06-21T08:22:39",
+  "started_at": "2026-09-16T17:32:49",
   "status": "passed",
-  "elapsed_sec": 0.5,
+  "elapsed_sec": 0.3,
   "unit_checks": {
     "auto_kept_clean": true,
     "auto_lulc_int_valued": true,
@@ -14,6 +14,6 @@
     "interpolate": 3,
     "mask": 3
   },
-  "work": "/tmp/geoai_smoke/pipeline_nan_auto_106my1q_",
-  "finished_at": "2026-06-21T08:22:40"
+  "work": "/tmp/geoai_smoke_final_54848/pipeline_nan_auto_yfnh3mab",
+  "finished_at": "2026-09-16T17:32:50"
 }
