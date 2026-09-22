@@ -1643,6 +1643,7 @@ def _fetch_via_earthdata(
     reader_kwargs: Optional[Dict[str, Any]] = None,
     max_granules: Optional[int] = None,
     max_download_gb: Optional[float] = None,
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; issue #35 opt-in
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a mission via NASA Earthdata / CMR.
 
@@ -1725,6 +1726,7 @@ def _fetch_via_earthdata(
             # override in MISSION_PROFILES flows through cfg.get(...) here.
             max_granules=max_granules if max_granules is not None else 500,
             max_download_gb=max_download_gb,
+            grid=grid,
         )
     if kind == "raster_per_band":
         return _fetch_raster_per_band(
@@ -1741,6 +1743,7 @@ def _fetch_via_earthdata(
             band_meta=band_meta,
             filters=filters,
             scene_tag=scene_tag,
+            grid=grid,
         )
 
     # Resolve requested bands.
@@ -1753,16 +1756,27 @@ def _fetch_via_earthdata(
         )
     ee_bands = [band_map[b] for b in logical_bands]
 
-    # Output grid: local UTM at the requested resolution.
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
-    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
-    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+    # Output grid. Default: local UTM at the requested resolution,
+    # picked from the AOI centroid (deterministic across repeat
+    # fetches -- issue #35). Caller can pin with ``grid=`` for
+    # multi-provider alignment. Same pattern as the STAC / direct_http
+    # / EE / local_files paths.
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+        grid_source = "caller-pinned"
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+        out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+        dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+        grid_source = "AOI-centroid UTM"
 
     print(f"Earthdata fetch: {mission} / {short_name}")
     print(f"  bands  : {logical_bands}  -> {ee_bands}")
-    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
+    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs} ({grid_source})")
 
     # Search + download to a persistent cache under the save_folder so a
     # re-run with the same AOI can reuse the file rather than re-downloading.
@@ -1965,6 +1979,7 @@ def _fetch_tracks(
     max_granules: int = 500,
     max_download_gb: Optional[float] = None,
     reader_kwargs: Optional[Dict[str, Any]] = None,
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; issue #35 opt-in
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Multi-granule aggregation flow for track / point-cloud missions.
 
@@ -1984,14 +1999,19 @@ def _fetch_tracks(
             f"Available: {list(band_map)!r}"
         )
 
-    # Target grid: local UTM at the requested resolution -- same convention
-    # as the raster flow, so a tracks-fetched cube fuses cleanly with any
-    # raster mission over the same AOI.
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
-    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
-    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+    # Target grid: same "AOI-centroid UTM by default; caller-pinnable"
+    # convention as the raster flow (issue #35). A tracks-fetched cube
+    # fuses cleanly with any raster mission over the same AOI.
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+        out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+        dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
 
     reducer = default_reducer or "mean"
 
@@ -2256,6 +2276,7 @@ def _fetch_raster_per_band(
     band_meta: Optional[Dict[str, Dict]] = None,
     filters: Optional[Dict[str, Any]] = None,
     scene_tag: Optional[str] = None,
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; issue #35 opt-in
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Per-band raster flow: one CMR search, N single-band-COG downloads.
 
@@ -2286,11 +2307,18 @@ def _fetch_raster_per_band(
                 "not sample this AOI; try one within the tropics or "
                 "mid-latitudes.")
 
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
-    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
-    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+    # Same "AOI-centroid UTM by default; caller-pinnable" convention
+    # as the raster flow (issue #35).
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+        out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+        dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
 
     print(f"Earthdata per-band fetch: {mission} / {short_name}")
     print(f"  bands  : {logical_bands}  -> {ee_bands}")

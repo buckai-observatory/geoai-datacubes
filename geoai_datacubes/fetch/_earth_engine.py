@@ -413,6 +413,7 @@ def _fetch_via_earth_engine(
     unmask_value: Optional[float] = None,
     project: Optional[str] = None,
     scene_tag: Optional[str] = None,
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; issue #35 opt-in
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a mission via Google Earth Engine.
 
@@ -480,16 +481,27 @@ def _fetch_via_earth_engine(
         )
     ee_bands = [band_map[b] for b in logical_bands]
 
-    # Output grid: local UTM at the requested resolution.
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
-    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
-    dst_transform = rasterio.transform.from_bounds(*aoi_dst, width=out_w, height=out_h)
+    # Output grid. Default: local UTM at the requested resolution,
+    # picked from the AOI centroid (deterministic across repeat
+    # fetches -- issue #35). Caller can pin an explicit grid via
+    # ``grid=`` to align with cubes from another provider or another
+    # date window.
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+        grid_source = "caller-pinned"
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+        out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+        dst_transform = rasterio.transform.from_bounds(*aoi_dst, width=out_w, height=out_h)
+        grid_source = "AOI-centroid UTM"
 
     print(f"EE fetch: {mission} / {ee_collection}")
     print(f"  bands  : {logical_bands}  -> {ee_bands}")
-    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
+    print(f"  grid   : {out_w}x{out_h} px @ {resolution} m in {dst_crs} ({grid_source})")
 
     # Build the image to download once (server-side).
     if is_image:
