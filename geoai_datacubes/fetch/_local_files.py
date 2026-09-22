@@ -241,6 +241,7 @@ def _fetch_via_local_files(
     band_map: Optional[Dict[str, Any]] = None,
     band_meta: Optional[Dict[str, Dict]] = None,
     time_from_filename: Optional[str] = None,
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; issue #35 opt-in
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Enumerate + AOI-filter + time-filter + mosaic local raster files.
 
@@ -293,14 +294,22 @@ def _fetch_via_local_files(
     print(f"  matched : {len(files)} file(s) after AOI + time filter")
     print(f"  bands   : {list(bands)}")
 
-    # Output grid: local UTM at the requested resolution, same policy
-    # as direct_http + earthdata.
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
-    out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
-    dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
-    print(f"  grid    : {out_w}x{out_h} px @ {resolution} m in {dst_crs}")
+    # Output grid. Default: local UTM at the requested resolution,
+    # picked from the AOI centroid (deterministic across repeat
+    # fetches -- issue #35). Caller can pin via ``grid=`` for
+    # multi-provider alignment.
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+        print(f"  grid    : {out_w}x{out_h} px @ {resolution} m in {dst_crs} (caller-pinned)")
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        out_w = max(1, int(round((aoi_dst[2] - aoi_dst[0]) / resolution)))
+        out_h = max(1, int(round((aoi_dst[3] - aoi_dst[1]) / resolution)))
+        dst_transform = from_bounds(*aoi_dst, width=out_w, height=out_h)
+        print(f"  grid    : {out_w}x{out_h} px @ {resolution} m in {dst_crs} (AOI-centroid UTM)")
 
     band_map = dict(band_map or {})
     # Fill in any missing logical -> 1-indexed band-number mappings.

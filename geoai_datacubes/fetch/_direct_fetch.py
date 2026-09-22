@@ -109,6 +109,7 @@ def _fetch_via_direct_http(
     band_meta: Optional[Dict[str, Dict]] = None,
     release_tag: Optional[str] = None,
     user_agent: str = "geoai-datacubes/0.x",
+    grid=None,   # geoai_datacubes.fetch.plan_grid.Grid; forward-compatible with issue #35
 ) -> Tuple[List[np.ndarray], List[str]]:
     """Fetch a tile-indexed direct-HTTP mission.
 
@@ -158,17 +159,27 @@ def _fetch_via_direct_http(
                            f"{roi!r}; check that the AOI overlaps the "
                            "dataset's coverage area.")
 
-    # Resolve output grid: a local UTM CRS at the user-requested resolution.
-    dst_crs = _aoi_utm_crs(roi)
-    aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
-    aoi_w_m = aoi_dst[2] - aoi_dst[0]
-    aoi_h_m = aoi_dst[3] - aoi_dst[1]
-    out_w = max(1, int(round(aoi_w_m / resolution)))
-    out_h = max(1, int(round(aoi_h_m / resolution)))
-    dst_transform = rasterio.transform.from_bounds(
-        *aoi_dst, width=out_w, height=out_h,
-    )
-    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    # Resolve output grid. Default: a local UTM CRS at the user-
+    # requested resolution, picked from the AOI centroid (deterministic
+    # across repeat fetches). Caller can override with ``grid=`` to
+    # force alignment with cubes from another mission / provider
+    # (issue #35).
+    if grid is not None:
+        dst_crs = grid.crs
+        dst_transform = grid.transform
+        out_h, out_w = grid.shape
+        print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs} (caller-pinned)")
+    else:
+        dst_crs = _aoi_utm_crs(roi)
+        aoi_dst = transform_bounds("EPSG:4326", dst_crs, *roi)
+        aoi_w_m = aoi_dst[2] - aoi_dst[0]
+        aoi_h_m = aoi_dst[3] - aoi_dst[1]
+        out_w = max(1, int(round(aoi_w_m / resolution)))
+        out_h = max(1, int(round(aoi_h_m / resolution)))
+        dst_transform = rasterio.transform.from_bounds(
+            *aoi_dst, width=out_w, height=out_h,
+        )
+        print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs} (AOI-centroid UTM)")
 
     # Group tile refs by band name; one mosaic per band.
     bands_seen: Dict[str, List[Dict]] = {}

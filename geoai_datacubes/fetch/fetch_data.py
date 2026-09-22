@@ -37,6 +37,7 @@ from rasterio.transform import from_bounds
 from rasterio.warp import Resampling, reproject, transform_bounds
 
 from .missions import get_profile, get_provider_config
+from .plan_grid import Grid, plan_grid
 
 
 # STAC endpoints (both anonymous)
@@ -107,6 +108,7 @@ def fetch_sentinel_data(
     min_cloud_coverage=0.0,        # raise to force *cloudy* scenes (for demos)
     provider="auto",
     config=None,
+    grid=None,
 ):
     """
     Fetch imagery for any supported mission and provider.
@@ -126,15 +128,29 @@ def fetch_sentinel_data(
     roi : [lon_min, lat_min, lon_max, lat_max]
         Bounding box in WGS84.
     resolution : float
-        Output pixel size in metres (output CRS is the scene's native UTM/EPSG).
+        Output pixel size in metres. When ``grid`` is not supplied,
+        the output CRS is the AOI-centroid UTM zone (deterministic
+        across repeat fetches -- see :func:`~.plan_grid.plan_grid`).
     save_folder : str
         Where to write ``<scene_id>/<Mission>_full_size.tiff``.
     max_cloud_coverage : float
         Scene-level cloud-cover threshold (0-1).
     provider : str
-        "auto" (default), "earthsearch", "planetary_computer", or "sentinelhub".
+        "auto" (default), "earthsearch", "planetary_computer",
+        "planet", "direct_http", "earth_engine", "earthdata",
+        "local_files", or "sentinelhub".
     config : sentinelhub.SHConfig, optional
         Required only when ``provider="sentinelhub"``.
+    grid : geoai_datacubes.fetch.plan_grid.Grid, optional
+        Force the output onto a specific pre-planned grid. Use this
+        for multi-temporal / multi-mission fetches that must share
+        the same raster -- build once with ``plan_grid(roi,
+        resolution)`` and pass to every call. When ``None`` (default),
+        each call plans its own deterministic AOI-centroid grid.
+        Supported by the ``earthsearch``, ``planetary_computer``, and
+        ``planet`` providers; the other providers already picked
+        AOI-centroid grids and accept the same argument for API
+        consistency. Not yet supported by ``sentinelhub``.
     """
     # NOTE: we intentionally pass `bands` through as-is (incl. None) so each
     # provider can distinguish "user wants the convenient defaults + helper
@@ -154,6 +170,7 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
             min_cloud_coverage=min_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "planetary_computer":
@@ -162,6 +179,7 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
             min_cloud_coverage=min_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "planet":
@@ -169,36 +187,47 @@ def fetch_sentinel_data(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "direct_http":
         return fetch_direct_http(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
+            grid=grid,
         )
 
     if provider == "earth_engine":
         return fetch_earth_engine(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
+            grid=grid,
         )
 
     if provider == "earthdata":
         return fetch_earthdata(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
+            grid=grid,
         )
 
     if provider == "local_files":
         return fetch_local_files(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
+            grid=grid,
         )
 
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
             config = get_config_from_env()
+        if grid is not None:
+            raise NotImplementedError(
+                "grid= is not yet wired for the sentinelhub provider "
+                "(its Process API picks its own grid server-side). "
+                "Open a follow-up issue if you need it."
+            )
         return fetch_sentinelhub(
             config, mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
@@ -213,7 +242,8 @@ def fetch_sentinel_data(
 
 
 def fetch_direct_http(mission, bands, time_range, roi,
-                       resolution=10, save_folder="data"):
+                       resolution=10, save_folder="data",
+                       grid=None):
     """Direct-HTTP / S3 tile-indexed fetcher for missions outside STAC.
 
     Hansen GFC (Google Cloud Storage), Lang 2023 (ETH), Tolan 2024 (AWS
@@ -222,6 +252,11 @@ def fetch_direct_http(mission, bands, time_range, roi,
     tile-discovery logic lives in ``missions.py`` next to the profile;
     this function just runs the resulting tile list through the
     shared mosaic-and-reproject pipeline.
+
+    ``grid`` (optional): pin the output raster; see
+    :func:`fetch_sentinel_data`. The direct_http path already picks
+    an AOI-centroid UTM grid by default (deterministic across repeat
+    fetches); pass ``grid=`` when aligning with another provider.
     """
     from ._direct_fetch import _fetch_via_direct_http
     cfg = get_provider_config(mission, "direct_http")
@@ -231,11 +266,13 @@ def fetch_direct_http(mission, bands, time_range, roi,
         tile_callback=cfg["tile_callback"],
         band_meta=get_profile(mission).get("band_meta"),
         release_tag=cfg.get("release_tag"),
+        grid=grid,
     )
 
 
 def fetch_earth_engine(mission, bands, time_range, roi,
-                       resolution=10, save_folder="data"):
+                       resolution=10, save_folder="data",
+                       grid=None):
     """Google Earth Engine fetcher (see ``fetch._earth_engine``).
 
     Reads the mission's ``earth_engine`` provider config from
@@ -267,11 +304,13 @@ def fetch_earth_engine(mission, bands, time_range, roi,
         is_image=cfg.get("is_image", False),
         unmask_value=cfg.get("unmask_value"),
         project=cfg.get("project"),
+        grid=grid,
     )
 
 
 def fetch_local_files(mission, bands, time_range, roi,
-                        resolution=10, save_folder="data"):
+                        resolution=10, save_folder="data",
+                        grid=None):
     """Local-files fetcher (see ``fetch._local_files``).
 
     Wraps a user-registered set of local raster files (GeoTIFF in v1,
@@ -296,11 +335,13 @@ def fetch_local_files(mission, bands, time_range, roi,
         band_map=cfg.get("band_map"),
         band_meta=profile.get("band_meta"),
         time_from_filename=cfg.get("time_from_filename"),
+        grid=grid,
     )
 
 
 def fetch_earthdata(mission, bands, time_range, roi,
-                     resolution=30, save_folder="data"):
+                     resolution=30, save_folder="data",
+                     grid=None):
     """NASA Earthdata / CMR fetcher (see ``fetch._earthdata``).
 
     Reads the mission's ``earthdata`` provider config from
@@ -331,6 +372,7 @@ def fetch_earthdata(mission, bands, time_range, roi,
         # Per-mission download guards; ignored by non-tracks readers.
         max_granules=cfg.get("max_granules"),
         max_download_gb=cfg.get("max_download_gb"),
+        grid=grid,
     )
 
 
@@ -583,6 +625,7 @@ def _fetch_via_stac(
     resolution, save_folder,
     max_cloud_coverage, min_cloud_coverage=0.0,
     stac_url, collection, asset_map, url_resolver, provider_label,
+    grid=None,
 ):
     profile = get_profile(mission)
 
@@ -723,34 +766,32 @@ def _fetch_via_stac(
     os.makedirs(out_dir, exist_ok=True)
 
     # 4. Determine output grid.
-    #    Use the representative item's first asset CRS, EXCEPT when it is
-    #    geographic (lat/lon, EPSG:4326) -- in that case the user's
-    #    ``resolution`` is in metres but the source CRS uses degrees, so
-    #    we project to the local UTM zone covering the ROI centre so the
-    #    meter-based resolution makes sense.
-    _first_key, _ = _resolve_band_mapping(asset_map[final_bands[0]])
-    first_url = url_resolver(representative["assets"][_first_key]["href"])
-    with rasterio.open(f"/vsicurl/{first_url}") as src:
-        src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-    if src_crs is None:
-        raise RuntimeError(
-            f"Could not determine a CRS for the selected scene's first asset. "
-            f"Try a different provider or mission combination."
-        )
-    if src_crs.is_geographic:
-        cx = (roi[0] + roi[2]) / 2.0
-        cy = (roi[1] + roi[3]) / 2.0
-        zone = int((cx + 180) // 6) + 1
-        epsg = (32600 if cy >= 0 else 32700) + zone
-        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
-        print(f"(source CRS is geographic; output in {dst_crs} so resolution={resolution} m is correct)")
-    else:
-        dst_crs = src_crs
-    roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
-    out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
-    out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
-    dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    #
+    # Deterministic-grid convention (issue #35 fix, on the
+    # feature/earth-engine-provider branch): the grid is picked from
+    # the AOI centroid alone, not from the returned scene. That means
+    # two fetches over the same AOI in different date windows land on
+    # byte-identical rasters -- the invariant an AI-ready multi-
+    # temporal cube needs. Callers who want to reuse an exact grid
+    # (across mosaics, months, or missions) build one once via
+    # ``plan_grid(roi, resolution)`` and pass ``grid=`` into the
+    # public fetch entry points, which forward it here.
+    #
+    # Before the fix, this block opened the representative scene's
+    # first asset via /vsicurl/ to read its native CRS and used that
+    # as ``dst_crs``. For AOIs near an MGRS tile edge or a UTM zone
+    # boundary, different date windows returned different first
+    # scenes in different UTM zones, so repeat cubes over the "same"
+    # AOI landed on different grids. Fixed on the v0.2 branch;
+    # v0.1.0 users can pin the grid explicitly via ``grid=``.
+    grid_pinned = grid is not None
+    if grid is None:
+        grid = plan_grid(roi, resolution)
+    dst_crs = rasterio.crs.CRS.from_string(grid.crs)
+    dst_transform = grid.transform
+    out_h, out_w = grid.shape
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}"
+          f"{' (caller-pinned)' if grid_pinned else ' (AOI-centroid UTM)'}")
 
     # 5. Pull each requested band into the output grid. Whenever the
     #    selection step picked more than one item we mosaic them -- static
@@ -844,8 +885,16 @@ def fetch_earthsearch(
     mission, bands, time_range, roi,
     resolution=10, save_folder="data",
     max_cloud_coverage=0.10, min_cloud_coverage=0.0,
+    grid=None,
 ):
-    """Earth Search STAC + AWS Open-Data COGs (anonymous HTTPS)."""
+    """Earth Search STAC + AWS Open-Data COGs (anonymous HTTPS).
+
+    ``grid`` (optional): a :class:`~.plan_grid.Grid` to force the
+    output onto exactly the same raster as another fetch. When
+    ``None`` (default), the fetcher picks a deterministic grid from
+    the AOI centroid via :func:`~.plan_grid.plan_grid`, so repeat
+    fetches over the same AOI stack directly.
+    """
     cfg = get_provider_config(mission, "earthsearch")
     return _fetch_via_stac(
         mission, bands, time_range, roi,
@@ -857,6 +906,7 @@ def fetch_earthsearch(
         asset_map=cfg["asset_map"],
         url_resolver=_resolve_es_href,
         provider_label="earthsearch",
+        grid=grid,
     )
 
 
@@ -864,8 +914,12 @@ def fetch_planetary_computer(
     mission, bands, time_range, roi,
     resolution=10, save_folder="data",
     max_cloud_coverage=0.10, min_cloud_coverage=0.0,
+    grid=None,
 ):
-    """Microsoft Planetary Computer STAC + Azure blob (anonymous, SAS-signed)."""
+    """Microsoft Planetary Computer STAC + Azure blob (anonymous, SAS-signed).
+
+    ``grid`` (optional): see :func:`fetch_earthsearch`.
+    """
     cfg = get_provider_config(mission, "planetary_computer")
     return _fetch_via_stac(
         mission, bands, time_range, roi,
@@ -877,6 +931,7 @@ def fetch_planetary_computer(
         asset_map=cfg["asset_map"],
         url_resolver=_resolve_pc_href,
         provider_label="planetary_computer",
+        grid=grid,
     )
 
 
@@ -1030,6 +1085,7 @@ def fetch_planet(
     mission, bands, time_range, roi,
     resolution=3, save_folder="data", max_cloud_coverage=0.10,
     poll_seconds=15, max_wait_seconds=3600,
+    grid=None,
 ):
     """PlanetScope via the Planet Data + Orders APIs (requires PL_API_KEY).
 
@@ -1179,25 +1235,22 @@ def fetch_planet(
             f"UDM2 bands {udm2} requested but no *udm*.tif file in the order "
             f"delivery. Got: {sorted(files)}")
 
-    # 4) Build the common output grid. Reproject from analytic asset's CRS to
-    #    local UTM (mirroring _fetch_via_stac so resolution stays in metres).
-    with rasterio.open(analytic_path) as src:
-        src_crs = src.crs
-    if src_crs is None:
-        raise RuntimeError("PlanetScope analytic asset has no CRS -- unexpected.")
-    if src_crs.is_geographic:
-        cx = (roi[0] + roi[2]) / 2.0
-        cy = (roi[1] + roi[3]) / 2.0
-        zone = int((cx + 180) // 6) + 1
-        epsg = (32600 if cy >= 0 else 32700) + zone
-        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
-    else:
-        dst_crs = src_crs
-    roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
-    out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
-    out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
-    dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    # 4) Build the common output grid.
+    #
+    # Deterministic-grid convention (see the analogous block in
+    # _fetch_via_stac and issue #35): pick the grid from the AOI
+    # centroid alone so repeat fetches over the same AOI on
+    # different dates land on byte-identical rasters. Callers can
+    # override with ``grid=`` to force a shared grid across missions
+    # or across a Planet + Sentinel fusion.
+    grid_pinned = grid is not None
+    if grid is None:
+        grid = plan_grid(roi, resolution)
+    dst_crs = rasterio.crs.CRS.from_string(grid.crs)
+    dst_transform = grid.transform
+    out_h, out_w = grid.shape
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}"
+          f"{' (caller-pinned)' if grid_pinned else ' (AOI-centroid UTM)'}")
 
     # 5) Read the requested bands. Spectral bands -> bilinear; UDM2 -> nearest
     #    (so 0/1 class codes survive resampling).
