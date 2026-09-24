@@ -286,7 +286,198 @@ def test_validate_geotiff_exposes_infinity_and_codes(tmp_path):
     summary = validate_geotiff(p)
     pb = summary["per_band"][0]
     assert "infinite_fraction" in pb
+    assert "infinite_count" in pb   # exact integer count, added in the
+                                    # gmarupilla follow-up fix
     assert "unique_int_codes" in pb
     assert sorted(pb["unique_int_codes"]) == [1, 2, 3, 4]
     assert "transform_is_georeferenced" in summary
     assert "transform_affine" in summary
+
+
+# ---------------------------------------------------------------------------
+# 7. JOSS review follow-up (openjournals/joss-reviews#11034, issue #19)
+# ---------------------------------------------------------------------------
+# @gmarupilla's Sept 24 re-check found four cases that still slipped
+# through the tightened validator despite the earlier fix. Her compact
+# reproducer is inlined below as regression tests, one per case, with
+# the expected verdict after this PR.
+#
+# Reproducer source:
+# https://github.com/buckai-observatory/geoai-datacubes/issues/19#issuecomment-5805921159
+
+def test_sparse_single_infinity_pixel_hard_fails(tmp_path):
+    """One +inf pixel in a 256x256 sample.
+
+    Before this fix: infinite_fraction = 1/65536 rounded to 0.0000
+    -> `if inf_frac > 0` gate never fired -> passed silently.
+    After: integer infinite_count is compared > 0 directly.
+    """
+    p = tmp_path / "s2_sparse_inf1.tif"
+    band = np.full((256, 256), 5000.0, dtype=np.float32)
+    band[128, 128] = np.inf   # one infinite pixel in 65,536
+    _write_tif(p, band, descriptions=["B04"])
+
+    summary = validate_geotiff(p)
+    assert summary["per_band"][0]["infinite_count"] == 1
+
+    verdict, violations, _ = check_acceptance("Sentinel-2", ["B04"], summary)
+    assert verdict == "failed", (verdict, violations)
+    assert any("infinity" in v.lower() for v in violations)
+
+
+def test_three_infinity_pixels_hard_fails(tmp_path):
+    """Three +inf pixels in a 256x256 sample. Same rounding bug as
+    the 1-pixel case; both must now fail."""
+    p = tmp_path / "s2_sparse_inf3.tif"
+    band = np.full((256, 256), 5000.0, dtype=np.float32)
+    band[10, 10] = np.inf
+    band[128, 128] = np.inf
+    band[200, 200] = -np.inf
+    _write_tif(p, band, descriptions=["B04"])
+
+    verdict, violations, _ = check_acceptance(
+        "Sentinel-2", ["B04"], validate_geotiff(p),
+    )
+    assert verdict == "failed"
+    assert any("infinity" in v.lower() for v in violations)
+
+
+def test_worldcover_with_256_codes_hard_fails(tmp_path):
+    """An ESA-WorldCover raster with codes 0..255. Only 11 codes are
+    valid; 245+ are outside the declared set.
+
+    Before this fix: the old 128-code cap flagged as ``too_many`` and
+    emitted only a warning. After: cap raised to 65,536 so the
+    invalid-code check runs and fails."""
+    p = tmp_path / "wc_all_bytes.tif"
+    band = np.arange(256).reshape(16, 16).astype(np.float32)
+    _write_tif(p, band, descriptions=["LULC"])
+
+    verdict, violations, _ = check_acceptance(
+        "ESA-WorldCover", ["LULC"], validate_geotiff(p),
+    )
+    assert verdict == "failed"
+    assert any("categorical" in v.lower() for v in violations)
+
+
+def test_usda_cdl_fractional_value_hard_fails(tmp_path):
+    """USDA-CDL cropland with a fractional value (2.5). The band is
+    declared ``categorical_values=None`` -- meaning "categorical, code
+    set unspecified; integer-only".
+
+    Before this fix: the ``cats != "unset" and cats is not None``
+    guard dropped the None case entirely, so 2.5 passed silently.
+    After: None branch enforces integer-valued dtype."""
+    p = tmp_path / "cdl_fractional.tif"
+    band = np.array([[1.0, 2.5], [3.0, 4.0]], dtype=np.float32)
+    _write_tif(p, band, descriptions=["cropland"])
+
+    verdict, violations, _ = check_acceptance(
+        "USDA-CDL", ["cropland"], validate_geotiff(p),
+    )
+    assert verdict == "failed"
+    assert any(
+        "integer" in v.lower() or "categorical" in v.lower()
+        for v in violations
+    )
+
+
+def test_modis_missing_crs_hard_fails_not_known_limitation(tmp_path):
+    """A MODIS_SR sample with no CRS. The mission has a
+    known_limitation marker (documenting the sinusoidal-projection
+    sparsity), but that marker MUST NOT swallow a structural failure
+    like a missing CRS.
+
+    Before this fix: ANY violation on a mission with a
+    known_limitation marker was downgraded, so a missing CRS
+    surfaced as ``known_limitation``. After: only ``nan_fraction``
+    violations downgrade; structural violations always fail."""
+    p = tmp_path / "modis_no_crs.tif"
+    band = np.full((2, 2), 1000.0, dtype=np.float32)
+    _write_tif(p, band, descriptions=["B01"], crs=None)
+
+    verdict, violations, _ = check_acceptance(
+        "MODIS_SR", ["B01"], validate_geotiff(p),
+    )
+    assert verdict == "failed", (verdict, violations)
+    assert any("crs" in v.lower() for v in violations)
+
+
+def test_alos_palsar_missing_band_hard_fails_not_known_limitation(tmp_path):
+    """ALOS-PALSAR requested with a band the sample doesn't have.
+    The mission has a known_limitation marker but that must not
+    silence a missing-band structural violation."""
+    p = tmp_path / "alos_ok.tif"
+    band = np.full((32, 32), 100.0, dtype=np.float32)
+    _write_tif(p, band, descriptions=["HH"])  # HV requested but absent
+
+    verdict, violations, _ = check_acceptance(
+        "ALOS-PALSAR", ["HH", "HV"], validate_geotiff(p),
+    )
+    assert verdict == "failed"
+    assert any("missing" in v.lower() and "hv" in v.lower() for v in violations)
+
+
+def test_modis_infinity_hard_fails_not_known_limitation(tmp_path):
+    """MODIS_SR with an infinity pixel. The known_limitation marker
+    is for the NaN-coverage caveat, not for infinity contamination
+    (which is always a real bug)."""
+    p = tmp_path / "modis_inf.tif"
+    band = np.full((32, 32), 1000.0, dtype=np.float32)
+    band[0, 0] = np.inf
+    _write_tif(p, band, descriptions=["B01"])
+
+    verdict, violations, _ = check_acceptance(
+        "MODIS_SR", ["B01"], validate_geotiff(p),
+    )
+    assert verdict == "failed"
+    assert any("infinity" in v.lower() for v in violations)
+
+
+def test_modis_nan_coverage_still_downgrades_to_known_limitation(tmp_path):
+    """The positive-case regression: a MODIS_SR fetch that only trips
+    the NaN-coverage cap SHOULD still be a known_limitation (that's
+    the whole point of the marker). Verifies the downgrade path is
+    intact for legitimate cases."""
+    p = tmp_path / "modis_sparse.tif"
+    # 90% NaN, 10% valid; that comfortably exceeds the MODIS_SR cap
+    # of 0.20 and no other violation is present.
+    band = np.full((10, 10), np.nan, dtype=np.float32)
+    band[0, 0:5] = 1000.0  # 5% valid
+    _write_tif(p, band, descriptions=["B01"])
+
+    verdict, violations, _ = check_acceptance(
+        "MODIS_SR", ["B01"], validate_geotiff(p),
+    )
+    assert verdict == "known_limitation", (verdict, violations)
+    assert any("nan_fraction" in v for v in violations)
+
+
+def test_worldcover_valid_codes_still_pass(tmp_path):
+    """The positive-case regression for the too_many fix: a
+    WorldCover raster with 11 valid codes (all of the allowed set)
+    must still pass under the raised cap."""
+    p = tmp_path / "wc_all_valid.tif"
+    valid = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100])
+    band = np.tile(valid, (11, 1)).astype(np.float32)
+    _write_tif(p, band, descriptions=["LULC"])
+
+    verdict, violations, _ = check_acceptance(
+        "ESA-WorldCover", ["LULC"], validate_geotiff(p),
+    )
+    assert verdict == "passed", (verdict, violations)
+
+
+def test_bqa_integer_valued_none_categorical_still_passes(tmp_path):
+    """Landsat BQA declared as categorical_values=None (integer-only).
+    A well-formed BQA raster with integer values must still pass -- the
+    None case now enforces integer dtype but must not reject valid
+    integer data."""
+    p = tmp_path / "landsat_bqa_ok.tif"
+    band = np.array([[1, 2, 4, 8], [16, 32, 64, 128]] * 4, dtype=np.float32)
+    _write_tif(p, band, descriptions=["BQA"])
+
+    verdict, violations, _ = check_acceptance(
+        "Landsat", ["BQA"], validate_geotiff(p),
+    )
+    assert verdict == "passed", (verdict, violations)

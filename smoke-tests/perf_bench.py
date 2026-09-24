@@ -116,7 +116,13 @@ def _tiff_size_bytes(scene_dir: Path, mission: str) -> Optional[int]:
 
 
 def _machine_fingerprint() -> dict:
-    """Coarse machine info for the JSON log. Nothing PII-y."""
+    """Coarse machine info for the JSON log. Nothing PII-y.
+
+    Includes source-commit + a small package-version dict added in
+    response to JOSS review follow-up (@gmarupilla, 2026-09-24):
+    reviewers doing third-party re-aggregation want the exact
+    provenance of the runs, not just wall-clock numbers.
+    """
     info = {
         "hostname_short": socket.gethostname().split(".")[0],
         "os":             platform.system(),
@@ -138,6 +144,52 @@ def _machine_fingerprint() -> dict:
             info["mem_gb"] = round(int(out) / (1024 ** 3), 1)
     except Exception:
         pass
+
+    # Source-commit provenance. Best-effort: works when perf_bench.py
+    # is invoked from a git checkout of the repo; when it isn't (e.g.
+    # pip-installed) the fields are absent rather than made up.
+    try:
+        repo_root = Path(__file__).resolve().parent.parent
+        cmd_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        commit = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            text=True, env=cmd_env, stderr=subprocess.DEVNULL,
+        ).strip()
+        dirty = subprocess.check_output(
+            ["git", "-C", str(repo_root), "status", "--porcelain"],
+            text=True, env=cmd_env, stderr=subprocess.DEVNULL,
+        ).strip()
+        info["commit"] = commit
+        info["dirty"] = bool(dirty)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Dep versions for the packages that actually shape fetch
+    # timings. Anything the harness doesn't touch is omitted to keep
+    # the log small; extend the list when a new dep starts mattering.
+    packages: dict = {}
+    for pkg in (
+        "geoai_datacubes",
+        "rasterio",
+        "pystac",
+        "pystac_client",
+        "planetary_computer",
+        "numpy",
+        "requests",
+    ):
+        try:
+            mod = __import__(pkg)
+            packages[pkg] = getattr(mod, "__version__", None)
+        except ImportError:
+            pass
+    # rasterio bundles GDAL; capture that too.
+    try:
+        import rasterio  # noqa: PLC0415
+        packages["gdal"] = rasterio.__gdal_version__
+    except Exception:
+        pass
+    if packages:
+        info["packages"] = packages
     return info
 
 

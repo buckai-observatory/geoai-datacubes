@@ -96,31 +96,45 @@ The **v0.1 release** covers the missions and providers documented in
 the capability matrix above. Two provider-level scope caveats worth
 knowing before you commit a downstream project to the current release:
 
-### 1. MODIS via Planetary Computer returns native sinusoidal projection
+### 1. MODIS via Planetary Computer keeps the native sinusoidal grid
 
 `MODIS_SR` and `MODIS_LST` on the default `PROVIDER = "auto"` path
 route to Planetary Computer, which serves MODIS Terra/Aqua reflectance
 and land-surface temperature in the **native sinusoidal projection**.
-For AOIs that fall near a MODIS granule / tile boundary, the on-the-fly
-reprojection to UTM produces a valid GeoTIFF with **high NaN
-coverage** — reproducibly ~83% in the default smoke-test AOI over
-Columbus, OH. This is not a fetch bug: the STAC provider is returning
-the correct raw scenes, and our reprojection is faithful; the sparsity
-is a real property of a sinusoidal-tiled product clipped to a small
-non-central sub-window.
+On the v0.1 STAC fetch path, `_fetch_via_stac` keeps the source CRS
+when it is already projected — so the output GeoTIFF is in the
+**MODIS sinusoidal grid**, not UTM. For AOIs smaller than a MODIS
+granule and sitting non-centrally within one sinusoidal tile,
+windowing the source produces a valid GeoTIFF that is mostly nodata —
+reproducibly ~83% NaN in the default smoke-test AOI over Columbus,
+OH. This is not a fetch bug: the STAC provider is returning the
+correct raw scenes, and the window arithmetic is faithful; the
+sparsity is a real property of a sinusoidal-tiled product clipped to
+a small non-central sub-window.
 
 **When this bites you.** Any workflow that runs `MODIS_SR` /
 `MODIS_LST` through the default STAC provider on an AOI smaller than
-a MODIS granule and near a tile edge will see the same sparse
-coverage. The smoke-test log for these missions may therefore be
-marked as a **hard `failed`** on the `max_nan_fraction` cap rather
-than as a silent pass — that is intentional; the acceptance rules
-were tightened in response to [`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19).
+a MODIS granule and near a tile boundary will see the same sparse
+coverage. The smoke-test log for these missions is therefore marked
+as **`known_limitation`** rather than `passed` — the fetch itself
+is correct, and the `known_limitation` marker carries a reason
+string in `smoke-tests/logs/fetch_modis-sr.json` naming the cause
+and workarounds. The acceptance-check logic was tightened in
+response to [`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19);
+`known_limitation` downgrades ONLY the `nan_fraction` check for
+these missions. Any structural failure (missing CRS, missing
+transform, wrong band count, invalid categorical codes, infinity
+values, value-range violations) still surfaces as a hard `failed`
+verdict even on MODIS — so `known_limitation` does not hide real
+bugs.
 
 **Workarounds now (v0.1):**
 
 * Enlarge the AOI so it straddles two or more granules and pick a
   central subset from the fused mosaic.
+* Reproject the sinusoidal output to your own target CRS
+  post-fetch (rasterio's `reproject` with `resampling=nearest` for
+  categorical MODIS layers).
 * For land-cover / vegetation-index applications where 250 m or 500 m
   aggregated products are sufficient, prefer `Sentinel-2` +
   `Copernicus-DEM` on the default STAC path.
@@ -128,11 +142,15 @@ were tightened in response to [`#19`](https://github.com/buckai-observatory/geoa
 **Resolution in v0.2 (post-review, on `feature/earth-engine-provider`).**
 An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on the
 v0.2 branch returns MODIS reflectance and LST **directly in UTM** with
-proper cross-tile mosaicking, closing the sparsity gap for these
-missions. This is tracked at
+server-side cross-tile mosaicking, closing the sparsity gap for these
+missions. The v0.2 branch also introduces `plan_grid(aoi, resolution)`
+so every fetch — MODIS included — lands on a deterministic
+AOI-centroid grid regardless of the source scene's native CRS. Both
+are tracked at
 [`#10`](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
-and lives on the `feature/earth-engine-provider` branch, not on the
-reviewed `main` branch. It ships when v0.2 lands on `main` after this
+and [`#35`](https://github.com/buckai-observatory/geoai-datacubes/issues/35)
+and live on the `feature/earth-engine-provider` branch, not on the
+reviewed `main` branch. They ship when v0.2 lands on `main` after this
 review closes.
 
 ### 2. Sentinel Hub authenticated path is supported but not exercised in CI
