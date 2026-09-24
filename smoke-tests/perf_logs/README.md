@@ -89,9 +89,22 @@ paper table), move the JSONL under a dated subfolder such as
   date is not expected -- the *shape* of the comparison
   (laptop-vs-HPC, small-vs-large AOI, setup-bound vs bandwidth-bound
   regime) is what these records support.
-* The commit hash the reference runs were gathered against is
-  recoverable from `git log --since=2026-08-25 --until=2026-09-10
-  smoke-tests/perf_bench.py`.
+* **Source commit for the reference runs:**
+  `8a4a2e39cd7adc3a6fea0d0a3ae61e0e44638303` (2026-09-03). Full
+  per-file provenance (source SHA, per-machine environment, retry
+  history, reproduction recipe) lives in
+  [`reference_2026-09-03/METADATA.json`](reference_2026-09-03/METADATA.json).
+  `git checkout 8a4a2e3` recovers the code that produced these
+  numbers.
+* **What retroactive pinning can and can't guarantee.** The JSONL
+  headers written 2026-09-03 captured Python + OS + arch + CPU
+  count + memory but not per-package versions. From v0.1.1 onwards
+  (this commit) the `_machine_fingerprint()` helper adds `commit`,
+  `dirty`, and a `packages` dict (rasterio, pystac, pystac-client,
+  planetary-computer, numpy, requests, GDAL via rasterio) to every
+  header. Aggregators ignore unknown header keys, so the change is
+  backwards-compatible: `perf_bench_agg.py` reads old and new logs
+  identically.
 * The `geoai-datacubes` version used was the pre-JOSS-review series
   (0.1.x); no fetch-path or timing-critical code changed between then
   and JOSS acceptance, so re-running against `main` today should

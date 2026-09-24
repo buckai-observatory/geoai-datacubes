@@ -507,19 +507,37 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
             else:
                 b_min = b_max = b_mean = float("nan")
 
+            # Raw counts for the exact checks in ``check_acceptance``.
+            # Fractions get rounded to 4 dp for the JSON log's
+            # readability, but 1/(256*256) rounds to 0.0000 -- so the
+            # ``if inf_frac > 0`` gate would silently miss a sparse
+            # +inf pixel. Track integer counts here so the check can
+            # use them directly. Regression case from the JOSS review
+            # follow-up (openjournals/joss-reviews#11034,
+            # buckai-observatory/geoai-datacubes#19).
+            b_nan_count = int(np.isnan(band).sum())
+            b_inf_count = int(
+                (np.isposinf(band) | np.isneginf(band)).sum()
+            )
+
             # Integer-code enumeration for the categorical check.
             # A band is "integer-valued" if every finite pixel is
             # within 1e-3 of the nearest integer (accounts for float32
-            # rounding after reprojection). We enumerate up to 128
-            # distinct codes; more than that we flag as too_many and
-            # skip the enumeration (the acceptance check turns
-            # too_many into a warning, not a violation).
+            # rounding after reprojection). Cap raised from 128 to
+            # 65536 so a uint16-space categorical (e.g. WorldCover
+            # with sparse extra codes, or a raw byte-packed QA) still
+            # gets validated against the declared allowed set instead
+            # of falling into a "too many, skip check" branch. Above
+            # the cap the band is almost certainly continuous, not
+            # categorical; ``check_acceptance`` turns that into a
+            # violation when the mission declares a categorical set.
+            _UNIQUE_CAP = 65536
             unique_int_codes: Any = None
             if finite.size:
                 rounded = np.round(finite)
                 if np.max(np.abs(finite - rounded)) < 1e-3:
                     uu = np.unique(rounded.astype(np.int64))
-                    if uu.size <= 128:
+                    if uu.size <= _UNIQUE_CAP:
                         unique_int_codes = [int(x) for x in uu]
                     else:
                         unique_int_codes = "too_many"
@@ -528,7 +546,9 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
                 "index":              i + 1,
                 "description":        b_desc,
                 "nan_fraction":       round(b_nan, 4),
+                "nan_count":          b_nan_count,
                 "infinite_fraction":  round(b_inf, 4),
+                "infinite_count":     b_inf_count,
                 "min":                None if not np.isfinite(b_min) else b_min,
                 "max":                None if not np.isfinite(b_max) else b_max,
                 "mean":               None if not np.isfinite(b_mean) else b_mean,
@@ -565,19 +585,42 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
 # Acceptance: compare validate_geotiff's summary against the per-mission
 # criteria dict. Returns (verdict, violations, warnings) where verdict is
 # "passed" | "known_limitation" | "failed".
+#
+# Violation-kind tagging. Every violation is classified so the verdict
+# logic can decide which are downgradable to ``known_limitation`` and
+# which always fail. The ``known_limitation`` marker on a mission is
+# for legitimate coverage limitations (a mission that genuinely can't
+# provide clean pixels for this AOI); it MUST NOT swallow structural
+# failures (missing CRS, wrong band count), infinity, value-range, or
+# invalid-categorical violations. Only ``nan_fraction`` violations
+# downgrade. Regression cases from the JOSS review follow-up
+# (openjournals/joss-reviews#11034, issue #19).
 # --------------------------------------------------------------------------
+
+# Only violations of these kinds downgrade to ``known_limitation`` when
+# a mission has a ``known_limitation`` marker set. Everything else
+# stays ``failed``.
+_DOWNGRADABLE_KINDS = frozenset({"nan_fraction"})
+
+
+def _add(violations: List[Tuple[str, str]], kind: str, msg: str) -> None:
+    """Append a tagged violation. Kind drives verdict downgrade logic."""
+    violations.append((kind, msg))
+
+
 def check_acceptance(
     mission: str,
     requested_bands: List[str],
     summary: Dict[str, Any],
 ) -> Tuple[str, List[str], List[str]]:
     crit = _acceptance_for(mission)
-    violations: List[str] = []
+    # Tagged (kind, msg) tuples; flattened to strings on return.
+    violations: List[Tuple[str, str]] = []
     warnings:   List[str] = []
 
     # ---- Structural checks ----
     if not summary.get("crs"):
-        violations.append("no CRS in output GeoTIFF")
+        _add(violations, "structural", "no CRS in output GeoTIFF")
     # ``transform_is_georeferenced`` is False if the Affine transform
     # is missing OR is the identity (rasterio never returns ``None``,
     # so the old ``transform_present`` check always passed even when
@@ -585,22 +628,21 @@ def check_acceptance(
     if not summary.get("transform_is_georeferenced",
                         summary.get("transform_present", False)):
         aff = summary.get("transform_affine")
-        violations.append(
-            f"output GeoTIFF has no georeferencing transform "
-            f"(identity Affine{f' {aff}' if aff else ''})"
-        )
+        _add(violations, "structural",
+             f"output GeoTIFF has no georeferencing transform "
+             f"(identity Affine{f' {aff}' if aff else ''})")
 
     if "band_count" in crit:
         actual = summary["shape"][2]
         if actual != crit["band_count"]:
-            violations.append(
-                f"band_count expected {crit['band_count']}, got {actual}"
-            )
+            _add(violations, "structural",
+                 f"band_count expected {crit['band_count']}, got {actual}")
 
     got_bands = summary.get("bands") or []
     missing = [b for b in requested_bands if b not in got_bands]
     if missing:
-        violations.append(f"missing requested bands: {missing}")
+        _add(violations, "structural",
+             f"missing requested bands: {missing}")
 
     # ---- Per-band checks ----
     per_band = summary.get("per_band", [])
@@ -616,27 +658,52 @@ def check_acceptance(
         ov = band_overrides.get(tag, {})
         max_nan = ov.get("max_nan_fraction", crit.get("max_nan_fraction"))
         vrange  = ov["value_range"]        if "value_range"        in ov else crit.get("value_range")
+        # "unset" sentinel: caller didn't touch categorical_values at all
+        # (so we skip the check). Any other value -- including None --
+        # means the caller wants a categorical check. See the
+        # ``categorical_values=None`` branch below.
         cats    = ov["categorical_values"] if "categorical_values" in ov else crit.get("categorical_values", "unset")
 
-        # NaN cap.
+        # NaN cap. This is the only kind of violation that a mission's
+        # ``known_limitation`` marker can downgrade -- see the verdict
+        # section below and the block comment above.
         if max_nan is not None and pb["nan_fraction"] > max_nan:
-            violations.append(
-                f"{tag}: nan_fraction {pb['nan_fraction']} exceeds "
-                f"cap {max_nan}"
-            )
-        # Infinity is *always* a hard violation. A georeferenced
-        # product should never contain +inf/-inf; if it does the
-        # producer wrote it or the fusion pipeline over/underflowed
-        # a scaling step. The old ``finite = band[np.isfinite(band)]``
-        # filter silently dropped infinities before the value-range
-        # check, so an all-infinity band would be reported as "no
-        # finite pixels" and skip the range check entirely.
-        inf_frac = pb.get("infinite_fraction", 0.0) or 0.0
-        if inf_frac > 0:
-            violations.append(
-                f"{tag}: contains infinity values ({inf_frac*100:.2f}% "
-                f"of sampled pixels)"
-            )
+            _add(violations, "nan_fraction",
+                 f"{tag}: nan_fraction {pb['nan_fraction']} exceeds "
+                 f"cap {max_nan}")
+
+        # Infinity is *always* a hard violation, and never downgraded.
+        # A georeferenced product should never contain +inf/-inf; if
+        # it does the producer wrote it or the fusion pipeline
+        # over/underflowed a scaling step. Use the raw integer count,
+        # not the 4-dp-rounded fraction: 1/(256*256) rounds to 0 and
+        # the old ``inf_frac > 0`` gate silently missed a sparse
+        # infinity pixel. (JOSS review follow-up #19.)
+        inf_count = pb.get("infinite_count")
+        if inf_count is None:
+            # Backwards-compat with logs written before the count was
+            # exposed. Use the fraction, but do not trust its 4-dp
+            # rounding -- if it's exactly 0 it MIGHT still be
+            # non-zero at the pixel level; err on the side of a
+            # warning, not silent pass.
+            inf_frac = pb.get("infinite_fraction", 0.0) or 0.0
+            if inf_frac > 0:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values "
+                     f"({inf_frac*100:.2f}% of sampled pixels)")
+        elif inf_count > 0:
+            total_px = summary["shape"][0] * summary["shape"][1]
+            # Prefer count when small; add the fraction when it's
+            # numerically meaningful.
+            if inf_count < 10:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values ({inf_count} "
+                     f"pixel(s) in the sample)")
+            else:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values ({inf_count} "
+                     f"pixels ~= {100*inf_count/max(total_px,1):.2f}% "
+                     f"of the ROI)")
 
         # Value-range and categorical checks skipped for all-NaN bands
         # (the NaN violation above already flags them).
@@ -646,51 +713,84 @@ def check_acceptance(
         if vrange is not None:
             lo, hi = vrange
             if pb["min"] < lo or pb["max"] > hi:
-                violations.append(
-                    f"{tag}: value range [{pb['min']:.3g}, {pb['max']:.3g}] "
-                    f"outside expected [{lo}, {hi}]"
-                )
+                _add(violations, "value_range",
+                     f"{tag}: value range [{pb['min']:.3g}, {pb['max']:.3g}] "
+                     f"outside expected [{lo}, {hi}]")
 
-        if cats != "unset" and cats is not None:
-            # Enumerate every unique code present in the sample (not
-            # just min/max, which was the old check's blind spot: a
-            # band with min=1 (valid), max=100 (valid), and an
-            # invalid 47 in between would pass unnoticed). The
-            # unique-code list is computed in validate_geotiff.
+        # ---- Categorical checks ----
+        # Three cases the caller can express via ``categorical_values``:
+        #
+        #   "unset"      : caller did not declare this band categorical
+        #                  -> skip.
+        #   None         : declared categorical but the code set is
+        #                  intentionally left unspecified (e.g. Landsat
+        #                  BQA packed bitfield, USDA-CDL ~250 codes).
+        #                  Enforce integer-valued dtype ONLY (a
+        #                  fractional value here is a resampling bug).
+        #   set of ints  : the declared allowed set. Every unique code
+        #                  in the sample must be a member of it. Also
+        #                  enforce integer-valued dtype.
+        #
+        # Prior bug (#19 follow-up): the ``if cats != "unset" and cats
+        # is not None:`` guard silently dropped the ``None`` case, so
+        # 2.5 in a USDA-CDL cropland band passed. Handled explicitly
+        # here now.
+        if cats != "unset":
             got_codes = pb.get("unique_int_codes")
+
             if got_codes is None:
-                # Non-integer sample pixels in a categorical band --
-                # our fusion writes float32 with NaN, so this means
-                # the reprojection produced fractional values that
-                # would classify wrong. Hard violation.
-                violations.append(
-                    f"{tag}: categorical mission but sampled pixels "
-                    f"are not integer-valued (min={pb['min']}, "
-                    f"max={pb['max']}) -- likely a resampling bug "
-                    f"(should use nearest-neighbour for categorical bands)"
-                )
+                # Sample contains non-integer values -- resampling bug
+                # on a band declared categorical.
+                _add(violations, "categorical",
+                     f"{tag}: categorical mission but sampled pixels "
+                     f"are not integer-valued (min={pb['min']}, "
+                     f"max={pb['max']}) -- likely a resampling bug "
+                     f"(should use nearest-neighbour for categorical bands)")
             elif got_codes == "too_many":
-                warnings.append(
-                    f"{tag}: >128 distinct codes in sample -- "
-                    f"categorical enumeration skipped for this band"
-                )
-            else:
+                # >65k unique codes -- almost certainly a mislabeled
+                # continuous band. When the caller declared an
+                # explicit allowed set we know invalid codes are
+                # present; when the allowed set is None we can't be
+                # sure, so downgrade to warning.
+                if cats is None:
+                    warnings.append(
+                        f"{tag}: >65k distinct codes in sample -- "
+                        f"integer-only check skipped for this band"
+                    )
+                else:
+                    _add(violations, "categorical",
+                         f"{tag}: >65k distinct codes in sample against "
+                         f"a declared set of {len(cats)} allowed value(s) "
+                         f"({sorted(cats)[:8]}{'...' if len(cats) > 8 else ''}) "
+                         f"-- band is not the expected categorical")
+            elif cats is not None:
+                # Small enough set that we enumerated everything; do
+                # the actual set-membership check.
                 invalid = [c for c in got_codes if c not in cats]
                 if invalid:
                     allowed_preview = sorted(cats)[:8]
-                    violations.append(
-                        f"{tag}: {len(invalid)} invalid categorical "
-                        f"code(s) {sorted(invalid)[:8]} "
-                        f"(allowed: {allowed_preview}"
-                        f"{'...' if len(cats) > 8 else ''})"
-                    )
+                    _add(violations, "categorical",
+                         f"{tag}: {len(invalid)} invalid categorical "
+                         f"code(s) {sorted(invalid)[:8]} "
+                         f"(allowed: {allowed_preview}"
+                         f"{'...' if len(cats) > 8 else ''})")
 
     # ---- Verdict ----
     if not violations:
         return ("passed", [], warnings)
-    if crit.get("known_limitation"):
-        return ("known_limitation", violations, warnings)
-    return ("failed", violations, warnings)
+
+    # Downgrade to ``known_limitation`` ONLY when every remaining
+    # violation is of a downgradable kind AND the mission has a
+    # ``known_limitation`` marker declared. Structural / infinity /
+    # value_range / categorical violations always fail; they are real
+    # bugs regardless of the coverage caveat.
+    has_marker = bool(crit.get("known_limitation"))
+    non_downgradable = [(k, m) for k, m in violations
+                        if k not in _DOWNGRADABLE_KINDS]
+    if has_marker and not non_downgradable:
+        return ("known_limitation",
+                [m for _k, m in violations], warnings)
+    return ("failed", [m for _k, m in violations], warnings)
 
 
 # --------------------------------------------------------------------------
