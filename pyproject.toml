@@ -173,13 +173,25 @@ dev = [
     "pre-commit>=3.5",
 ]
 
+# Place-name lookup for the `geoai-datacubes` command (OpenStreetMap
+# Nominatim). Not needed for "lat, lon" input or aliases.
+#
+#     pip install geoai-datacubes[demo]
+#
+demo = [
+    "geopy>=2.3",
+]
+
 # Convenience: everything above in one go.
 #
 #     pip install geoai-datacubes[all]
 #
 all = [
-    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine,earthdata]",
+    "geoai-datacubes[ml,geoai,notebooks,planet,earthengine,earthdata,demo]",
 ]
+
+[project.scripts]
+geoai-datacubes = "geoai_datacubes.cli:main"
 
 [project.urls]
 Homepage      = "https://github.com/buckai-observatory/geoai-datacubes"

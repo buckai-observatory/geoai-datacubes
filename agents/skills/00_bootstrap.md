@@ -13,23 +13,35 @@ them **only after the user confirms**, and smoke-test the result.
 
 Run these silently; report a 3-4 line summary to the user.
 
+Run this through `scripts/geoai-python`, same as the first-turn sniff
+in `AGENTS.md` — it finds the `geoai-cubes` conda env in the usual conda install
+folders and runs its Python by absolute path, falling back to
+`python3` (with a warning) only if that env doesn't exist. Use the
+wrapper rather than inlining the resolution logic yourself: besides
+`conda activate` being unreliable in a non-interactive shell, having
+every command share one exact shape is what lets a permission
+allowlist actually match — see the gotcha about this in `demo.md` if
+you haven't hit it yet.
+
 ```bash
+echo "interpreter: $(scripts/geoai-python -c 'import sys; print(sys.executable)')"
+
 # Environment class
-python -c "import google.colab" 2>&1 | grep -q ModuleNotFoundError \
+scripts/geoai-python -c "import google.colab" 2>&1 | grep -q ModuleNotFoundError \
     && echo "env: local/HPC" || echo "env: Colab"
 
 # Cluster hint (Slurm, LSF, etc.)
 [ -n "$SLURM_JOB_ID" ] && echo "slurm: yes" || echo "slurm: no"
 
 # Package + version
-python -c "import geoai_datacubes as g; print('geoai_datacubes:', g.__version__)" 2>&1
+scripts/geoai-python -c "import geoai_datacubes as g; print('geoai_datacubes:', g.__version__)" 2>&1
 
 # Which conda env, if any
 [ -n "$CONDA_DEFAULT_ENV" ] && echo "conda env: $CONDA_DEFAULT_ENV" \
     || echo "conda env: none / venv / bare"
 
 # Optional extras probe
-python - <<'PY'
+scripts/geoai-python - <<'PY'
 import importlib, sys
 groups = {
     "core":       ("rasterio", "pystac_client", "planetary_computer"),

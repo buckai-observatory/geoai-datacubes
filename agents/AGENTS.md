@@ -77,29 +77,65 @@ the sniff sets defaults every downstream skill depends on.
 
 **Step 1 — Environment sniff (silent, no prompts to the user).**
 
+Run exactly one command:
+
 ```bash
-# Where are we?
-uname -sr
-python -c "import sys; print(sys.version)"
-# Is the package importable?
-python -c "import geoai_datacubes; print(geoai_datacubes.__version__)" 2>&1 | head -1
-# Which extras are available?
-python -c "
-import importlib
-for pkg in ('rasterio','pystac_client','planetary_computer',
-            'ee','earthaccess','geoai','xgboost','torch'):
-    try: importlib.import_module(pkg); print(f'OK   {pkg}')
-    except Exception as e: print(f'MISS {pkg}')
-"
-# On Colab?
-python -c "import google.colab" 2>&1 | grep -q ModuleNotFoundError \
-    && echo "env: local/HPC" || echo "env: Colab"
+scripts/geoai-python -m geoai_datacubes sniff
 ```
 
-Summarise the result in 2-3 lines to the user. If `geoai_datacubes`
-imports but a specific extra you'll need is missing, go to
-`skills/00_bootstrap.md` and ask the user whether to install it
-(never install silently — extras vary from small to multi-GB).
+Don't reconstruct this as inline bash/python one-liners, even though
+it would be easy to. The `sniff` command does the whole sniff (Python
+version, interpreter path, `geoai_datacubes` + extras, Colab
+detection) *and* the readiness check (repo identity, conda env
+match) in one process, printed as plain lines. Two reasons this
+needs to stay one script invocation rather than several inline
+commands:
+
+1. `conda activate` silently no-ops in a non-interactive shell more
+   often than not, and a bare `python` afterwards then quietly runs
+   against base/system Python, missing half of what this repo needs
+   — that mismatch is the single most common source of
+   `ModuleNotFoundError`s and version-clash errors in this repo, not
+   real package incompatibilities. `scripts/geoai-python` (the
+   wrapper this is invoked through) resolves the right interpreter by
+   absolute path instead.
+2. **Every command sharing one exact shape is what lets a permission
+   allowlist actually work.** `.claude/settings.json` allowlists
+   `Bash(scripts/geoai-python *)` — any invocation of the wrapper,
+   including this one, matches that single pattern and needs no
+   approval. Reconstructing the same checks as inline `if`/`case`
+   bash (which was tried once already) produces a command that starts
+   with `if`, not `scripts/geoai-python`, doesn't match the
+   allowlist, and prompts every time even though it's logically doing
+   the same safe, read-only thing. If a check needs to be added to
+   the sniff, add it to `cmd_sniff` in `geoai_datacubes/cli.py` and
+   keep calling it the same way — don't grow a second, differently-
+   shaped command next to it.
+
+Only report "ready to go" if the `repo:`, `package:` and
+`conda env:` lines all say `OK`. (`package:` checks that Python is
+using this checkout's code and not another installed copy.) If either says `MISMATCH`, say so
+plainly and fix it (wrong directory → ask the user; wrong env →
+`skills/00_bootstrap.md`) before doing anything else — don't print a
+reassuring summary over a check that actually failed. If
+`geoai_datacubes` imports but a specific extra you'll need shows
+`MISS`, go to `skills/00_bootstrap.md` and ask the user whether to
+install it (never install silently — extras vary from small to
+multi-GB).
+
+Close Step 1 with a short banner so the user has immediate, verified
+confirmation instead of having to parse the raw sniff output —
+something like:
+
+```
+Ready: repo=geoai-datacubes, env=geoai-cubes, geoai_datacubes v0.1.1.dev70.
+```
+
+If this looks like it's heading toward a live demo (user mentions
+"demo", asks to fetch imagery over a place with no other context, or
+says so directly), also read `skills/demo.md` now and let its own
+readiness note add a few example prompts on top of this banner —
+don't wait for the user to hit a wall first.
 
 **Step 2 — Confirm the goal in one sentence.**
 
@@ -117,9 +153,35 @@ Point them at the skill that matches their goal:
 - "Auth is broken / never set up" → `skills/30_auth.md`
 - "Save what we built as a notebook" → `skills/40_notebook_scaffold.md`
 - "Now train a baseline model on the cube" → `skills/50_ml_scaffold.md`
+- Live/interactive demo, user gives underspecified requests → `skills/demo.md`
 
 Then go do it. Do not lecture the user through the skill's text
 verbatim — read the skill, act on it.
+
+## The `geoai-datacubes` command
+
+Common requests have one tested command each. Use them instead of
+writing a new script; they print per-step timing and write a QGIS
+project (`.qgs`) that opens every sensible view of the result.
+
+```bash
+scripts/geoai-python -m geoai_datacubes cube "<place>" [--missions ...] [--radius-km 2] [--tiles]
+scripts/geoai-python -m geoai_datacubes embed-change "<place>" [--from 2017] [--to <year>]
+scripts/geoai-python -m geoai_datacubes embed-similar "<place or AlphaEarth tiff>" --at "<reference place>"
+scripts/geoai-python -m geoai_datacubes style <cube.tiff>      # QGIS styles for any GeoTIFF
+scripts/geoai-python -m geoai_datacubes quality <cube.tiff>
+scripts/geoai-python -m geoai_datacubes tiles <cube.tiff>
+scripts/geoai-python -m geoai_datacubes geocode "<place>"
+scripts/qgis <file.qgs or file.tiff ...>                       # open in QGIS
+```
+
+`<place>` can be a name, `"lat, lon"`, or an alias from
+`.geoai-places.json` in the repo root. After `pip install
+geoai-datacubes[demo]` the same command is available as
+`geoai-datacubes <command>`; in this repo, go through
+`scripts/geoai-python -m geoai_datacubes` so the allow-list matches
+and this checkout's code is used. Run `... <command> --help` for all
+options.
 
 ## Menu of skill files
 
@@ -132,10 +194,12 @@ touches them, but you may jump straight to any of them.
 |---|---|---|
 | `skills/00_bootstrap.md` | Env sniff → install → smoke test | Session start, or after `ImportError` |
 | `skills/10_capabilities.md` | Enumerate 39 missions; answer "which mission for X?" | User asks what's available; you need to check a band before promising it |
+| `skills/15_mission_reference.md` | Quick-reference tables for all missions (res, bands, best-for, decision tree) | User asks "what's available?" and you want instant lookup instead of reading docs |
 | `skills/20_build_cube.md` | End-to-end fetch + fuse workflow | User wants a cube (the common case) |
 | `skills/30_auth.md` | Per-provider credential setup | 401 / 403 / `EulaNotAccepted` / EE `Initialize` failure |
 | `skills/40_notebook_scaffold.md` | Write a Jupyter notebook that replays the workflow | User wants a permanent artefact |
 | `skills/50_ml_scaffold.md` | Standard ML/DL patterns on a cube | User wants a baseline model |
+| `skills/demo.md` | Defaults for underspecified live-demo requests (AOI radius, auto-open in QGIS, hillshade-vs-RGB) | Live/interactive demo session |
 
 ## Escape hatches — when to STOP and hand back
 

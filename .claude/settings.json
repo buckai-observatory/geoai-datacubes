@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/geoai-python *)",
+      "Bash(scripts/qgis *)"
+    ]
+  }
+}

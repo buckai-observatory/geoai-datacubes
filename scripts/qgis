@@ -1,0 +1,48 @@
+#!/bin/bash
+# Open files in QGIS: GeoTIFFs, or a .qgs project from `geoai-datacubes style`.
+#
+#   scripts/qgis data_here/here_cube.qgs
+#
+# Prefers a conda env named `qgis` (on Apple Silicon this gives a native
+# ARM64 build), setting the variables `conda activate qgis` would set;
+# without them QGIS starts with "Authentication System: DISABLED" and no
+# Qt plugins. Falls back to a QGIS app in /Applications, or `qgis` on PATH.
+# Override the env name with QGIS_ENV_NAME.
+ENV_NAME="${QGIS_ENV_NAME:-qgis}"
+
+launch_env() {
+    local E="$1/envs/$ENV_NAME"
+    [ -n "$1" ] && [ -d "$E" ] || return 1
+    export QGIS_PREFIX_PATH="$E"
+    export QT_PLUGIN_PATH="$E/plugins"
+    export PYTHONPATH="$E/share/qgis/python/plugins:$E/share/qgis/python"
+    export PROJ_DATA="$E/share/proj"
+    export PROJ_NETWORK=ON
+    export GDAL_DATA="$E/share/gdal"
+    export GDAL_DRIVER_PATH="$E/lib/gdalplugins"
+    export GEOTIFF_CSV="$E/share/epsg_csv"
+    export CPL_ZIP_ENCODING=UTF-8
+    export PATH="$E/bin:$PATH"
+    if [ -x "$E/QGIS.app/Contents/MacOS/QGIS" ]; then
+        nohup "$E/QGIS.app/Contents/MacOS/QGIS" "${@:2}" >/dev/null 2>&1 &
+    else
+        nohup "$E/bin/qgis" "${@:2}" >/dev/null 2>&1 &
+    fi
+    exit 0
+}
+
+for base in "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3" \
+            /opt/anaconda3 /opt/miniconda3 /opt/miniforge3; do
+    launch_env "$base" "$@"
+done
+launch_env "$(conda info --base 2>/dev/null)" "$@"
+
+APP=$(ls -d /Applications/QGIS*.app 2>/dev/null | head -1)
+if [ -n "$APP" ]; then
+    open -a "$APP" "$@"
+elif command -v qgis >/dev/null; then
+    nohup qgis "$@" >/dev/null 2>&1 &
+else
+    echo "qgis: no QGIS found (conda env '$ENV_NAME', /Applications/QGIS*.app, or qgis on PATH)" >&2
+    exit 1
+fi

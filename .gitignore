@@ -70,3 +70,11 @@ _site/
 
 /.quarto/
 **/*.quarto_ipynb
+
+# Scratch space for one-off demo/session scripts (see agents/skills/demo.md).
+# Writing here instead of an external scratchpad avoids sandbox path issues
+# some session types hit with paths outside the repo.
+/scratch/
+
+# Demo/session downloads (data_<place>/ folders from `geoai_datacubes cube`).
+/data_*/
