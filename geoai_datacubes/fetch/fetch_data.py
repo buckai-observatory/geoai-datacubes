@@ -482,14 +482,51 @@ def _resampling_for_band(band_name, cloud_mask_spec):
     return Resampling.bilinear
 
 
-def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
-                       band_index=1):
-    """Open a COG via /vsicurl from a ready-to-use URL and reproject one band.
+# GDAL settings for reading cloud-hosted COGs over /vsicurl: don't list the
+# remote "directory", merge adjacent byte ranges into one request, reuse
+# connections (HTTP/2), and cache fetched blocks for the second open below.
+_COG_ENV = {
+    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+    "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
+    "GDAL_HTTP_MULTIPLEX": "YES",
+    "GDAL_HTTP_VERSION": "2",
+    "VSI_CACHE": "TRUE",
+}
 
-    ``band_index`` (1-based) selects which band of the COG to read. Defaults
-    to 1 for products that store one band per asset (Sentinel-2, Landsat,
-    DEM, WorldCover); set higher for multi-band-per-asset products such as
-    NAIP, whose 4-band COG carries Red / Green / Blue / NIR in bands 1-4.
+
+def _overview_level(src, dst_res_m, resampling):
+    """Coarsest overview still at least as fine as the output grid, or -1.
+
+    Same rule as gdalwarp's default ``-ovr AUTO``: warping 0.3 m NAIP onto
+    a 1 m grid from the 0.6 m overview reads ~1/4 of the bytes of the full
+    image. Nearest-neighbour (class) bands always use full resolution,
+    because overviews may have been built by averaging class codes.
+    """
+    if resampling == Resampling.nearest:
+        return -1
+    src_res = abs(src.transform.a)
+    if src.crs is not None and src.crs.is_geographic:
+        src_res *= 111_320.0  # degrees -> metres (latitude spacing)
+    level = -1
+    for i, factor in enumerate(src.overviews(1)):
+        if src_res * factor > dst_res_m * (1 + 1e-6):
+            break
+        level = i
+    return level
+
+
+def _read_bands_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
+                        band_indexes=(1,)):
+    """Open a COG via /vsicurl and reproject bands onto the output grid.
+
+    All ``band_indexes`` (1-based) of the file are read in one pass. That
+    matters for multi-band-per-asset products such as NAIP (R/G/B/NIR in
+    bands 1-4): the file stores the bands pixel-interleaved, so reading
+    them one at a time downloads the same blocks four times. When the
+    output grid is coarser than the source, the read uses the file's
+    built-in overviews (see :func:`_overview_level`).
+
+    Returns a float32 array of shape ``(len(band_indexes), *dst_shape)``.
 
     Nodata handling (critical -- prevents zero-smearing at source edges):
 
@@ -501,21 +538,27 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
       - ``dst_nodata=NaN`` tells rasterio to emit NaN wherever the resampler
         couldn't produce a clean value.
     """
-    out = np.full(dst_shape, np.nan, dtype=np.float32)
-    with rasterio.open(f"/vsicurl/{asset_url}") as src:
-        # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
-        src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-        reproject(
-            source=rasterio.band(src, band_index),
-            destination=out,
-            src_transform=src.transform,
-            src_crs=src_crs,
-            src_nodata=src.nodata,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            dst_nodata=float("nan"),
-            resampling=resampling,
-        )
+    band_indexes = list(band_indexes)
+    out = np.full((len(band_indexes), *dst_shape), np.nan, dtype=np.float32)
+    path = f"/vsicurl/{asset_url}"
+    with rasterio.Env(**_COG_ENV):
+        with rasterio.open(path) as src:
+            level = _overview_level(src, abs(dst_transform.a), resampling)
+        open_opts = {"OVERVIEW_LEVEL": str(level)} if level >= 0 else {}
+        with rasterio.open(path, **open_opts) as src:
+            # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
+            src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
+            reproject(
+                source=rasterio.band(src, band_indexes),
+                destination=out,
+                src_transform=src.transform,
+                src_crs=src_crs,
+                src_nodata=src.nodata,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                dst_nodata=float("nan"),
+                resampling=resampling,
+            )
     return out
 
 
@@ -545,35 +588,20 @@ def _item_datetime(item):
 
 
 def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling,
-                         band_index=1):
+                         band_indexes=(1,)):
     """Mosaic multiple tessellated COG tiles into a single output grid.
 
-    ``band_index`` (1-based) selects which band of each tile to read; used
-    for multi-band-per-asset products like NAIP where every COG carries
-    R/G/B/NIR in bands 1-4. Each source is reprojected into a NaN-
-    initialised temp array; only the pixels that came back as valid (not
-    NaN) are composited into the output. Source nodata is propagated so
-    resampling never smears 0s across tile boundaries. NaN is preserved
-    -- callers are expected to declare ``nodata=NaN`` on the output
-    GeoTIFF so the rest of the pipeline (tiler, fusion) treats those
-    pixels correctly.
+    Each tile is read with :func:`_read_bands_to_grid` (all requested bands
+    in one pass) into a NaN-initialised array; only pixels that came back
+    valid (not NaN) are composited into the output, so resampling never
+    smears 0s across tile boundaries. NaN is preserved -- callers declare
+    ``nodata=NaN`` on the output GeoTIFF so the rest of the pipeline
+    (tiler, fusion) treats those pixels correctly.
     """
-    out = np.full(dst_shape, np.nan, dtype=np.float32)
+    out = np.full((len(band_indexes), *dst_shape), np.nan, dtype=np.float32)
     for url in asset_urls:
-        tmp = np.full(dst_shape, np.nan, dtype=np.float32)
-        with rasterio.open(f"/vsicurl/{url}") as src:
-            src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-            reproject(
-                source=rasterio.band(src, band_index),
-                destination=tmp,
-                src_transform=src.transform,
-                src_crs=src_crs,
-                src_nodata=src.nodata,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                dst_nodata=float("nan"),
-                resampling=resampling,
-            )
+        tmp = _read_bands_to_grid(url, dst_crs, dst_transform, dst_shape, resampling,
+                                  band_indexes)
         mask = ~np.isnan(tmp)
         out[mask] = tmp[mask]
     return out
@@ -799,24 +827,32 @@ def _fetch_via_stac(
     #    products (DEM, WorldCover) and now also non-static missions where
     #    a single scene did not cover the AOI (e.g. Sentinel-1 orbit strips).
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
+    # Bands that live in the same file (NAIP's R/G/B/NIR) and share a
+    # resampling method are read together in one pass.
+    groups = {}
     for i, b in enumerate(final_bands):
         rs = _resampling_for_band(b, profile["cloud_mask"])
         asset_key, band_index = _resolve_band_mapping(asset_map[b])
-        label = f"{asset_key}[band{band_index}]" if band_index != 1 else asset_key
+        groups.setdefault((asset_key, rs), []).append((i, b, band_index))
+    for (asset_key, rs), members in groups.items():
+        rows = [i for i, _, _ in members]
+        band_indexes = [bi for _, _, bi in members]
+        names = ",".join(b for _, b, _ in members)
+        label = asset_key if band_indexes == [1] else f"{asset_key}{band_indexes}"
         if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_key]["href"]) for it in items]
-            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}"
+            print(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}"
                   f"mosaic of {len(urls)} scene(s)")
-            stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
-                                              (out_h, out_w), rs,
-                                              band_index=band_index)
+            stack[rows] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
+                                               (out_h, out_w), rs,
+                                               band_indexes=band_indexes)
         else:
             url = url_resolver(representative["assets"][asset_key]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            print(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
-            stack[i] = _read_band_to_grid(url, dst_crs, dst_transform,
-                                            (out_h, out_w), rs,
-                                            band_index=band_index)
+            print(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
+            stack[rows] = _read_bands_to_grid(url, dst_crs, dst_transform,
+                                              (out_h, out_w), rs,
+                                              band_indexes=band_indexes)
 
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which
@@ -1062,7 +1098,7 @@ def _read_multiband_asset_to_grid(asset_path, band_indices,
                                   dst_crs, dst_transform, dst_shape, resampling):
     """Reproject N requested 1-based band indices from a local multi-band raster
     onto the common output grid. Same NaN/nodata discipline as
-    ``_read_band_to_grid`` so AOI-edge nodata never smears into valid pixels.
+    ``_read_bands_to_grid`` so AOI-edge nodata never smears into valid pixels.
     Returns a list of ``(out_h, out_w)`` float32 arrays, one per index."""
     outs = [np.full(dst_shape, np.nan, dtype=np.float32) for _ in band_indices]
     with rasterio.open(asset_path) as src:

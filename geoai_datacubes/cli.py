@@ -58,12 +58,13 @@ def _print_place(loc):
     print(f"center: {loc['lat']:.5f}, {loc['lon']:.5f}  |  {loc['radius_km']} km radius")
 
 
-def _fetch(mission, bands, time_range, bbox, folder, max_cloud):
+def _fetch(mission, bands, time_range, bbox, folder, max_cloud, resolution=10):
     """Fetch one mission into ``folder``; return the path of its GeoTIFF."""
     from geoai_datacubes.fetch import fetch_sentinel_data
 
     fetch_sentinel_data(mission=mission, bands=bands, time_range=time_range, roi=bbox,
-                        save_folder=str(folder), max_cloud_coverage=max_cloud, provider="auto")
+                        resolution=resolution, save_folder=str(folder),
+                        max_cloud_coverage=max_cloud, provider="auto")
     path = _newest(f"{folder}/{mission}_*/{mission}_full_size.tiff")
     if path is None:
         raise RuntimeError(f"{mission} fetched but no {mission}_full_size.tiff under {folder}")
@@ -110,7 +111,8 @@ def cmd_cube(a):
     for mission in [m.strip() for m in a.missions.split(",") if m.strip()]:
         print(f"--- {mission} ---")
         try:
-            inputs.append(_fetch(mission, display_bands(mission), time_range, loc["bbox"], out_dir, a.max_cloud))
+            inputs.append(_fetch(mission, display_bands(mission), time_range, loc["bbox"], out_dir,
+                                 a.max_cloud, a.resolution))
             print(f"OK   {mission}")
         except Exception as e:  # keep going so one failing mission doesn't lose the others
             print(f"FAIL {mission}: {type(e).__name__}: {e}")
@@ -119,7 +121,7 @@ def cmd_cube(a):
         raise SystemExit("No mission fetched; nothing to fuse.")
 
     cube = out_dir / f"{_slug(a.place)}_cube.tiff"
-    result = fuse_response_tiffs(inputs, output_path=str(cube))
+    result = fuse_response_tiffs(inputs, output_path=str(cube), resolution=a.resolution)
     print(f"\ncube: {result['path']}  |  {result['shape'][0]} bands, {result['shape'][2]} x {result['shape'][1]} px")
     print(f"bands: {', '.join(result['bands'])}")
     clock.step("fuse")
@@ -282,6 +284,7 @@ def build_parser():
     s.add_argument("place", help="Place name, alias (e.g. 'here'), or 'lat, lon'")
     s.add_argument("--missions", default=DEFAULT_MISSIONS, help=f"Comma-separated (default {DEFAULT_MISSIONS})")
     s.add_argument("--radius-km", type=float, default=2.0)
+    s.add_argument("--resolution", type=float, default=10, help="Metres per pixel (default 10; NAIP is 1 m or finer)")
     s.add_argument("--months-back", type=int, default=24, help="Search window ending today (default 24)")
     s.add_argument("--year", type=int, help="Use this calendar year instead of --months-back")
     s.add_argument("--max-cloud", type=float, default=1.0,

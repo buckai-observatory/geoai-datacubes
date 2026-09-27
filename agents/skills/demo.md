@@ -245,8 +245,21 @@ as a GeoJSON polygon instead of a bbox list. If a request needs
 something `cube` can't do, use `skills/20_build_cube.md`. If it is a
 demo need that will recur, add an option to `geoai_datacubes/cli.py`.
 
-Tested 2026-09-27 at the venue, 2 km radius: Sentinel-2 13 s, DEM
-15 s, fuse + styles + tiles under 1 s.
+Tested 2026-09-27 at the venue, 2 km radius, on a slow connection
+(0.6 MB/s): Sentinel-2 11 s, DEM 3 s, fuse + styles + tiles under 1 s.
+
+**NAIP (US aerial photos) needs `--resolution 1`**; the default 10 m
+throws away what makes NAIP worth showing. Keep the radius small
+(0.5 km gives a 1000 × 1000 px image). A state is flown about every
+two years, so pick a year with `--year`; if that year has no flight
+the fetch fails and the neighbouring year usually works:
+
+```bash
+scripts/geoai-python -m geoai_datacubes cube "here" --missions NAIP --year 2023 --radius-km 0.5 --resolution 1
+```
+
+At the venue NAIP exists for 2011, 2013, 2015, 2017, 2019, 2021 and
+2023; 2011 took 11 s and 2023 (0.3 m source) 20 s at 0.5 km radius.
 
 ## Default 2 — "open it" / "show me" → QGIS, unasked
 
