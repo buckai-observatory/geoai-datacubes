@@ -43,7 +43,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ## What it does
 
-- **38 missions in a unified registry, grouped by data modality below.** 23 released in v0.1.0 (under JOSS review) + **15 new v0.2-preview additions on this branch, marked †**. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
+- **39 missions in a unified registry, grouped by data modality below.** 23 released in v0.1.0 (under JOSS review) + **16 new v0.2-preview additions on this branch, marked †**. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
 
   <details>
   <summary><b>Optical (multispectral)</b> — 9 missions</summary>
@@ -114,6 +114,14 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   | `Chloris-Biomass` | ~4.6 km | planetary_computer | Annual global biomass |
   | `ALOS-FNF` | 25 m | planetary_computer | Annual forest / non-forest |
   | `Hansen-GFC` | 30 m | direct_http | Annual forest-change v1.11 |
+  </details>
+
+  <details>
+  <summary><b>Foundation-model embeddings</b> — 1 mission</summary>
+
+  | Mission | Native res | Provider | Notes |
+  |---|---|---|---|
+  | `AlphaEarth` † | 10 m | earth_engine | Google DeepMind 64-dim per-pixel EO embeddings, annual mosaics 2017–2025 |
   </details>
 
   <details>

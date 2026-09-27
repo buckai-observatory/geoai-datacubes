@@ -1,7 +1,7 @@
 # Provider trade-offs: convenience vs throughput at scale
 
-The pipeline supports **38 missions** end-to-end (v0.1.0 release: 23;
-**+15 v0.2-preview additions on this branch**) across up to **eight
+The pipeline supports **39 missions** end-to-end (v0.1.0 release: 23;
+**+16 v0.2-preview additions on this branch**) across up to **eight
 interchangeable providers** — four STAC-based, one commercial, plus
 `direct_http` for non-STAC anonymous COGs, `earth_engine` for
 Google Earth Engine, `earthdata` for anything hosted by a NASA
@@ -51,6 +51,7 @@ Plus three new provider classes on this branch (**v0.2 preview**):
 | **Hosted by** | Google Earth Engine (server-side compute + reproject) | NASA CMR + per-DAAC HTTPS (ASF, ORNL, NSIDC, GES DISC, PODAAC) | User's own local filesystem |
 | **Dynamic World** | ✅ Only public host | — | — |
 | **JRC-GFC2020** | ✅ Only public host | — | — |
+| **AlphaEarth Foundations (64-dim EO embeddings)** | ✅ Only public host — Google DeepMind, annual mosaics 2017–2025 at 10 m global | — | — |
 | **MODIS_SR / MODIS_LST** | ✅ **Default on this branch** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
 | **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) | — |
 | **ICESat-2 (ATL03/06/08/13)** | — | ✅ NSIDC DAAC; multi-granule tracks aggregation | — |
@@ -62,7 +63,7 @@ Plus three new provider classes on this branch (**v0.2 preview**):
 | **GEBCO 2024 bathymetry** | — | — | — (`direct_http`) |
 | **Airborne LIDAR / commercial optical / drone imagery** | — | — | ✅ Any locally-stored raster registered via `register_local_mission(...)` |
 | **Server-side operations** | Full ImageCollection reductions, per-band scale factors, reprojection, temporal composites | Windowed reads into large HDF5 / GeoTIFF granules; download-and-cache | AOI-window read + reproject to local UTM; mosaic across matching files |
-| **Best for** | Dynamic World, MODIS in a target CRS, JRC-GFC2020, and any of hundreds of other EE-native collections | NISAR L-band, GEDI biomass, SMAP soil moisture, ICESat-2, SWOT, CryoSat, TROPOMI, and anything else in the NASA DAAC catalogue | Airborne LIDAR bathymetry / topography, licensed WorldView / Maxar, georeferenced drone RGB-NIR, any per-project raster the user wants to fuse |
+| **Best for** | Dynamic World, MODIS in a target CRS, JRC-GFC2020, AlphaEarth 64-dim per-pixel embeddings, and any of hundreds of other EE-native collections | NISAR L-band, GEDI biomass, SMAP soil moisture, ICESat-2, SWOT, CryoSat, TROPOMI, and anything else in the NASA DAAC catalogue | Airborne LIDAR bathymetry / topography, licensed WorldView / Maxar, georeferenced drone RGB-NIR, any per-project raster the user wants to fuse |
 
 See [`providers/earth_engine.md`](providers/earth_engine.md),
 [`providers/earthdata.md`](providers/earthdata.md), and
@@ -88,6 +89,7 @@ walkthroughs.
 | `GEBCO-2024` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous BODC/CEDA per-tile GeoTIFFs |
 | `Dynamic-World` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
 | `JRC-GFC2020` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
+| `AlphaEarth` *(v0.2 preview)* | `earth_engine` | Google DeepMind, EE-only. 64-dim per-pixel foundation-model embeddings, annual mosaics 2017–2025 |
 | `NISAR-L` *(v0.2 preview)* | `earthdata` | ASF DAAC only; requires NASA Earthdata Login |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
 | `Sentinel-5P` | not routed (stubbed) | Sentinel-5P: NetCDF reader pending. |

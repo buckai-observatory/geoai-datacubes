@@ -76,6 +76,7 @@ PROVIDER_AUTO = {
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
     "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
     "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
+    "AlphaEarth":     "earth_engine",       # Google DeepMind 64-dim per-pixel embeddings (annual mosaics 2017+)
     "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
     "ICESat-2-ATL03": "earthdata",          # NSIDC DAAC, per-photon geolocated photons (tracks flow, downsampled)
     "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation

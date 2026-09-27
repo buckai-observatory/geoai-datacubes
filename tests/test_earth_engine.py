@@ -468,3 +468,123 @@ def test_live_smoke_dynamic_world_tiny_aoi():
         assert sidecar["mission"] == "Dynamic-World"
         assert sidecar["bands"] == bands
         # TemporaryDirectory cleans up on context exit.
+
+
+# ============================================================
+# 9. AlphaEarth Foundations embeddings (Google DeepMind, 2025)
+# ============================================================
+
+def test_alphaearth_has_earth_engine_provider():
+    profile = MISSION_PROFILES["AlphaEarth"]
+    assert "earth_engine" in profile["providers"], (
+        "AlphaEarth lost its earth_engine provider config"
+    )
+
+
+def test_alphaearth_collection_id():
+    from geoai_datacubes.fetch.missions import get_provider_config
+    cfg = get_provider_config("AlphaEarth", "earth_engine")
+    # Verified live 2026-09-27 via ee.ImageCollection query.
+    assert cfg["collection"] == "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
+
+
+def test_alphaearth_default_bands_are_a00_through_a63():
+    profile = MISSION_PROFILES["AlphaEarth"]
+    expected = [f"A{i:02d}" for i in range(64)]
+    assert profile["default_bands"] == expected
+    assert profile["extra_bands"] == []
+
+
+def test_alphaearth_band_map_is_identity_64():
+    band_map = MISSION_PROFILES["AlphaEarth"]["providers"]["earth_engine"]["band_map"]
+    assert len(band_map) == 64
+    # Every logical name maps to itself (the EE names ARE the logical names).
+    for i in range(64):
+        name = f"A{i:02d}"
+        assert band_map[name] == name
+
+
+def test_alphaearth_band_meta_covers_every_default_band():
+    profile = MISSION_PROFILES["AlphaEarth"]
+    for b in profile["default_bands"]:
+        assert b in profile["band_meta"], f"band_meta missing {b}"
+        entry = profile["band_meta"][b]
+        assert entry["kind"] == "embedding"
+        assert entry["norm"] == ("passthrough",)
+
+
+def test_alphaearth_is_not_static_and_has_no_cloud_filter():
+    """AlphaEarth is a time-varying annual-mosaic collection: the fetcher
+    must apply .filterDate() and skip the cloud filter (the FM was
+    trained on cloud-conditioned inputs; there is no per-pixel cloud
+    band to gate against)."""
+    profile = MISSION_PROFILES["AlphaEarth"]
+    assert profile["static"] is False
+    assert profile["cloud_filter"] is False
+    assert profile["cloud_mask"] is None
+
+
+def test_provider_auto_routes_alphaearth_to_earth_engine():
+    from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
+    assert PROVIDER_AUTO["AlphaEarth"] == "earth_engine"
+
+
+def test_alphaearth_ee_config_has_no_reducer_groups():
+    """AlphaEarth uses the default ``mean`` reducer over all requested
+    bands (identity for a 1-year window over annual mosaics; a well-
+    defined per-band average over multi-year windows). Custom
+    reducer_groups are unnecessary and would just add complexity."""
+    cfg = MISSION_PROFILES["AlphaEarth"]["providers"]["earth_engine"]
+    assert cfg.get("reducer_groups") is None
+
+
+@pytest.mark.skipif(
+    not _LIVE_ENABLED,
+    reason="live EE smoke test disabled; set RUN_EE_LIVE_TEST=1 to enable",
+)
+def test_live_smoke_alphaearth_tiny_aoi():
+    """Live round-trip: fetch 4 bands over a tiny Columbus AOI for 2024
+    and verify shape + rough value invariants.
+
+    Uses 4 bands, not all 64, so EE quota stays cheap; the profile is
+    otherwise identical to a full 64-band pull. Value-invariant check:
+    per-pixel L2 norm across ANY subset of the 64 bands must be < 1
+    (since the full 64-dim vector is unit-normalised, any 4-band
+    projection has L2 <= 1)."""
+    pytest.importorskip("ee")
+    from geoai_datacubes.fetch.fetch_data import fetch_earth_engine
+
+    roi = [-83.0311, 40.0063, -83.0299, 40.0071]   # ~100 m x 100 m near OSU
+    bands = ["A00", "A01", "A02", "A03"]
+    time_range = ("2024-01-01", "2025-01-01")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        fetch_earth_engine(
+            "AlphaEarth", bands, time_range, roi,
+            resolution=10, save_folder=tmp,
+        )
+        scene_dir = Path(tmp) / _default_scene_tag(
+            "AlphaEarth", time_range, static=False,
+        )
+        out_tiff = scene_dir / "AlphaEarth_full_size.tiff"
+        sidecar_path = scene_dir / "userdata.json"
+
+        assert out_tiff.exists(), f"expected GeoTIFF at {out_tiff}"
+        assert sidecar_path.exists(), f"expected sidecar at {sidecar_path}"
+
+        with rasterio.open(out_tiff) as src:
+            assert src.count == len(bands)
+            arr = src.read()  # shape (4, H, W)
+        # 4-of-64 L2 projection must be <= 1 (with headroom for numeric
+        # noise); individual band values live near [-0.4, +0.4].
+        finite = arr[np.isfinite(arr)]
+        assert finite.size > 0, "AlphaEarth returned all-NaN over a valid AOI"
+        assert float(np.max(np.abs(finite))) < 1.0
+        per_pixel_l2 = np.sqrt(np.sum(arr.astype(np.float32) ** 2, axis=0))
+        # Any 4-dim projection of a unit-length 64-vector is <= 1.
+        assert float(np.nanmax(per_pixel_l2)) < 1.01
+
+        sidecar = json.loads(sidecar_path.read_text())
+        assert sidecar["provider"] == "earth_engine"
+        assert sidecar["mission"] == "AlphaEarth"
+        assert sidecar["bands"] == bands
