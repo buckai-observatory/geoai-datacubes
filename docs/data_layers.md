@@ -33,6 +33,9 @@ documented here — only the host and the credentialing path.
 > - **JRC GFC2020 V3** (10 m global forest-cover baseline for the EU
 >   Deforestation Regulation, EU Joint Research Centre, Bourgoin et al.
 >   2026) — via `earth_engine` provider.
+> - **AlphaEarth Foundations** (64-dim per-pixel foundation-model
+>   embeddings, annual, global, at 10 m, Google DeepMind, released 2025)
+>   — via `earth_engine` provider.
 > - **NISAR-L** (L-band SAR from NASA-ISRO NISAR mission, public archive
 >   opened 2026-07-20 — the first proper open L-band SAR archive since
 >   ALOS PALSAR-1) — via new `earthdata` provider, which authenticates
@@ -234,6 +237,7 @@ product with documented per-class quality.
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
 | Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
 | JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
+| AlphaEarth Foundations *(v0.2 preview)* | `AlphaEarth` | 10 m | annual mosaics, 2017–2025 | 64 embedding dims (A00..A63) | Google DeepMind 2025; per-pixel L2-normalised to unit length; Earth Engine only |
 | GEDI L4B Biomass *(v0.2 preview)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
 | GEDI L4A Biomass footprints *(v0.2 preview)* | `GEDI-L4A` | 25 m native (rasterised at user resolution) | 2019-04-18 → 2023-03-16 (V2.1) | agbd (per-shot AGBD, Mg/ha) | Loss-less per-shot Parquet sidecar + gridded raster; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap; 1-to-8 beams per granule |
 | GEBCO 2024 Global Bathymetry *(v0.2 preview)* | `GEBCO-2024` | ~463 m (15 arc-sec) | static (2024 release) | elevation, elevation_sub_ice | Global elevation + bathymetry; anonymous BODC/CEDA GeoTIFFs via `direct_http`; ice-surface (default) or sub-ice bedrock variants |
@@ -1839,6 +1843,75 @@ Sentinel-1, Landsat) and with Hansen-GFC's `lossyear` band. Available
 today as `fetch_sentinel_data("JRC-GFC2020", bands=["LULC"], roi=...,
 resolution=..., save_folder=...)`; a labels-toggle integration for
 Notebook 04 is a natural next addition.
+
+---
+
+## AlphaEarth Foundations satellite embeddings *(v0.2 preview — this branch only)*
+
+**Mission name:** `AlphaEarth`
+**Provider:** Google Earth Engine, collection `GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL`.
+**Spatial resolution:** 10 m (native).
+**Temporal:** annual mosaics; the current catalogue covers 2017 through
+2025 (nine yearly mosaics; ~97 k source tiles). Each pixel gets a single
+64-dim embedding per calendar year, so `.filterDate(YYYY-01-01, YYYY+1-01-01)`
+returns exactly one image per pixel.
+**Coverage:** global.
+**Producer:** Google DeepMind. Released 2025.
+**Licence:** CC BY 4.0 (Google Earth Engine dataset page); cite Google
+DeepMind (2025).
+
+| Band(s) | Description |
+|---|---|
+| `A00`, `A01`, …, `A63` | 64-dimensional per-pixel foundation-model embedding. Each pixel's full 64-vector is L2-normalised to unit length; individual band values sit near `[-0.4, +0.4]` with a theoretical bound of `±1`. Trained across Sentinel-1, Sentinel-2, Landsat, and ancillary layers. |
+
+**Value range:** per-band `[-1, +1]` (theoretical); per-pixel L2 norm
+across all 64 bands `≈ 1.0`. The pipeline stores these as `float32`.
+
+**Normalisation for ML:** declared as `("passthrough",)` on
+`kind="embedding"`. The values already come out of a foundation model
+with sensible scale; a linear classifier on top learns its own per-band
+weights.
+
+**Why this matters:** the 64 embedding dimensions **are** features that
+already encode land-cover, phenology, terrain, and atmospheric context
+at 10 m globally. Downstream tasks that would otherwise need a U-Net
+trained from scratch on raw imagery can instead train a lightweight
+linear head, XGBoost, or a small MLP on these 64 pre-trained features
+and reach competitive accuracy with **orders of magnitude less labelled
+data**. Fusing AlphaEarth alongside raw Sentinel-2 bands gives models
+both the pre-trained context and the raw signal in the same cube, which
+is often the strongest combination when labels are scarce.
+
+**Setup requirements:** Earth Engine access + a Google Cloud project ID
+with the EE API enabled. Full walkthrough in
+[`docs/providers/earth_engine.md`](providers/earth_engine.md).
+
+**Usage:**
+
+```python
+from geoai_datacubes.fetch import fetch_sentinel_data
+
+# All 64 dimensions for 2024 over an AOI:
+fetch_sentinel_data(
+    "AlphaEarth", None,
+    ("2024-01-01", "2025-01-01"),
+    roi=[-83.05, 39.99, -83.02, 40.02],
+    resolution=10, save_folder="./data",
+)
+
+# Just the first 4 dims (coarse similarity map, cheaper fetch):
+fetch_sentinel_data(
+    "AlphaEarth", ["A00", "A01", "A02", "A03"],
+    ("2024-01-01", "2025-01-01"),
+    roi=[-83.05, 39.99, -83.02, 40.02],
+    resolution=10, save_folder="./data",
+)
+```
+
+Combines naturally with `fetch_time_series` (see
+[`geoai_datacubes/fetch/timeseries.py`](../geoai_datacubes/fetch/timeseries.py))
+to build a `(T, H, W, 64)` embedding cube across the 2017–2025 archive
+for change detection or phenology work.
 
 ---
 

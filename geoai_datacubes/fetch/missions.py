@@ -1919,6 +1919,72 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # AlphaEarth Foundations satellite embeddings (Google DeepMind,
+    # released 2025). 64-dimensional per-pixel foundation-model
+    # embeddings at 10 m, global, annual (2017..2025 so far). Trained
+    # across Sentinel-1, Sentinel-2, Landsat and ancillary layers;
+    # each pixel is L2-normalised to unit length so individual band
+    # values sit near [-0.4, +0.4] with a theoretical bound of +/-1.
+    # Served on Earth Engine only.
+    #
+    # Why this matters for downstream ML: the 64 embedding
+    # dimensions ARE features that already encode land-cover,
+    # phenology, terrain and atmospheric context. Downstream tasks
+    # that would need a U-Net from scratch on raw imagery can
+    # instead train a lightweight linear head or a tree ensemble on
+    # these 64 features and get competitive accuracy with orders of
+    # magnitude less labelled data. Fusing AlphaEarth alongside raw
+    # Sentinel-2 bands gives models both the pre-trained context and
+    # the raw signal in the same cube.
+    #
+    # Notes:
+    # * band_meta uses kind="embedding" (a new kind, distinct from
+    #   ``spectral``) so downstream code can route it correctly.
+    #   Currently no ``kind == "embedding"`` special-case exists in
+    #   apply_band_norm or the resampling picker; both default to
+    #   bilinear + passthrough, which is exactly what we want for a
+    #   continuous already-normalised embedding.
+    # * All 64 bands (A00..A63) are declared as default_bands so a
+    #   bare ``fetch_sentinel_data("AlphaEarth", None, ...)`` returns
+    #   the full embedding. Users who only want a projection can
+    #   pass ``bands=["A00","A01","A02","A03"]`` (a common trick is
+    #   to sample the first N dims for a coarse similarity map).
+    # * ``mean`` reducer over a one-year date window is effectively
+    #   the identity for AlphaEarth (each pixel has exactly one
+    #   annual mosaic value), so the default reducer is fine.
+    # * The band_map is generated programmatically since it's an
+    #   identity 64-entry dict.
+    #
+    # Licence: CC BY 4.0 (per Google's Earth Engine dataset page).
+    # Cite Google DeepMind (2025).
+    # ============================================================
+    "AlphaEarth": {
+        "default_bands": [f"A{i:02d}" for i in range(64)],
+        "extra_bands":   [],
+        "cloud_filter":  False,   # already server-side conditioned in the FM
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,   # annual mosaics, 2017..present
+        "band_meta": {
+            f"A{i:02d}": {"kind": "embedding", "norm": ("passthrough",)}
+            for i in range(64)
+        },
+        "providers": {
+            "earth_engine": {
+                "collection": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+                # Identity band_map. The EE band names ARE the logical
+                # names we surface to callers.
+                "band_map": {f"A{i:02d}": f"A{i:02d}" for i in range(64)},
+                # Every requested band gets the default ``mean``
+                # reducer over the date window; for annual mosaics
+                # this is effectively the identity when the window
+                # is one year, and a well-defined averaging when a
+                # caller passes a multi-year window.
+            },
+        },
+    },
+
+    # ============================================================
     # GEDI L4B Gridded Aboveground Biomass Density v2.1 (ORNL DAAC).
     #
     # Global gridded mean aboveground biomass density (AGBD) from GEDI's

@@ -271,6 +271,7 @@ one behind an `export_bucket=` kwarg when a real workload calls for it.
 | `MODIS_SR` | `MODIS/061/MOD09A1` | 2000-02-24 → present, 8-day | 500 m | public domain | 7 spectral + QA/state/DOY |
 | `MODIS_LST` | `MODIS/061/MOD11A1` | 2000-02-24 → present, daily | 1000 m | public domain | day/night LST + QA + emissivity (server-side 0.02 → Kelvin scale) |
 | `JRC-GFC2020` | `JRC/GFC2020/V3` | static (2020-12-31) | 10 m | free, attribution recommended | `LULC` (binary forest = 1) |
+| `AlphaEarth` | `GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL` | 2017 → 2025, annual mosaics | 10 m | CC-BY-4.0 | `A00`..`A63` (64-dim per-pixel foundation-model embedding, L2-normalised to unit length) |
 
 **Dynamic-World** — the 9 probability bands (`water`, `trees`, `grass`,
 `flooded_vegetation`, `crops`, `shrub_and_scrub`, `built`, `bare`,
@@ -300,6 +301,24 @@ rubber, soya, cattle) explicitly excluded from the "forest" class —
 the key semantic difference from Hansen-GFC. See
 [`data_layers.md#jrc-global-forest-cover-2020-v3`](../data_layers.md)
 for the full context.
+
+**AlphaEarth Foundations** — Google DeepMind's per-pixel Earth
+observation foundation model, published on Earth Engine in 2025 as
+annual global mosaics. Each pixel gets a 64-dim embedding (`A00`
+through `A63`) that is L2-normalised to unit length. Trained across
+Sentinel-1, Sentinel-2, Landsat and ancillary layers. The default
+`mean` reducer over a 1-year window
+(`.filterDate("YYYY-01-01", "YYYY+1-01-01")`) is effectively the
+identity since each pixel has exactly one annual mosaic value; a
+multi-year window returns a per-band average across the requested
+years. The full 64-band cube is `default_bands`; users who want just
+a coarse projection can pass `bands=["A00","A01","A02","A03"]` for a
+cheaper fetch. Because the values are already an FM output, the
+per-band normalisation recipe is `("passthrough",)` — a downstream
+linear classifier or XGBoost head learns its own per-band weights.
+Value invariant: per-pixel L2 across all 64 bands ≈ 1.0. See
+[`data_layers.md#alphaearth-foundations-satellite-embeddings`](../data_layers.md)
+for the full context and code snippets.
 
 ## Adding another EE mission
 
