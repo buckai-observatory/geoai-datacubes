@@ -82,13 +82,14 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   </details>
 
   <details>
-  <summary><b>Elevation (DEMs) and bathymetry</b> — 5 missions</summary>
+  <summary><b>Elevation (DEMs) and bathymetry</b> — 6 missions</summary>
 
   | Mission | Native res | Provider | Notes |
   |---|---|---|---|
   | `Copernicus-DEM` / `Copernicus-DEM-90` | 30 m / 90 m | earthsearch / planetary_computer | Global TanDEM-X-derived |
   | `ArcticDEM` † | 2 / 10 / 32 m | direct_http | PGC / OSU (>60° N); resolution configurable |
   | `3DEP` | 10 / 1 m | planetary_computer | US high-res LIDAR-derived |
+  | `KyFromAbove-DEM` | 2 ft (0.61 m) / 5 ft | kyfromabove | Kentucky statewide LiDAR; feet converted to metres |
   | `GEBCO-2024` † | 15 arc-s (~450 m) | direct_http | Global bathymetry + topography |
   </details>
 

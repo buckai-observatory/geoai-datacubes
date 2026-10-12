@@ -215,6 +215,7 @@ product with documented per-class quality.
 | HLS Harmonized Sentinel-2 | `HLS_S30` | 30 m | 5 days (S2A+B) | 13 spectral + Fmask + angles | 0–10000 DN |
 | HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
+| KyFromAbove DEM (Kentucky) | `KyFromAbove-DEM` | 2 ft (0.61 m) Phases 2–3; 5 ft (1.52 m) Phase 1 | static (newest phase per tile) | DEM | source in US survey feet, converted to metres at fetch |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
 | NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
@@ -1549,6 +1550,53 @@ globally consistent DEM.
 
 ---
 
+## KyFromAbove DEM (Commonwealth of Kentucky)
+
+**Mission name:** `KyFromAbove-DEM`
+**Provider:** `kyfromabove` — KyFromAbove STAC API
+(`https://spved5ihrl.execute-api.us-west-2.amazonaws.com/`) in front
+of public COGs in `s3://kyfromabove` (us-west-2, no credentials).
+**Spatial resolution:** 2 ft (0.6096 m) for Phase 2 (2019–2024,
+statewide) and Phase 3 (2022 onward, partial); 5 ft (1.524 m) for
+Phase 1 (2010–2017, statewide).
+**Temporal:** static. Each 5,000 × 5,000 ft grid cell is taken from
+the newest phase flown there (Phase 3, else 2, else 1). STAC item
+`datetime` is the catalogue write date, not the flight date, so it is
+not used for selection. Force a phase with
+`fetch_kyfromabove(..., phases=("dem-phase2",))`.
+**Coverage:** Kentucky only.
+**Native grid:** EPSG:3089 (Kentucky Single Zone), US survey feet for
+both horizontal and vertical units.
+
+| Band (pipeline) | Description |
+|---|---|
+| DEM | Bare-earth LiDAR elevation, converted from US survey feet to metres (× 1200/3937) at fetch |
+
+**Grid and resolution:** like every STAC mission, tiles are mosaicked
+onto the AOI-centroid UTM grid (zone 16N west of 84° W, 17N east of
+it) at the `resolution` you pass, in metres. Pass `0.6096` to keep the
+native 2 ft detail, or a coarser value to read the COG overviews
+instead. UTM is used rather than EPSG:3089 so that horizontal and
+vertical units are both metres, which slope / aspect / hillshade
+require, and so the DEM stacks with other missions when you want it to.
+
+**Terrain derivatives:**
+
+```bash
+scripts/geoai-python -m geoai_datacubes terrain <...>/KyFromAbove-DEM_full_size.tiff
+# -> *_slope.tif (degrees), *_aspect.tif (degrees from north), *_hillshade.tif (uint8)
+```
+
+or `geoai_datacubes.viz.terrain.write_terrain(path)` from Python.
+Slope and aspect use Horn's method, the same as `gdaldem`.
+
+**Size:** a 4 km × 4 km AOI at 0.6096 m is about 6,600 × 6,600 px
+(~170 MB float32). The search follows pagination up to 2,000 items.
+
+**Normalisation for ML:** same as 3DEP (per-AOI mean-subtraction).
+
+---
+
 ## ALOS PALSAR Annual L-band SAR Mosaic (JAXA)
 
 **Mission name:** `ALOS-PALSAR`
@@ -2140,6 +2188,7 @@ work over major metros.
 | HLS_S30 / HLS_L30 | `x / 10000.0` then `clip(0, 1)` (same as Sentinel-2) |
 | JRC-GSW (continuous bands) | divide by 100 (or 12 for `seasonality`); leave `transitions` / `extent` categorical |
 | 3DEP | per-AOI mean-subtract; optionally add gradient magnitude as a second channel (same recipe as Copernicus DEM) |
+| KyFromAbove-DEM | same as 3DEP (values are already metres after fetch); slope / aspect from `geoai_datacubes terrain` make good extra channels |
 | ALOS-PALSAR (HH / HV) | DN → dB via `10*log10(DN²) − 83.0`, then map `[-30, 0]` dB to `[0, 1]`. The `("palsar_db", -83.0)` recipe in `band_meta` does this in one call. |
 | ALOS-FNF | do not normalise; use as a categorical label / mask via `label_remap` |
 | USDA-CDL (`cropland`) | do not normalise — `passthrough` raw class IDs; use `label_remap={class_id: 1}` for binary targets. `confidence` divides by 100; per-crop frequency layers divide by 255. |
