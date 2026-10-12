@@ -815,6 +815,59 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # 3DEP lidar-derived rasters (Microsoft Planetary Computer). Built
+    # by PC/Landrush with PDAL from the USGS 3DEP point clouds, 2 m,
+    # metres above NAVD88, one COG per ~8 km chunk of a lidar project
+    # in that project's UTM zone. Coverage is PARTIAL: PC processed a
+    # subset of 3DEP projects (2012-2022 surveys), so many areas return
+    # no items. Static: overlapping projects are mosaicked with the
+    # most recent survey (end_datetime) on top.
+    #
+    # DTM uses "3dep-lidar-dtm-native" (the vendor's own ground
+    # classification). The sibling "3dep-lidar-dtm" (PDAL SMRF ground)
+    # and "3dep-lidar-hag" (height above ground) collections returned
+    # zero items when this was added (2026-10), so they are not wired;
+    # canopy / building height can be had as DSM - DTM instead.
+    # ============================================================
+    "3DEP-Lidar-DTM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "no_coverage_hint": "Planetary Computer has processed 3DEP lidar for only part of the US. Use '3DEP' (10 m, nationwide) or, in Kentucky, 'KyFromAbove-DEM'.",
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "3dep-lidar-dtm-native",
+                "asset_map":  {"DEM": "data"},
+            },
+        },
+    },
+
+    "3DEP-Lidar-DSM": {
+        "default_bands": ["DSM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "no_coverage_hint": "Planetary Computer has processed 3DEP lidar for only part of the US. Use '3DEP' (10 m, nationwide) or, in Kentucky, 'KyFromAbove-DEM'.",
+        "band_meta": {
+            "DSM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "3dep-lidar-dsm",
+                "asset_map":  {"DSM": "data"},
+            },
+        },
+    },
+
+    # ============================================================
     # Copernicus DEM GLO-90 (TanDEM-X 90 m derivative). PC collection
     # "cop-dem-glo-90". Static global mosaic, 90 m. The lower-resolution
     # complement to GLO-30 (we already have); pick GLO-90 when you need

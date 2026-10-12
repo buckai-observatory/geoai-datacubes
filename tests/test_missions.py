@@ -18,6 +18,7 @@ _EXPECTED_MISSIONS = (
     "HLS_S30", "HLS_L30",
     "3DEP",
     "KyFromAbove-DEM",
+    "3DEP-Lidar-DTM", "3DEP-Lidar-DSM",
     "JRC-GSW",
     "ALOS-PALSAR", "ALOS-FNF",
     "Hansen-GFC",

@@ -46,7 +46,7 @@ SAR (3)                       Sentinel-1, NISAR-L, ALOS-PALSAR
 LIDAR / altimetry (6)         ICESat-2 ATL03/06/08/13, GEDI-L4A,
                               SWOT-HR
 DEM + bathymetry (5)          Copernicus-DEM, Copernicus-DEM-90,
-                              ArcticDEM, 3DEP, KyFromAbove-DEM, GEBCO-2024
+                              ArcticDEM, 3DEP, 3DEP-Lidar-DTM, 3DEP-Lidar-DSM, KyFromAbove-DEM, GEBCO-2024
 LULC (6)                      ESA-WorldCover, USDA-CDL, LCMAP-CONUS,
                               IO-LULC, Dynamic-World, JRC-GFC2020
 Biomass / forest (4)          GEDI-L4B, Chloris-Biomass, ALOS-FNF,

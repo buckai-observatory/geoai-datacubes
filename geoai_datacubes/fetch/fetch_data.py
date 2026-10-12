@@ -65,6 +65,8 @@ PROVIDER_AUTO = {
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
     "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
     "KyFromAbove-DEM": "kyfromabove",       # Kentucky 2 ft / 5 ft LiDAR DEM, public S3 + STAC
+    "3DEP-Lidar-DTM": "planetary_computer", # 2 m bare earth from 3DEP point clouds (partial US coverage)
+    "3DEP-Lidar-DSM": "planetary_computer", # 2 m first-surface (trees, buildings) from 3DEP point clouds
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
@@ -763,6 +765,7 @@ def _fetch_via_stac(
         raise RuntimeError(
             "No scenes matched. Try widening the time range"
             + (" or raising max_cloud_coverage." if profile["cloud_filter"] else ".")
+            + (f" {profile['no_coverage_hint']}" if profile.get("no_coverage_hint") else "")
         )
 
     # 2. Pick scene(s)
@@ -785,7 +788,11 @@ def _fetch_via_stac(
         for k, g in list(groups.items()):
             if any(it.get("id", "").endswith("-13") for it in g):
                 groups[k] = [it for it in g if not it.get("id", "").endswith("-1")]
-        rank = static_rank or (lambda x: x["properties"].get("datetime") or "")
+        # Collections that describe a survey period (3DEP lidar) leave
+        # `datetime` null and set start/end instead; rank by the end date.
+        rank = static_rank or (lambda x: x["properties"].get("datetime")
+                               or x["properties"].get("end_datetime")
+                               or x["properties"].get("start_datetime") or "")
         items = [sorted(g, key=rank, reverse=True)[0] for g in groups.values()]
         # Mosaicking paints later tiles over earlier ones, so put the
         # preferred items last in case tiles from different groups overlap.

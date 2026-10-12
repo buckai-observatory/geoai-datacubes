@@ -215,6 +215,8 @@ product with documented per-class quality.
 | HLS Harmonized Sentinel-2 | `HLS_S30` | 30 m | 5 days (S2A+B) | 13 spectral + Fmask + angles | 0–10000 DN |
 | HLS Harmonized Landsat | `HLS_L30` | 30 m | 16 days/sat (8 combined) | 10 spectral + Fmask + angles | 0–10000 DN |
 | USGS 3D Elevation Program | `3DEP` | 10 m (preferred) / 30 m fallback | static | DEM | metres above NAVD88 |
+| 3DEP lidar bare-earth DTM (Planetary Computer) | `3DEP-Lidar-DTM` | 2 m | static (2012–2022 surveys) | DEM | metres above NAVD88; partial US coverage |
+| 3DEP lidar surface model (Planetary Computer) | `3DEP-Lidar-DSM` | 2 m | static (2012–2022 surveys) | DSM | metres above NAVD88, includes trees / buildings; partial US coverage |
 | KyFromAbove DEM (Kentucky) | `KyFromAbove-DEM` | 2 ft (0.61 m) Phases 2–3; 5 ft (1.52 m) Phase 1 | static (newest phase per tile) | DEM | source in US survey feet, converted to metres at fetch |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
@@ -1597,6 +1599,40 @@ Slope and aspect use Horn's method, the same as `gdaldem`.
 
 ---
 
+## 3DEP lidar DTM and DSM (Planetary Computer)
+
+**Mission names:** `3DEP-Lidar-DTM` (bare earth), `3DEP-Lidar-DSM`
+(first surface: canopy, buildings).
+**Provider:** Microsoft Planetary Computer, collections
+`3dep-lidar-dtm-native` and `3dep-lidar-dsm`. Planetary Computer built
+these with PDAL from the USGS 3DEP lidar point clouds; the DTM uses the
+data vendor's own ground classification.
+**Spatial resolution:** 2 m. Each item is one ~8 km chunk of a lidar
+project, in that project's UTM zone (NAD83), metres above NAVD88.
+**Temporal:** static. Surveys span 2012–2022; where projects overlap,
+the most recent survey (`end_datetime`) is mosaicked on top.
+**Coverage:** **partial.** Planetary Computer processed only a subset
+of 3DEP projects, so many AOIs return nothing (e.g. central Columbus,
+OH at the time of writing) while others are covered (e.g. Denver, CO).
+The fetch error then suggests `3DEP` (10 m, nationwide) or, in
+Kentucky, `KyFromAbove-DEM`.
+
+| Band (pipeline) | Mission | Description |
+|---|---|---|
+| DEM | `3DEP-Lidar-DTM` | Bare-earth elevation, metres |
+| DSM | `3DEP-Lidar-DSM` | Highest surface (vegetation, roofs), metres |
+
+**Derived products:** fetch both on the same `grid=` (see
+`plan_grid`) and subtract, `DSM - DEM`, for canopy / building height.
+`geoai_datacubes terrain` gives slope, aspect and hillshade from the DTM.
+
+**Not wired:** the sibling `3dep-lidar-dtm` (PDAL SMRF ground) and
+`3dep-lidar-hag` (height above ground) collections returned zero items
+when these missions were added (October 2026). Intensity, returns and
+classification rasters exist on Planetary Computer but are not added.
+
+---
+
 ## ALOS PALSAR Annual L-band SAR Mosaic (JAXA)
 
 **Mission name:** `ALOS-PALSAR`
@@ -2188,6 +2224,7 @@ work over major metros.
 | HLS_S30 / HLS_L30 | `x / 10000.0` then `clip(0, 1)` (same as Sentinel-2) |
 | JRC-GSW (continuous bands) | divide by 100 (or 12 for `seasonality`); leave `transitions` / `extent` categorical |
 | 3DEP | per-AOI mean-subtract; optionally add gradient magnitude as a second channel (same recipe as Copernicus DEM) |
+| 3DEP-Lidar-DTM / 3DEP-Lidar-DSM | same as 3DEP; `DSM - DEM` makes a strong height channel |
 | KyFromAbove-DEM | same as 3DEP (values are already metres after fetch); slope / aspect from `geoai_datacubes terrain` make good extra channels |
 | ALOS-PALSAR (HH / HV) | DN → dB via `10*log10(DN²) − 83.0`, then map `[-30, 0]` dB to `[0, 1]`. The `("palsar_db", -83.0)` recipe in `band_meta` does this in one call. |
 | ALOS-FNF | do not normalise; use as a categorical label / mask via `label_remap` |
