@@ -5,6 +5,26 @@ This folder holds the **pedagogical Jupyter notebooks** that ship with
 own dependencies, fetches the imagery it needs, and runs end-to-end
 without anything pre-existing on your machine.
 
+## About these notebooks
+
+**Scope:** These notebooks are *illustrations and playgrounds*, not an exhaustive
+API reference. The stable documentation lives in the package docstrings, API
+reference, and core module documentation (`geoai_datacubes.fetch`,
+`geoai_datacubes.preprocessing`, etc.). 
+
+**Platform notes:** We recommend **Colab for reliable multi-platform runs**.
+Local setups (especially macOS) may encounter platform-specific issues:
+
+- **macOS GDAL plugins** — some GeoTIFF and JP2 codecs require separate GDAL
+  plugin packages (e.g. `libgdal-jp2openjpeg`). Install with conda if needed.
+- **API keys** — CartoDB basemaps and Planet data require API key registration.
+  See individual notebooks for setup details.
+- **M-series Macs** — GPU inference (OmniWaterMask in notebook 03) is skipped
+  on Apple Silicon due to MPS memory constraints; CPU fallback is available.
+
+For questions about notebooks, start with the official docs; for bugs or
+platform-specific fixes, open a GitHub issue.
+
 *Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
 
 ## The notebooks
