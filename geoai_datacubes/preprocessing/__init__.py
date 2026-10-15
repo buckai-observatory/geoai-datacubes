@@ -37,27 +37,39 @@ from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 # LazyTileDataset (and geotiff_to_zarr, which lives in the same module)
 # require torch. Torch is optional -- it lives behind the [ml] extra so
 # fetch-and-fuse-only users can `pip install geoai-datacubes` without
-# pulling in ~2 GB of PyTorch. If torch is missing we expose stubs that
-# raise a clear ImportError only when the ML surface is actually used,
-# so `from geoai_datacubes.preprocessing import fuse_response_tiffs`
-# keeps working in a torch-free env.
-try:
-    from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
-except ImportError as _torch_missing:                                    # noqa: F841
-    _ml_extra_hint = (
-        "This name requires the [ml] extra (PyTorch is not installed). "
-        "Install with: `pip install geoai-datacubes[ml]` (or "
-        "`mamba install -n <env> -c conda-forge pytorch torchvision`). "
-        "Fetch and fuse work without [ml]; only the LazyTileDataset / "
-        "geotiff_to_zarr surface is gated."
-    )
+# pulling in ~2 GB of PyTorch. Both names are loaded lazily (PEP 562), so
+# `from geoai_datacubes.preprocessing import fuse_response_tiffs` never
+# imports torch, even when torch is installed. If torch is missing the
+# lazy lookup returns stubs that raise a clear ImportError only when the
+# ML surface is actually used.
+_ML_NAMES = ("LazyTileDataset", "geotiff_to_zarr")
+_ml_extra_hint = (
+    "This name requires the [ml] extra (PyTorch is not installed). "
+    "Install with: `pip install geoai-datacubes[ml]` (or "
+    "`mamba install -n <env> -c conda-forge pytorch torchvision`). "
+    "Fetch and fuse work without [ml]; only the LazyTileDataset / "
+    "geotiff_to_zarr surface is gated."
+)
 
-    class LazyTileDataset:                                               # type: ignore[no-redef]
-        def __init__(self, *args, **kwargs):
-            raise ImportError(_ml_extra_hint)
 
-    def geotiff_to_zarr(*args, **kwargs):                                # type: ignore[no-redef]
-        raise ImportError(_ml_extra_hint)
+def __getattr__(name):
+    if name not in _ML_NAMES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    try:
+        from . import lazy_dataset
+        obj = getattr(lazy_dataset, name)
+    except ImportError:
+        if name == "LazyTileDataset":
+            class obj:                                                   # noqa: N801
+                def __init__(self, *args, **kwargs):
+                    raise ImportError(_ml_extra_hint)
+        else:
+            def obj(*args, **kwargs):
+                raise ImportError(_ml_extra_hint)
+        obj.__name__ = name
+    globals()[name] = obj
+    return obj
+
 
 from .band_ops import (
     normalize_band, compute_ndvi, compute_ndwi, compute_dem_gradient_magnitude,

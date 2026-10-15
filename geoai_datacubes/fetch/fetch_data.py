@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import time
 
 import numpy as np
 import rasterio
@@ -483,11 +484,29 @@ def _resolve_es_href(href):
 
 
 # ---- planetary_computer URL resolver (sign via SAS endpoint) ----
-def _resolve_pc_href(href):
-    """Sign a Planetary Computer asset URL using the public SAS endpoint."""
-    r = requests.get(PC_SIGN_URL, params={"href": href}, timeout=30)
-    r.raise_for_status()
-    return r.json()["href"]
+_PC_RETRY_STATUS = (429, 500, 502, 503, 504)
+
+
+def _resolve_pc_href(href, max_retries=4):
+    """Sign a Planetary Computer asset URL using the public SAS endpoint.
+
+    The public endpoint rate-limits (HTTP 429), so rate-limit and transient
+    server errors are retried with exponential backoff (honouring
+    ``Retry-After``) before the error is raised.
+    """
+    delay = 2.0
+    for attempt in range(max_retries + 1):
+        r = requests.get(PC_SIGN_URL, params={"href": href}, timeout=30)
+        if r.status_code in _PC_RETRY_STATUS and attempt < max_retries:
+            try:
+                wait = float(r.headers.get("Retry-After", delay))
+            except ValueError:
+                wait = delay
+            time.sleep(min(wait, 60.0))
+            delay *= 2
+            continue
+        r.raise_for_status()
+        return r.json()["href"]
 
 
 # ---- Shared core: STAC search + per-band COG read + multi-band TIFF write ----
