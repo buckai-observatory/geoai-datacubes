@@ -12,18 +12,34 @@ API reference. The stable documentation lives in the package docstrings, API
 reference, and core module documentation (`geoai_datacubes.fetch`,
 `geoai_datacubes.preprocessing`, etc.). 
 
-**Platform notes:** We recommend **Colab for reliable multi-platform runs**.
-Local setups (especially macOS) may encounter platform-specific issues:
+**Platform notes:** Colab is the tested path. Local runs, including macOS,
+work too, with these points to know about:
 
-- **macOS GDAL plugins** — some GeoTIFF and JP2 codecs require separate GDAL
-  plugin packages (e.g. `libgdal-jp2openjpeg`). Install with conda if needed.
-- **API keys** — CartoDB basemaps and Planet data require API key registration.
-  See individual notebooks for setup details.
-- **M-series Macs** — GPU inference (OmniWaterMask in notebook 03) is skipped
-  on Apple Silicon due to MPS memory constraints; CPU fallback is available.
+- **Basemaps.** Notebook 00 draws OpenStreetMap tiles, which need no key.
+  To use CARTO tiles instead, get a free key at
+  <https://carto.com/basemaps/apikey/> and either set the `CARTO_API_KEY`
+  environment variable or pass `api_key=...`, then call
+  `add_basemap(ax, provider="carto")` (see `geoai_datacubes.viz.add_basemap`).
+  Without a key CARTO returns a grey "API key required" image.
+- **Sentinel-2 L1C (JPEG-2000).** conda-forge ships GDAL's JPEG-2000 reader as a
+  separate package. Install `libgdal-jp2openjpeg` (see
+  [`docs/install.md`](../docs/install.md)) or the L1C cell in notebook 00 reports
+  a missing JP2 driver. Every other mission works without it.
+- **Notebook 03 extras.** It needs `geoai-py` and `omniwatermask`:
+  `pip install "geoai-datacubes[geoai]"`.
+- **Apple Silicon.** OmniWaterMask in notebook 03 runs on the CPU, because the
+  MPS backend runs out of memory on this model.
+- **Rate limits.** The Planetary Computer signing service sometimes answers
+  HTTP 429 (too many requests). The fetch code retries with a delay; if a fetch
+  still fails, wait a minute and re-run the cell.
+- **Kernel restarts.** The data-prep imports in notebook 00 do not load
+  PyTorch. If a kernel dies in the ML notebooks (01, 03), run
+  `python -c "import torch"` in the same environment; a mismatched PyTorch and
+  `libprotobuf` pair has caused this on macOS (the pixi path in
+  [`docs/install.md`](../docs/install.md) avoids it).
 
-For questions about notebooks, start with the official docs; for bugs or
-platform-specific fixes, open a GitHub issue.
+For questions about the package, start with the documentation site; for bugs or
+platform-specific problems, open a GitHub issue.
 
 *Tip: GitHub strips `target="_blank"` from anchor tags, so the Colab badges below open in the current tab. **Middle-click** (or **Cmd-click** on macOS, **Ctrl-click** on Windows/Linux) to open Colab in a new tab.*
 

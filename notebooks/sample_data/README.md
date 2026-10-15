@@ -76,14 +76,22 @@ to ~5 minutes.
 
 | File | What it is | Size |
 |---|---|---|
-| `rf_class80.joblib` | RandomForestClassifier (200 trees, max_depth=14), joblib-pickled with `compress=3` | ~28 MB |
-| `xgb_class80.joblib` | XGBClassifier (300 trees, max_depth=6), joblib-pickled | ~0.5 MB |
+| `rf_class80.joblib` | RandomForestClassifier (200 trees, max_depth=14), joblib-pickled with `compress=3` | ~21 MB |
+| `xgb_class80.json` | XGBClassifier (300 trees, max_depth=6) in XGBoost's native JSON format, which is stable across XGBoost versions | ~2 MB |
+| `versions_class80.json` | The scikit-learn and XGBoost versions that wrote the cache | < 1 KB |
 | `unet_class80.pt` | WaterUNet best-val state_dict + per-epoch learning history | ~4.4 MB |
 | `fusion_df_class80.json` | Pre-computed per-feature-set fusion comparison metrics (section 8 of the notebook) | ~2 KB |
 
-Total ~33 MB.
+Total ~28 MB.
 
-**Scope:** All four files are keyed on `class80` (water) in the
+**Version check.** A scikit-learn pickle is only guaranteed to load correctly
+under the scikit-learn version that wrote it. The notebook therefore reads
+`versions_class80.json` and loads `rf_class80.joblib` only when the installed
+scikit-learn version matches (currently 1.9.1). Under any other version it
+retrains the Random Forest (about 3 minutes on a laptop) instead of unpickling
+across versions, and then refreshes the cache for your environment.
+
+**Scope:** All of these files are keyed on `class80` (water) in the
 filename. If the user changes `CLASS_ID` at the top of the notebook
 to something else (e.g. 10 for tree cover, 50 for built-up), the
 cache check misses cleanly and the cells fall through to retraining

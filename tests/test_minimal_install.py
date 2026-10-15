@@ -99,3 +99,20 @@ def test_true_import_from_subprocess_without_torch():
     assert r.returncode == 0, (
         f"subprocess failed:\nSTDOUT: {r.stdout}\nSTDERR: {r.stderr}")
     assert r.stdout.strip() == "OK", r.stdout
+
+
+def test_preprocessing_import_does_not_load_torch():
+    """Data-prep imports must not pull in torch even when it is installed.
+
+    Keeps fetch / fuse / tile notebooks independent of the PyTorch native
+    stack; torch loads only when LazyTileDataset / geotiff_to_zarr is used.
+    """
+    code = textwrap.dedent("""
+        import sys
+        import geoai_datacubes.fetch
+        from geoai_datacubes.preprocessing import fuse_response_tiffs, tile_geotiff
+        assert "torch" not in sys.modules, "torch imported by data-prep imports"
+    """)
+    out = subprocess.run([sys.executable, "-c", code],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr

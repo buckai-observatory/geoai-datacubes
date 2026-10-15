@@ -15,7 +15,7 @@
 
 > **New here?** Two ready-to-run paths get you started directly in Colab — no install, no credentials needed:
 >
-> - **Data acquisition & pre-processing** — the grand-tour notebook walks through every pipeline feature on the data side: every mission, AOI format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
+> - **Data acquisition & pre-processing** — the grand-tour notebook walks through every pipeline feature on the data side: every mission (data source), AOI (area of interest) format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
@@ -33,6 +33,15 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 > ### What is an "AI-ready data cube"?
 > Raw satellite scenes are huge, messy files: different formats, cloudy pixels, inconsistent value ranges, and far too big to fit on a GPU. A **data cube** is that imagery cleaned up and reshaped into a tidy, stacked array — think of a deck of aligned image layers (the spectral bands) cut into small, equal-sized tiles. Because every tile is the same size, cloud-free, normalised to a common range, and pre-split into train/validation/test groups, you can load it directly into PyTorch or TensorFlow and start training. The cube does the boring, error-prone data prep so you can focus on the science.
+>
+> It is called a cube because the stack has three axes: rows x columns x bands (a time axis can be added for time series). Every pixel location carries the same list of values, one per layer.
+
+> ### Key terms
+> - **AOI (area of interest)** is the geographic box you want data for. It can be given as a bounding box, a shapefile, a centre point plus a side length, or a point inside a Sentinel-2 tile.
+> - **Mission** is one satellite or data product the package can download, for example Sentinel-2 L2A, Landsat, NAIP or ESA WorldCover. Each has its own bands and resolution. Some entries, such as land-cover maps, are derived products rather than a single satellite.
+> - **Band** is one layer of an image, such as red or near-infrared reflectance.
+> - **Tile (chip)** is a small, equal-sized image crop used as one training sample. **Stride** is how far the tiling window moves between tiles; a stride equal to the tile size means no overlap.
+> - **Provider** is the web service that hosts the data (Earth Search, Planetary Computer, and others).
 
 ---
 

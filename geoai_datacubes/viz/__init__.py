@@ -50,6 +50,7 @@ from .tiles import (
     tile_grid_overlay,
     visualize_nan_handling_modes,
 )
+from .basemap import add_basemap
 from .splits import (
     SPLIT_COLOURS,
     read_tiles_csv,
@@ -58,6 +59,8 @@ from .splits import (
 )
 
 __all__ = [
+    # basemap
+    "add_basemap",
     # scenes
     "find_response",
     "find_band",

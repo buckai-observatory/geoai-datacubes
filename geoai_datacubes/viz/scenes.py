@@ -336,6 +336,14 @@ def show_rgb(arr, descs, title: str,
 # Cloud-mask decoders + the side-by-side visualiser
 # ============================================================
 
+SCL_CLASSES = {
+    0: "no data", 1: "saturated / defective", 2: "dark area pixels",
+    3: "cloud shadow", 4: "vegetation", 5: "bare soil", 6: "water",
+    7: "unclassified", 8: "cloud (medium prob.)", 9: "cloud (high prob.)",
+    10: "thin cirrus", 11: "snow / ice",
+}
+
+
 def decode_scl(qa):
     """Decode the Sentinel-2 L2A SCL classification into a boolean mask.
 
@@ -367,7 +375,8 @@ def decode_bqa(qa,
 
 def plot_cloud_pair(name: str, arr, descs,
                     intensity_band: str, qa_band: str,
-                    decode_qa: Callable):
+                    decode_qa: Callable,
+                    class_names: Optional[dict] = None):
     """Three-panel cloud diagnostic: imagery / raw QA / decoded mask.
 
     The leftmost panel renders ``intensity_band`` percentile-stretched
@@ -378,10 +387,19 @@ def plot_cloud_pair(name: str, arr, descs,
     :func:`decode_scl` or :func:`decode_bqa`) with the percent of
     masked pixels in the title.
 
+    ``class_names`` maps integer QA codes to labels. When given (and by
+    default for Sentinel-2 SCL), the middle panel gets a legend of the
+    classes present in the scene, each marked "masked" if ``decode_qa``
+    flags it.
+
     Returns the decoded mask so the caller can downstream-use it
     without re-running the decoder.
     """
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    if class_names is None and decode_qa is decode_scl:
+        class_names = SCL_CLASSES
 
     bi_int = descs.index(intensity_band)
     bi_qa  = descs.index(qa_band)
@@ -393,8 +411,19 @@ def plot_cloud_pair(name: str, arr, descs,
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
     axes[0].imshow(intensity, cmap="gray")
     axes[0].set_title(f"{name} — {intensity_band} (stretched)")
-    axes[1].imshow(qa, cmap="tab20")
+    im = axes[1].imshow(qa, cmap="tab20")
     axes[1].set_title(f"{qa_band} (raw class / bit pattern)")
+    if class_names:
+        present = np.unique(np.rint(qa[np.isfinite(qa)]).astype(int))
+        handles = []
+        for k in present:
+            flagged = bool(decode_qa(np.array([float(k)]))[0])
+            label = f"{k}: {class_names.get(int(k), 'other')}" + (" (masked)" if flagged else "")
+            handles.append(Patch(facecolor=im.cmap(im.norm(k)), edgecolor="k",
+                                 linewidth=0.5, label=label))
+        axes[1].legend(handles=handles, loc="upper center",
+                       bbox_to_anchor=(0.5, -0.02), ncol=2, fontsize=7,
+                       frameon=False)
     axes[2].imshow(mask, cmap="Greys_r")
     axes[2].set_title(f"Cloud/shadow mask\n({pct:.1f}% of pixels)")
     for a in axes:
