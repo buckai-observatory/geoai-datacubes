@@ -65,3 +65,19 @@ def test_failure_returns_false_and_does_not_raise(monkeypatch, capsys):
 def test_unknown_provider_name_raises(calls):
     with pytest.raises(ValueError):
         add_basemap(object(), provider="mapbox")
+
+
+def test_carto_key_is_sent_when_provider_template_has_no_key_placeholder(
+        calls, monkeypatch):
+    """Older xyzservices releases omit the key placeholder in CARTO's URL."""
+    import xyzservices
+
+    old_style = xyzservices.TileProvider(
+        name="CartoDB.Positron",
+        url="https://{s}.basemaps.cartocdn.com/{variant}/{z}/{x}/{y}{r}.png",
+        attribution="(C) OpenStreetMap contributors (C) CARTO",
+        subdomains="abcd", variant="light_all", max_zoom=20,
+    )
+    monkeypatch.setitem(cx.providers.CartoDB, "Positron", old_style)
+    add_basemap(object(), provider="carto", api_key="abc123")
+    assert "key=abc123" in calls[0]["source"].build_url(x=1, y=1, z=1)

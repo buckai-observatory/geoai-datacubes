@@ -151,6 +151,8 @@ dev = [
     # quartodoc bumps.
     "quartodoc>=0.10",
     "griffe<2",
+    # The basemap helper tests (tests/test_viz_basemap.py) need contextily.
+    "contextily>=1.4",
 ]
 
 # Convenience: everything above in one go.
@@ -309,6 +311,7 @@ sentinelhub   = ">=3.10"
 ruff       = ">=0.5"
 pytest     = ">=7.0"
 pre-commit = ">=3.5"
+contextily = ">=1.4"
 
 # Environments compose features into named installable envs.
 # `pixi install` alone activates `default` (core-only). `pixi install
