@@ -85,7 +85,11 @@ ml = [
     "scikit-learn>=1.3",
     "xgboost>=2.0",
     "joblib>=1.3",
-    "threadpoolctl>=3.1",
+    # >=3.7: with 3.6.0 in the locked pixi environment (macOS arm64,
+    # conda-forge PyTorch + OpenBLAS), a `threadpool_limits(limits=1)` block
+    # followed by a single-threaded PyTorch forward pass never returned.
+    # Notebook 01 hit this; 3.7.0 does not. See tests/test_thread_limits.py.
+    "threadpoolctl>=3.7",
     "ultralytics>=8.4",
     "transformers>=4.30",
     "huggingface_hub>=0.20",
@@ -151,6 +155,8 @@ dev = [
     # quartodoc bumps.
     "quartodoc>=0.10",
     "griffe<2",
+    # The basemap helper tests (tests/test_viz_basemap.py) need contextily.
+    "contextily>=1.4",
 ]
 
 # Convenience: everything above in one go.
@@ -273,7 +279,7 @@ scikit-image                = ">=0.20"
 scikit-learn                = ">=1.3"
 xgboost                     = ">=2.0"
 joblib                      = ">=1.3"
-threadpoolctl               = ">=3.1"
+threadpoolctl               = ">=3.7"
 ultralytics                 = ">=8.4"
 transformers                = ">=4.30"
 huggingface_hub             = ">=0.20"
@@ -309,6 +315,7 @@ sentinelhub   = ">=3.10"
 ruff       = ">=0.5"
 pytest     = ">=7.0"
 pre-commit = ">=3.5"
+contextily = ">=1.4"
 
 # Environments compose features into named installable envs.
 # `pixi install` alone activates `default` (core-only). `pixi install

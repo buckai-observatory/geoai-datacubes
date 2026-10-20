@@ -89,7 +89,11 @@ under the scikit-learn version that wrote it. The notebook therefore reads
 `versions_class80.json` and loads `rf_class80.joblib` only when the installed
 scikit-learn version matches (currently 1.9.1). Under any other version it
 retrains the Random Forest (about 3 minutes on a laptop) instead of unpickling
-across versions, and then refreshes the cache for your environment.
+across versions. Retrained models are saved to the git-ignored
+`notebooks/_ml_outputs/model_cache/` and found there on later runs; the files in
+this folder are never overwritten by a notebook run. To refresh the shipped cache,
+copy the files from that folder here (the Random Forest, `xgb_class80.json` and
+`versions_class80.json` together).
 
 **Scope:** All of these files are keyed on `class80` (water) in the
 filename. If the user changes `CLASS_ID` at the top of the notebook

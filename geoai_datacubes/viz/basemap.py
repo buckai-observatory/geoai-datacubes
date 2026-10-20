@@ -50,7 +50,13 @@ def add_basemap(ax, crs="EPSG:4326", provider="osm", api_key=None,
         if name == "carto":
             key = api_key or os.environ.get(CARTO_KEY_ENV)
             if key:
-                source = cx.providers.CartoDB.Positron(apikey=key)
+                carto = cx.providers.CartoDB.Positron
+                kwargs_key = {"apikey": key}
+                # Older xyzservices releases have no key placeholder in the
+                # CARTO tile URL, which would drop the key silently.
+                if "{apikey}" not in carto["url"]:
+                    kwargs_key["url"] = carto["url"] + "?key={apikey}"
+                source = carto(**kwargs_key)
             else:
                 print(f"(CARTO needs an API key: get one at {CARTO_KEY_URL}, then "
                       f"pass api_key=... or set {CARTO_KEY_ENV}; using OpenStreetMap)")
