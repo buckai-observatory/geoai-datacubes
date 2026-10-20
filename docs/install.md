@@ -15,7 +15,7 @@ We recommend [mamba](https://github.com/conda-forge/miniforge) (a drop-in conda 
 
 If you already have conda installed and prefer not to switch, substitute `conda` for `mamba` in the commands below.
 
-> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead.** It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
+> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead** (`pixi install -e full --locked`, then `pixi shell -e full`). It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
 
 ## 3. Install the package
 
@@ -151,10 +151,10 @@ it stays coherent with `pyproject.toml`.
 curl -fsSL https://pixi.sh/install.sh | bash          # macOS / Linux
 # or: powershell  -c "iwr -useb https://pixi.sh/install.ps1 | iex"   (Windows)
 
-# In a fresh clone of the repo:
-pixi install                        # -> default env (core, no ML)
-pixi install -e tests               # -> default + [dev,ml,earthdata], test-runnable
-pixi install -e full                # -> everything (default + every extra)
+# In a fresh clone of the repo (a normal `git clone`, not a shallow one):
+pixi install --locked                  # -> default env (core, no ML)
+pixi install -e tests --locked         # -> default + [dev,ml,earthdata], test-runnable
+pixi install -e full --locked          # -> everything (default + every extra)
 
 # Run things in a locked env without activating it:
 pixi run pytest                     # -> uses whichever env has pytest
@@ -163,7 +163,15 @@ pixi run test                       # -> shortcut for the same, see [tool.pixi.t
 
 # Or activate a shell in the env:
 pixi shell -e tests
+pixi shell -e full                  # then: jupyter lab   (for the notebooks)
 ```
+
+`--locked` installs exactly the package set recorded in `pixi.lock` and
+stops with an error if `pixi.lock` and `pyproject.toml` disagree. It never
+solves, so it does not depend on what conda-forge has published since the
+lockfile was made. (Without the flag pixi re-solves, and rewrites
+`pixi.lock`, when the two disagree. `--frozen` installs the lockfile as it
+is, without even checking that it is current.)
 
 Named environments and what they include:
 
@@ -172,10 +180,16 @@ Named environments and what they include:
 | `default` | Core only (fetch + fuse + tile + band math) | Data-acquisition-only users |
 | `ml` | + `[ml]` | Running the ML/DL side of the pipeline |
 | `earthdata` | + `[earthdata]` | NASA DAAC fetches (NISAR, ICESat-2, ...) |
-| `notebooks` | + `[notebooks]` | Running the shipped notebooks locally |
+| `notebooks` | + `[notebooks]` (JupyterLab, basemap, geopandas) | Notebook front end only; the ML notebooks (01, 03) also need `ml` and `geoai` |
 | `dev` | + `[dev]` | Contributing (linter, pytest, pre-commit) |
 | `tests` | `dev` + `ml` + `earthdata` | What CI runs — reproduces the green build exactly |
-| `full` | Every feature | The kitchen sink |
+| `full` | Every feature | The kitchen sink; use this to run all three reviewed notebooks (00, 01, 03) |
+
+Notebook 01 ships cached models. Its Random Forest cache is a
+scikit-learn pickle and is only loaded under the scikit-learn version that
+wrote it; in an environment with a different version (including this
+locked one) the notebook retrains it once, in about three minutes, and
+keeps the result in the git-ignored `notebooks/_ml_outputs/model_cache/`.
 
 The pixi config lives in `pyproject.toml` under `[tool.pixi.*]`
 sections. You never need to edit `pixi.lock` by hand — after
