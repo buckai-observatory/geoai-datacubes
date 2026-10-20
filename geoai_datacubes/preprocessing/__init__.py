@@ -31,6 +31,8 @@ used by ``tile_geotiff(nan_handling="auto")`` and ML-ready normalisation):
 * :data:`DEFAULT_KIND_NAN_STRATEGY` / :data:`DEFAULT_KIND_NORM`
 """
 
+from typing import TYPE_CHECKING
+
 from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 
@@ -43,6 +45,12 @@ from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
 # lazy lookup returns stubs that raise a clear ImportError only when the
 # ML surface is actually used.
 _ML_NAMES = ("LazyTileDataset", "geotiff_to_zarr")
+
+# Never true at run time (torch stays unimported). It lets static tools that
+# read the source without running it, such as the quartodoc API-reference
+# build and type checkers, find the two lazily loaded names.
+if TYPE_CHECKING:
+    from .lazy_dataset import LazyTileDataset, geotiff_to_zarr  # noqa: F401
 _ml_extra_hint = (
     "This name requires the [ml] extra (PyTorch is not installed). "
     "Install with: `pip install geoai-datacubes[ml]` (or "

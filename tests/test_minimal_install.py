@@ -116,3 +116,24 @@ def test_preprocessing_import_does_not_load_torch():
     out = subprocess.run([sys.executable, "-c", code],
                          capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
+
+
+def test_lazy_exports_are_visible_to_static_analysis():
+    """The API-reference build (quartodoc/griffe) reads the source without
+    running it, so the lazily loaded names must also be imported under
+    ``TYPE_CHECKING``. Without that the docs site build fails with
+    "Cannot find an object named: LazyTileDataset"."""
+    import ast
+    from pathlib import Path
+
+    import geoai_datacubes.preprocessing as pre
+
+    tree = ast.parse(Path(pre.__file__).read_text())
+    found = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.If) and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.ImportFrom):
+                    found.update(a.name for a in sub.names)
+    assert {"LazyTileDataset", "geotiff_to_zarr"} <= found
