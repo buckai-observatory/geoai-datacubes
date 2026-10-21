@@ -326,7 +326,10 @@ contextily = ">=1.4"
 default    = { features = [],                      solve-group = "default" }
 ml         = { features = ["ml"],                  solve-group = "default" }
 earthdata  = { features = ["earthdata"],           solve-group = "default" }
-notebooks  = { features = ["notebooks"],           solve-group = "default" }
+# `notebooks` includes `ml` so that the shipped notebooks 00 and 01 run in it;
+# notebook 03 also needs `geoai`, which only `full` has. Environments are
+# separate installs, not layers: there is no way to "add" ml to notebooks.
+notebooks  = { features = ["notebooks", "ml"],     solve-group = "default" }
 dev        = { features = ["dev"],                 solve-group = "default" }
 tests      = { features = ["dev", "ml", "earthdata"], solve-group = "default" }
 full       = { features = ["ml", "geoai", "earthdata", "earthengine", "notebooks", "planet", "dev"], solve-group = "default" }
@@ -337,4 +340,4 @@ test               = { cmd = "pytest -v --color=yes", description = "Run the ful
 test-minimal       = { cmd = "pytest tests/test_minimal_install.py -v", description = "Run only the minimal-install (torch-less) tests" }
 lint               = { cmd = "ruff check geoai_datacubes tests", description = "Lint (advisory)" }
 fmt-check          = { cmd = "ruff format --check geoai_datacubes tests", description = "Format-check (advisory)" }
-jupyter            = { cmd = "jupyter lab", description = "Launch JupyterLab (needs `pixi install -e notebooks`)" }
+jupyter            = { cmd = "jupyter lab", description = "Launch JupyterLab from the notebooks env: `pixi run -e notebooks jupyter`" }
