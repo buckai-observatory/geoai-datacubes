@@ -15,7 +15,7 @@ We recommend [mamba](https://github.com/conda-forge/miniforge) (a drop-in conda 
 
 If you already have conda installed and prefer not to switch, substitute `conda` for `mamba` in the commands below.
 
-> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead** (`pixi install -e full --locked`, then `pixi shell -e full`). It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
+> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead** (`pixi install -e notebooks --locked`, then `pixi run -e notebooks jupyter lab`; use `full` instead of `notebooks` for notebook 03). It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
 
 ## 3. Install the package
 
@@ -163,7 +163,8 @@ pixi run test                       # -> shortcut for the same, see [tool.pixi.t
 
 # Or activate a shell in the env:
 pixi shell -e tests
-pixi shell -e full                  # then: jupyter lab   (for the notebooks)
+pixi run -e notebooks jupyter lab   # notebooks 00 + 01
+pixi run -e full jupyter lab        # notebook 03 as well
 ```
 
 `--locked` installs exactly the package set recorded in `pixi.lock` and
@@ -178,12 +179,26 @@ Named environments and what they include:
 | Env | Includes | Best for |
 |---|---|---|
 | `default` | Core only (fetch + fuse + tile + band math) | Data-acquisition-only users |
-| `ml` | + `[ml]` | Running the ML/DL side of the pipeline |
+| `ml` | + `[ml]` (PyTorch, scikit-learn, XGBoost, scikit-image) | Scripts and tests on the ML/DL side; has no Jupyter |
 | `earthdata` | + `[earthdata]` | NASA DAAC fetches (NISAR, ICESat-2, ...) |
-| `notebooks` | + `[notebooks]` (JupyterLab, basemap, geopandas) | Notebook front end only; the ML notebooks (01, 03) also need `ml` and `geoai` |
+| `notebooks` | `[notebooks]` (JupyterLab, basemap, geopandas) + `[ml]` | Notebooks 00 and 01 (about 2.5 GB) |
 | `dev` | + `[dev]` | Contributing (linter, pytest, pre-commit) |
 | `tests` | `dev` + `ml` + `earthdata` | What CI runs — reproduces the green build exactly |
-| `full` | Every feature | The kitchen sink; use this to run all three reviewed notebooks (00, 01, 03) |
+| `full` | Every feature | All three reviewed notebooks, including 03, which needs `geoai-py` (about 3.6 GB) |
+
+Two things to know about pixi environments:
+
+- **They are separate installs, not layers.** `pixi install -e ml` after
+  `pixi install -e notebooks` gives you two independent environments, each
+  with its own Python; it does not add PyTorch to the `notebooks` one. Pick
+  the one environment that has everything you need (`notebooks` for
+  notebooks 00 and 01, `full` for notebook 03).
+- **Start Jupyter from inside the environment**, with
+  `pixi run -e notebooks jupyter lab` (or `pixi run -e full jupyter lab`).
+  Inside a `pixi shell` of an environment that has no JupyterLab, such as
+  `ml`, the `jupyter` command falls through to any Jupyter installed
+  elsewhere on your machine, and its kernel is then not the environment's
+  Python, so packages that are installed look missing.
 
 Notebook 01 ships cached models. Its Random Forest cache is a
 scikit-learn pickle and is only loaded under the scikit-learn version that

@@ -36,8 +36,8 @@ work too, with these points to know about:
   PyTorch. If a kernel dies in the ML notebooks (01, 03), run
   `python -c "import torch"` in the same environment; a mismatched PyTorch and
   `libprotobuf` pair has caused this on macOS. The pixi path in
-  [`docs/install.md`](../docs/install.md) avoids it (`pixi install -e full --locked`,
-  then `pixi shell -e full` and `jupyter lab`).
+  [`docs/install.md`](../docs/install.md) avoids it: `pixi install -e notebooks --locked`,
+  then `pixi run -e notebooks jupyter lab` (use the `full` environment for notebook 03).
 
 For questions about the package, start with the documentation site; for bugs or
 platform-specific problems, open a GitHub issue.
