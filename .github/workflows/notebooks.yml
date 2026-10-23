@@ -1,0 +1,109 @@
+name: notebooks
+
+# Executes the shipped notebooks 00 and 01 top to bottom, from the locked
+# pixi `notebooks` environment, on a macOS Apple-silicon runner. This is
+# the route docs/install.md tells users to take
+# (`pixi install -e notebooks --locked`, `pixi run -e notebooks jupyter lab`),
+# so a notebook or environment regression on that route fails here instead
+# of reaching a user. The test suite (tests.yml) never runs the notebooks.
+#
+# Both notebooks download imagery from Earth Search and the Planetary
+# Computer, so a run can also fail because a provider is down or
+# rate-limiting; the per-cell log says which cell. Notebook 03 is not
+# run here yet: it needs the `full` environment (geoai-py, 3.6 GB) and a
+# NAIP segmentation step, and runs for much longer.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "geoai_datacubes/**"
+      - "notebooks/**"
+      - "pyproject.toml"
+      - "pixi.lock"
+      - "smoke-tests/run_notebook.py"
+      - ".github/workflows/notebooks.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "geoai_datacubes/**"
+      - "notebooks/**"
+      - "pyproject.toml"
+      - "pixi.lock"
+      - "smoke-tests/run_notebook.py"
+      - ".github/workflows/notebooks.yml"
+  schedule:
+    # Weekly, so drift in the data providers or in the lockfile's
+    # assumptions shows up even when nothing was pushed.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notebooks-macos:
+    name: notebooks 00 + 01 (macOS arm64, pixi notebooks env)
+    # macos-latest is Apple silicon (arm64) since macOS 14. The pixi lock
+    # has an osx-arm64 solve, so this installs exactly what a Mac user gets.
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # setuptools_scm derives the version from the git history.
+          fetch-depth: 0
+
+      - name: Set up pixi and install the locked notebooks environment
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.77.1
+          environments: notebooks
+          # --locked: fail if pyproject.toml and pixi.lock disagree.
+          locked: true
+          cache: true
+
+      - name: Environment sanity (the same checks a user would do)
+        run: |
+          pixi run --locked -e notebooks python - <<'PY'
+          import sys, importlib
+          print("python  :", sys.executable)
+          assert ".pixi/envs/notebooks/" in sys.executable, sys.executable
+          for m in ["geoai_datacubes", "torch", "xgboost", "sklearn",
+                    "skimage", "zarr", "contextily", "nbclient", "ipykernel"]:
+              mod = importlib.import_module(m)
+              print(f"{m:16s} {getattr(mod, '__version__', '')}")
+          import rasterio
+          with rasterio.Env() as env:
+              jp2 = sorted(d for d in env.drivers() if "JP2" in d)
+          print("JP2 drivers:", jp2)
+          assert jp2, "no JPEG-2000 GDAL driver in the notebooks environment"
+          PY
+          echo "jupyter -> $(pixi run --locked -e notebooks which jupyter)"
+          pixi run --locked -e notebooks jupyter kernelspec list
+
+      - name: Notebook 00 (data-pipeline tour)
+        run: |
+          pixi run --locked -e notebooks python smoke-tests/run_notebook.py \
+            notebooks/00_geoai_datacubes_tour.ipynb \
+            --expect-prefix "$PWD/.pixi/envs/notebooks"
+
+      - name: Notebook 01 (classification, cached models)
+        # The shipped Random Forest cache is reused only under the
+        # scikit-learn version that wrote it; otherwise the notebook
+        # retrains it (a few minutes), which is the path a new user hits.
+        run: |
+          pixi run --locked -e notebooks python smoke-tests/run_notebook.py \
+            notebooks/01_classification.ipynb \
+            --expect-prefix "$PWD/.pixi/envs/notebooks"
+
+      - name: Upload executed notebooks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebooks-macos
+          path: notebooks/_outputs/executed/
+          if-no-files-found: ignore
+          retention-days: 14

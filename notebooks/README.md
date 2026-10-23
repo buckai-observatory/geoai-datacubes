@@ -12,8 +12,11 @@ API reference. The stable documentation lives in the package docstrings, API
 reference, and core module documentation (`geoai_datacubes.fetch`,
 `geoai_datacubes.preprocessing`, etc.). 
 
-**Platform notes:** Colab is the tested path. Local runs, including macOS,
-work too, with these points to know about:
+**Platform notes:** Two routes are tested automatically: Colab, and the
+locked pixi `notebooks` environment on macOS (Apple silicon), where a CI
+workflow (`.github/workflows/notebooks.yml`) executes notebooks 00 and 01
+top to bottom on every change to the package, the notebooks or the
+lockfile. Other local setups work too, with these points to know about:
 
 - **Basemaps.** Notebook 00 draws OpenStreetMap tiles, which need no key.
   To use CARTO tiles instead, get a free key at

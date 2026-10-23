@@ -340,4 +340,6 @@ test               = { cmd = "pytest -v --color=yes", description = "Run the ful
 test-minimal       = { cmd = "pytest tests/test_minimal_install.py -v", description = "Run only the minimal-install (torch-less) tests" }
 lint               = { cmd = "ruff check geoai_datacubes tests", description = "Lint (advisory)" }
 fmt-check          = { cmd = "ruff format --check geoai_datacubes tests", description = "Format-check (advisory)" }
-jupyter            = { cmd = "jupyter lab", description = "Launch JupyterLab from the notebooks env: `pixi run -e notebooks jupyter`" }
+# Named `lab`, not `jupyter`: a task named after an executable shadows it, so
+# `pixi run -e notebooks jupyter lab` would have run `jupyter lab lab`.
+lab                = { cmd = "jupyter lab", description = "Launch JupyterLab: `pixi run -e notebooks lab` (same as `pixi run -e notebooks jupyter lab`)" }
