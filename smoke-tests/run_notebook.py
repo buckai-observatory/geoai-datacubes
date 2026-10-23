@@ -97,6 +97,10 @@ def main(argv=None) -> int:
         print(f"ERROR: kernel Python is not under {args.expect_prefix}; "
               f"a Jupyter from another environment would run this notebook "
               f"with the wrong packages.")
+        print("Run `jupyter kernelspec list`: a kernelspec named "
+              f"{args.kernel!r} in a user directory (e.g. ~/Library/Jupyter "
+              "or ~/.local/share/jupyter) shadows the environment's own. "
+              "Remove it, or point JUPYTER_DATA_DIR at an empty folder.")
         return 2
 
     nb = nbformat.read(nb_path, as_version=4)

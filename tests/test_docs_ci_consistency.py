@@ -117,6 +117,21 @@ def test_tests_workflow_checks_the_lockfile():
     assert "tests" in _envs_named_in_install_docs()
 
 
+def test_pixi_tasks_do_not_shadow_documented_executables():
+    """`pixi run <task> args` appends args to the task's command, so a task
+    named `jupyter` turned the documented `pixi run -e notebooks jupyter lab`
+    into `jupyter lab lab`, which fails with "No such file or directory".
+    """
+    with PYPROJECT.open("rb") as fh:
+        tasks = set(tomllib.load(fh)["tool"]["pixi"].get("tasks", {}))
+    text = "\n".join(_code_blocks(INSTALL_MD.read_text())) + "\n" + INSTALL_MD.read_text()
+    # executables the docs call *with arguments* through `pixi run`
+    called = set(re.findall(r"pixi run\s+(?:--locked\s+)?(?:-e\s+[a-z]+\s+)?([a-z][a-z0-9_-]*)\s+[a-z-]", text))
+    clash = tasks & called
+    assert not clash, f"pixi task(s) {clash} shadow executables that docs/install.md invokes with arguments"
+    assert "jupyter" not in tasks
+
+
 def test_shipped_notebooks_print_the_kernel_path():
     """run_notebook.py relies on the first code cell printing it."""
     import json
