@@ -75,10 +75,9 @@ jobs:
                     "skimage", "zarr", "contextily", "nbclient", "ipykernel"]:
               mod = importlib.import_module(m)
               print(f"{m:16s} {getattr(mod, '__version__', '')}")
-          from osgeo import gdal
-          jp2 = [gdal.GetDriver(i).GetDescription()
-                 for i in range(gdal.GetDriverCount())
-                 if "JP2" in gdal.GetDriver(i).GetDescription()]
+          import rasterio
+          with rasterio.Env() as env:
+              jp2 = sorted(d for d in env.drivers() if "JP2" in d)
           print("JP2 drivers:", jp2)
           assert jp2, "no JPEG-2000 GDAL driver in the notebooks environment"
           PY

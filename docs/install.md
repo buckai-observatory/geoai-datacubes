@@ -274,6 +274,15 @@ print([gdal.GetDriver(i).GetDescription()
 # Empty list -> codec is missing
 ```
 
+If `osgeo` is not importable (the GDAL Python bindings are not part of
+every environment, including the pixi ones), ask rasterio instead:
+
+```python
+import rasterio
+with rasterio.Env() as env:
+    print(sorted(d for d in env.drivers() if "JP2" in d))
+```
+
 **Symptom you'll actually see when it's missing**:
 `rasterio.errors.RasterioIOError: ... JP2OpenJPEG driver is unavailable`
 during a Sentinel-2 fetch.
