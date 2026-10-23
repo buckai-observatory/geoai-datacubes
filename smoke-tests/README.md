@@ -73,7 +73,7 @@ To run against a specific Python environment, activate it before
 invoking the script:
 
 ```bash
-mamba activate h2oval
+mamba activate geoai-cubes
 bash smoke-tests/fetch_sentinel-2.sh
 
 # or, one-shot:

@@ -60,20 +60,33 @@ _ml_extra_hint = (
 )
 
 
+def _is_missing_torch(exc):
+    if not isinstance(exc, ModuleNotFoundError):
+        return False
+    missing = exc.name or ""
+    return missing in ("torch", "torchvision") or missing.startswith(("torch.", "torchvision."))
+
+
 def __getattr__(name):
     if name not in _ML_NAMES:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     try:
         from . import lazy_dataset
         obj = getattr(lazy_dataset, name)
-    except ImportError:
+    except ImportError as e:
+        # Only a missing PyTorch means "install the [ml] extra". Any other
+        # import failure (a missing dependency of lazy_dataset, or a torch
+        # build that fails to load) must surface its own message.
+        if not _is_missing_torch(e):
+            raise
+        hint = f"{_ml_extra_hint} (original error: {e})"
         if name == "LazyTileDataset":
             class obj:                                                   # noqa: N801
                 def __init__(self, *args, **kwargs):
-                    raise ImportError(_ml_extra_hint)
+                    raise ImportError(hint)
         else:
             def obj(*args, **kwargs):
-                raise ImportError(_ml_extra_hint)
+                raise ImportError(hint)
         obj.__name__ = name
     globals()[name] = obj
     return obj

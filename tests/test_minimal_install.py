@@ -21,12 +21,15 @@ class _BlockTorch(importlib.abc.MetaPathFinder):
     torch-less environment inside a single test process."""
 
     def find_spec(self, name, path=None, target=None):
+        # A genuinely absent package raises ModuleNotFoundError with .name
+        # set; the lazy loader relies on that to tell "torch is not
+        # installed" apart from any other import failure.
         if name == "torch" or name.startswith("torch."):
-            raise ImportError(
-                f"BLOCKED (simulating [ml] extra not installed): {name}")
+            raise ModuleNotFoundError(
+                f"BLOCKED (simulating [ml] extra not installed): {name}", name=name)
         if name == "torchvision" or name.startswith("torchvision."):
-            raise ImportError(
-                f"BLOCKED (simulating [ml] extra not installed): {name}")
+            raise ModuleNotFoundError(
+                f"BLOCKED (simulating [ml] extra not installed): {name}", name=name)
         return None
 
 
@@ -137,3 +140,23 @@ def test_lazy_exports_are_visible_to_static_analysis():
                 if isinstance(sub, ast.ImportFrom):
                     found.update(a.name for a in sub.names)
     assert {"LazyTileDataset", "geotiff_to_zarr"} <= found
+
+
+def test_lazy_stub_does_not_blame_torch_for_other_import_errors(monkeypatch):
+    """A failure that is not a missing torch must surface its own error,
+    not the "[ml] extra / PyTorch is not installed" hint (a reviewer with
+    torch installed was sent down that path by a different missing module)."""
+    import importlib
+    import sys
+
+    for mod in list(sys.modules):
+        if mod.startswith("geoai_datacubes.preprocessing"):
+            del sys.modules[mod]
+    # None in sys.modules makes `from . import lazy_dataset` raise an
+    # ImportError whose .name is the lazy_dataset module, not torch.
+    monkeypatch.setitem(sys.modules, "geoai_datacubes.preprocessing.lazy_dataset", None)
+    pre = importlib.import_module("geoai_datacubes.preprocessing")
+    with pytest.raises(ImportError) as info:
+        pre.geotiff_to_zarr
+    assert "PyTorch is not installed" not in str(info.value)
+    assert "lazy_dataset" in str(info.value)

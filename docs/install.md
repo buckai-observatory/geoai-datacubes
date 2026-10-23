@@ -276,6 +276,38 @@ Reported during JOSS review: openjournals/joss-reviews#11034.
 
 </details>
 
+<details>
+<summary><b>Python aborts with <code>OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized</code> (macOS)</b></summary>
+
+Two copies of the OpenMP runtime are loaded in one process. On macOS this
+almost always means a package installed with `pip` that bundles its own
+`libomp` (the PyPI wheels of `torch`, `xgboost` and `lightgbm` do) sits
+next to conda-forge's `llvm-openmp`, which the conda-forge `pytorch`,
+`scikit-learn` and `xgboost` builds share. Find the pip-installed copy with
+`pip list | grep -i -E "torch|xgboost|lightgbm"` (conda-forge builds show
+their channel in `mamba list` instead), `pip uninstall` it, and reinstall
+the same package from conda-forge (`mamba install -c conda-forge xgboost`).
+Setting `KMP_DUPLICATE_LIB_OK=TRUE` only silences the check and can give
+wrong results; do not use it. Keeping every package in one environment from
+one channel, or using the pixi lockfile, avoids the problem.
+
+</details>
+
+<details>
+<summary><b>A package is installed according to <code>mamba list</code>, but <code>import</code> in the notebook fails</b></summary>
+
+The notebook kernel is almost certainly running a different Python than the
+environment you installed into. Check with `import sys; print(sys.executable)`
+in a cell (the first code cell of each shipped notebook prints it): the path
+should be inside the environment, e.g. `.../envs/geoai-cubes/bin/python` or
+`.../.pixi/envs/notebooks/bin/python`. If it is not, either pick that kernel
+in Jupyter, or start Jupyter from inside the environment
+(`mamba activate geoai-cubes` then `jupyter lab`, or
+`pixi run -e notebooks jupyter lab`). The same mismatch makes a
+`mamba install` or `pip install` look like it had no effect.
+
+</details>
+
 ## 4. Choose what to download
 
 Open `geoai_datacubes/main.py` and edit the **`USER INPUT`** block at the top to describe the data you want:
