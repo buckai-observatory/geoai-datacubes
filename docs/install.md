@@ -143,8 +143,14 @@ If you want the *exact* environment we develop and test against —
 same package versions, cross-platform reproducible, one command —
 install [`pixi`](https://pixi.sh) and use the committed `pixi.lock`.
 The lockfile is regenerated on every dependency change and pinned in
-git; a CI job (`pixi-locked` in `.github/workflows/tests.yml`) checks
-it stays coherent with `pyproject.toml`.
+git. Two CI jobs exercise it: `pixi-locked` in
+`.github/workflows/tests.yml` installs the `tests` environment with
+`--locked`, checks that every environment in the lock is current and runs
+the test suite; `notebooks` in `.github/workflows/notebooks.yml` installs
+the `notebooks` environment with `--locked` on a macOS (Apple silicon)
+runner and executes notebooks 00 and 01 top to bottom with
+`smoke-tests/run_notebook.py`, which also checks that the kernel is the
+environment's own Python.
 
 ```bash
 # One-time: install pixi (a ~5 MB self-contained binary)
