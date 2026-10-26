@@ -7,11 +7,16 @@ name: notebooks
 # so a notebook or environment regression on that route fails here instead
 # of reaching a user. The test suite (tests.yml) never runs the notebooks.
 #
-# Both notebooks download imagery from Earth Search and the Planetary
+# The notebooks download imagery from Earth Search and the Planetary
 # Computer, so a run can also fail because a provider is down or
-# rate-limiting; the per-cell log says which cell. Notebook 03 is not
-# run here yet: it needs the `full` environment (geoai-py, 3.6 GB) and a
-# NAIP segmentation step, and runs for much longer.
+# rate-limiting; the per-cell log says which cell.
+#
+# Notebook 03 runs in a second job, `notebook-03-macos`, only on the weekly
+# schedule and on manual dispatch: it needs the `full` environment
+# (geoai-py and omniwatermask, 3.6 GB), runs OmniWaterMask and trains a
+# small U-Net on the CPU, and takes well over an hour, which is too slow
+# for a pull-request check. Start it by hand from the Actions tab
+# ("Run workflow") or with `gh workflow run notebooks.yml --ref <branch>`.
 
 on:
   push:
@@ -39,7 +44,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # The event name is part of the group so that a push to main does not
+  # cancel a scheduled or manually started run on main.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -104,6 +111,59 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: executed-notebooks-macos
+          path: notebooks/_outputs/executed/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  notebook-03-macos:
+    name: notebook 03 (macOS arm64, pixi full env; weekly and on dispatch)
+    # Not on push or pull_request: see the note at the top of this file.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi and install the locked full environment
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.77.1
+          environments: full
+          locked: true
+          cache: true
+
+      - name: Environment sanity (the same checks a user would do)
+        run: |
+          pixi run --locked -e full python - <<'PY'
+          import sys, importlib
+          print("python  :", sys.executable)
+          assert ".pixi/envs/full/" in sys.executable, sys.executable
+          for m in ["geoai_datacubes", "geoai", "omniwatermask", "torch",
+                    "skimage", "rasterio", "nbclient", "ipykernel"]:
+              mod = importlib.import_module(m)
+              print(f"{m:16s} {getattr(mod, '__version__', '')}")
+          PY
+          echo "jupyter -> $(pixi run --locked -e full which jupyter)"
+          pixi run --locked -e full jupyter kernelspec list
+
+      - name: Notebook 03 (opengeos/geoai integration)
+        # The fetch cell pulls NAIP, Sentinel-2, Sentinel-1 and the DEM for
+        # three cities (about 10 min); OmniWaterMask and the U-Net training
+        # run on the CPU and take longer, hence the one-hour per-cell limit.
+        run: |
+          pixi run --locked -e full python smoke-tests/run_notebook.py \
+            notebooks/03_with_opengeos_geoai.ipynb \
+            --timeout 3600 \
+            --expect-prefix "$PWD/.pixi/envs/full"
+
+      - name: Upload executed notebook
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebook-03-macos
           path: notebooks/_outputs/executed/
           if-no-files-found: ignore
           retention-days: 14
