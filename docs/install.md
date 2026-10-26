@@ -150,7 +150,11 @@ the test suite; `notebooks` in `.github/workflows/notebooks.yml` installs
 the `notebooks` environment with `--locked` on a macOS (Apple silicon)
 runner and executes notebooks 00 and 01 top to bottom with
 `smoke-tests/run_notebook.py`, which also checks that the kernel is the
-environment's own Python.
+environment's own Python. A second job in the same workflow installs the
+`full` environment and executes notebook 03 the same way, weekly and on
+request, in a reduced "smoke" mode (`GEOAI_DATACUBES_SMOKE=1`: smaller areas,
+a cropped scene for the water model, 2 training epochs), because the
+full-size notebook is too heavy for a free CI machine.
 
 ```bash
 # One-time: install pixi (a ~5 MB self-contained binary)

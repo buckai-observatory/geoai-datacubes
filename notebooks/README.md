@@ -16,7 +16,8 @@ reference, and core module documentation (`geoai_datacubes.fetch`,
 locked pixi `notebooks` environment on macOS (Apple silicon), where a CI
 workflow (`.github/workflows/notebooks.yml`) executes notebooks 00 and 01
 top to bottom on every change to the package, the notebooks or the
-lockfile. Other local setups work too, with these points to know about:
+lockfile, and notebook 03 (from the `full` environment, in a reduced smoke mode) weekly. Other
+local setups work too, with these points to know about:
 
 - **Basemaps.** Notebook 00 draws OpenStreetMap tiles, which need no key.
   To use CARTO tiles instead, get a free key at
@@ -171,10 +172,14 @@ metric primer (TP / FP / FN / TN / precision / recall / F1 / IoU /
 accuracy) for readers landing in this notebook directly, and per-city
 prediction-vs-truth panels.
 
-Cold-start runtime on Colab is ~25–35 minutes total (~3 min Colab
-bootstrap, ~5–7 min for the 15 STAC fetches across 3 cities, ~3 min
-for `segment_water` on the Cleveland NAIP, ~20 min for the training,
-~1 min for inference + plots). Warm re-runs are near-instant.
+Runtime. On a 3-core CPU machine (the GitHub macOS runner) the fetch cell alone took
+about 27 minutes for the three 3-mile areas, and the `segment_water` cell had not
+finished after an hour. With `GEOAI_DATACUBES_SMOKE=1` (2-mile areas, a 1024 x 1024
+pixel window for `segment_water`, 2 training epochs) the whole notebook ran in 19
+minutes on that machine; the results of that reduced run are not meaningful. An
+earlier estimate of 25–35 minutes in total for a Colab runtime has not been
+re-measured. Re-runs reuse the downloaded data and the cached models and are much
+faster.
 
 ## Work in progress: object detection on NAIP — `02_building_detection.ipynb`
 
