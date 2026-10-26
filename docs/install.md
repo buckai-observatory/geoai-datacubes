@@ -152,7 +152,9 @@ runner and executes notebooks 00 and 01 top to bottom with
 `smoke-tests/run_notebook.py`, which also checks that the kernel is the
 environment's own Python. A second job in the same workflow installs the
 `full` environment and executes notebook 03 the same way, weekly and on
-request (it takes over an hour, so it does not run on pull requests).
+request, in a reduced "smoke" mode (`GEOAI_DATACUBES_SMOKE=1`: smaller areas,
+a cropped scene for the water model, 2 training epochs), because the
+full-size notebook is too heavy for a free CI machine.
 
 ```bash
 # One-time: install pixi (a ~5 MB self-contained binary)

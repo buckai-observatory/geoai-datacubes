@@ -12,11 +12,15 @@ name: notebooks
 # rate-limiting; the per-cell log says which cell.
 #
 # Notebook 03 runs in a second job, `notebook-03-macos`, only on the weekly
-# schedule and on manual dispatch: it needs the `full` environment
-# (geoai-py and omniwatermask, 3.6 GB), runs OmniWaterMask and trains a
-# small U-Net on the CPU, and takes well over an hour, which is too slow
-# for a pull-request check. Start it by hand from the Actions tab
-# ("Run workflow") or with `gh workflow run notebooks.yml --ref <branch>`.
+# schedule and on manual dispatch. It needs the `full` environment
+# (geoai-py and omniwatermask, 3.6 GB). Run at full size, its OmniWaterMask
+# step alone did not finish in an hour on the 3-core runner (the first CI
+# run, Oct 26 2026), so the job runs the notebook in smoke mode
+# (GEOAI_DATACUBES_SMOKE=1): 2-mile AOIs, a 1024 x 1024 pixel window for
+# segment_water and 2 training epochs. That executes every cell and every
+# call into geoai-py; the numbers it produces are not meaningful. Start it
+# by hand from the Actions tab ("Run workflow") or with
+# `gh workflow run notebooks.yml --ref <branch>`.
 
 on:
   push:
@@ -116,11 +120,11 @@ jobs:
           retention-days: 14
 
   notebook-03-macos:
-    name: notebook 03 (macOS arm64, pixi full env; weekly and on dispatch)
+    name: notebook 03 smoke run (macOS arm64, pixi full env; weekly and on dispatch)
     # Not on push or pull_request: see the note at the top of this file.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -149,14 +153,14 @@ jobs:
           echo "jupyter -> $(pixi run --locked -e full which jupyter)"
           pixi run --locked -e full jupyter kernelspec list
 
-      - name: Notebook 03 (opengeos/geoai integration)
-        # The fetch cell pulls NAIP, Sentinel-2, Sentinel-1 and the DEM for
-        # three cities (about 10 min); OmniWaterMask and the U-Net training
-        # run on the CPU and take longer, hence the one-hour per-cell limit.
+      - name: Notebook 03 (opengeos/geoai integration, smoke mode)
+        env:
+          # Read by the notebook's setup cell; see the note at the top of this file.
+          GEOAI_DATACUBES_SMOKE: "1"
         run: |
           pixi run --locked -e full python smoke-tests/run_notebook.py \
             notebooks/03_with_opengeos_geoai.ipynb \
-            --timeout 3600 \
+            --timeout 2400 \
             --expect-prefix "$PWD/.pixi/envs/full"
 
       - name: Upload executed notebook

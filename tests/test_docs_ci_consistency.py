@@ -118,6 +118,10 @@ def test_notebooks_workflow_runs_notebook_03_from_full_env_on_schedule():
     assert NOTEBOOK_03 in yml, f"{NOTEBOOK_03} is not executed by notebooks.yml"
     assert re.search(r"pixi run --locked -e full python smoke-tests/run_notebook.py", yml)
     assert "schedule" in yml and "workflow_dispatch" in yml
+    # Full size does not fit on the runner: the job must run the reduced notebook.
+    assert 'GEOAI_DATACUBES_SMOKE: "1"' in yml
+    nb = (ROOT / NOTEBOOK_03).read_text()
+    assert "GEOAI_DATACUBES_SMOKE" in nb, "notebook 03 no longer reads the smoke-mode variable"
     # The 03 job must be gated so pull requests stay fast.
     assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in yml
 

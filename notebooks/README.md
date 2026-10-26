@@ -16,7 +16,7 @@ reference, and core module documentation (`geoai_datacubes.fetch`,
 locked pixi `notebooks` environment on macOS (Apple silicon), where a CI
 workflow (`.github/workflows/notebooks.yml`) executes notebooks 00 and 01
 top to bottom on every change to the package, the notebooks or the
-lockfile, and notebook 03 (from the `full` environment) weekly. Other
+lockfile, and notebook 03 (from the `full` environment, in a reduced smoke mode) weekly. Other
 local setups work too, with these points to know about:
 
 - **Basemaps.** Notebook 00 draws OpenStreetMap tiles, which need no key.
