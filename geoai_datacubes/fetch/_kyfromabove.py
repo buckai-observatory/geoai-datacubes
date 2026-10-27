@@ -60,3 +60,48 @@ def resolve_kfa_href(href):
     if href.startswith("s3://kyfromabove/"):
         return "https://kyfromabove.s3.us-west-2.amazonaws.com/" + href[len("s3://kyfromabove/"):]
     return href
+
+
+def write_empty_layer(mission, bands, roi, resolution, save_folder, grid,
+                      collections):
+    """Write an all-NaN ``<mission>_full_size.tiff`` for an AOI with no tiles.
+
+    Used when a single KyFromAbove phase has not been flown over the
+    AOI. The layer lands on the same deterministic grid a real fetch
+    would use, so it still stacks / fuses with the other layers, and
+    ``userdata.json`` says ``"empty": true`` so it is easy to spot.
+    Returns ``([stack], bands)`` like the other fetchers.
+    """
+    import json
+    import os
+
+    import numpy as np
+    import rasterio
+
+    from .missions import get_profile
+    from .plan_grid import plan_grid
+
+    bands = list(bands or get_profile(mission)["default_bands"])
+    if grid is None:
+        grid = plan_grid(roi, resolution)
+    out_h, out_w = grid.shape
+    print(f"⚠️  No {', '.join(collections)} tiles over {roi}. Writing an empty "
+          f"(all-NaN) {out_w}x{out_h} layer so the cube stays aligned.")
+    out_dir = os.path.join(save_folder, f"{mission}_{'_'.join(collections)}_empty")
+    os.makedirs(out_dir, exist_ok=True)
+    stack = np.full((len(bands), out_h, out_w), np.nan, dtype=np.float32)
+    path = os.path.join(out_dir, f"{mission}_full_size.tiff")
+    with rasterio.open(
+        path, "w", driver="GTiff", width=out_w, height=out_h,
+        count=len(bands), dtype="float32", crs=rasterio.crs.CRS.from_string(grid.crs),
+        transform=grid.transform, compress="deflate", tiled=True,
+        nodata=float("nan"),
+    ) as dst:
+        dst.write(stack)
+        for i, b in enumerate(bands, start=1):
+            dst.set_band_description(i, b)
+    with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
+        json.dump({"satellite": mission, "provider": "kyfromabove",
+                   "collection": ",".join(collections), "bands": bands,
+                   "static": True, "mosaic_tiles": 0, "empty": True}, fp, indent=2)
+    return [stack], bands

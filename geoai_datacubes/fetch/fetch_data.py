@@ -94,6 +94,8 @@ PROVIDER_AUTO = {
     # rasterio. See the missions.py stub and TODO for the planned xarray
     # code path.
 }
+# One mission per KyFromAbove phase (same provider as KyFromAbove-DEM).
+PROVIDER_AUTO.update({f"KyFromAbove-DEM-Phase{p}": "kyfromabove" for p in (1, 2, 3)})
 
 
 # ============================================================
@@ -702,6 +704,7 @@ def _fetch_via_stac(
     grid=None,
     static_group_key=None, static_rank=None, scale_factors=None,
     search_method="POST", paginate=False, max_items=2000,
+    asset_aliases=None,
 ):
     """Shared STAC search -> mosaic -> GeoTIFF path.
 
@@ -715,7 +718,10 @@ def _fetch_via_stac(
     ``scale_factors`` maps band -> multiplier applied after reading
     (e.g. feet -> metres). ``search_method="GET"`` for STAC APIs that
     only accept query-string searches. ``paginate=True`` follows
-    ``rel="next"`` links up to ``max_items`` items.
+    ``rel="next"`` links up to ``max_items`` items. ``asset_aliases``
+    maps an alternate asset key to the one in ``asset_map`` for
+    collections that name the same asset differently across items
+    (KyFromAbove Phase 3 uses ``data``, Phases 1-2 use ``asset``).
     """
     profile = get_profile(mission)
     collections = list(collection) if isinstance(collection, (list, tuple)) else [collection]
@@ -764,6 +770,11 @@ def _fetch_via_stac(
             "No scenes matched. Try widening the time range"
             + (" or raising max_cloud_coverage." if profile["cloud_filter"] else ".")
         )
+
+    for it in items:
+        for alias, canonical in (asset_aliases or {}).items():
+            if canonical not in it["assets"] and alias in it["assets"]:
+                it["assets"][canonical] = it["assets"][alias]
 
     # 2. Pick scene(s)
     if is_static:
@@ -977,11 +988,16 @@ def _fetch_via_stac(
     # silently trains on half-NaN inputs.
     nan_frac = float(np.mean(np.isnan(stack))) if stack.size else 0.0
     if nan_frac > 0.25:
-        print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
-              f"For MODIS this typically means the AOI crosses a "
-              f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
-              f"the AOI to land within a single tile, or wait for cross-tile "
-              f"mosaicking support.")
+        if is_static:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN "
+                  f"(no data). The AOI extends beyond the {len(items)} tile(s) "
+                  f"available for {collection!r}; those pixels are left blank.")
+        else:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
+                  f"For MODIS this typically means the AOI crosses a "
+                  f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
+                  f"the AOI to land within a single tile, or wait for cross-tile "
+                  f"mosaicking support.")
 
     return [stack], final_bands
 
@@ -992,7 +1008,7 @@ def _fetch_via_stac(
 def fetch_kyfromabove(
     mission, bands, time_range, roi,
     resolution=1.0, save_folder="data",
-    grid=None, phases=None,
+    grid=None, phases=None, allow_empty=None,
 ):
     """KyFromAbove (Kentucky) STAC + public S3 COGs (anonymous HTTPS).
 
@@ -1005,13 +1021,35 @@ def fetch_kyfromabove(
     :mod:`geoai_datacubes.viz.terrain` come out right.
 
     ``phases``: optional collection ids, newest-preferred first, e.g.
-    ``("dem-phase2",)`` to force the statewide 2019-2024 survey.
+    ``("dem-phase2",)`` to use only the statewide 2019-2024 survey. The
+    ``KyFromAbove-DEM-Phase1/2/3`` missions set this for you. Tiles a
+    phase does not have are left blank (NaN); other phases never fill in.
+
+    ``allow_empty``: when no tile of the requested phase(s) touches the
+    AOI, write an all-NaN layer on the same grid instead of raising, so
+    a multi-layer cube stays aligned. Defaults to ``True`` for the
+    per-phase missions and ``False`` for ``KyFromAbove-DEM``.
     ``time_range`` is ignored (static product).
     """
-    from ._kyfromabove import (KFA_STAC_URL, kfa_phase, kfa_tile_key,
-                               resolve_kfa_href)
     cfg = get_provider_config(mission, "kyfromabove")
     collections = list(phases or cfg["collections"])
+    if allow_empty is None:
+        allow_empty = bool(cfg.get("empty_ok"))
+    try:
+        return _fetch_kfa_stac(mission, bands, time_range, roi, resolution,
+                               save_folder, grid, cfg, collections)
+    except RuntimeError as e:
+        if not (allow_empty and str(e).startswith("No scenes matched")):
+            raise
+    from ._kyfromabove import write_empty_layer
+    return write_empty_layer(mission, bands, roi, resolution, save_folder,
+                             grid, collections)
+
+
+def _fetch_kfa_stac(mission, bands, time_range, roi, resolution, save_folder,
+                    grid, cfg, collections):
+    from ._kyfromabove import (KFA_STAC_URL, kfa_phase, kfa_tile_key,
+                               resolve_kfa_href)
     return _fetch_via_stac(
         mission, bands, time_range, roi,
         resolution=resolution, save_folder=save_folder,
@@ -1027,6 +1065,7 @@ def fetch_kyfromabove(
         scale_factors=cfg.get("scale_factors"),
         search_method="GET",
         paginate=True,
+        asset_aliases={"data": "asset"},
     )
 
 

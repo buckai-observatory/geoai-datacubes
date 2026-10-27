@@ -1562,8 +1562,15 @@ Phase 1 (2010–2017, statewide).
 **Temporal:** static. Each 5,000 × 5,000 ft grid cell is taken from
 the newest phase flown there (Phase 3, else 2, else 1). STAC item
 `datetime` is the catalogue write date, not the flight date, so it is
-not used for selection. Force a phase with
-`fetch_kyfromabove(..., phases=("dem-phase2",))`.
+not used for selection.
+
+**One phase only:** the missions `KyFromAbove-DEM-Phase1`,
+`KyFromAbove-DEM-Phase2` and `KyFromAbove-DEM-Phase3` fetch a single
+survey (or pass `phases=("dem-phase2",)` to `fetch_kyfromabove`).
+Other phases never fill in: tiles that phase lacks stay blank (NaN),
+and if the phase has no tile over the AOI at all, an all-NaN layer is
+written on the same grid (with `"empty": true` in `userdata.json`)
+instead of an error, so Phase 1 / 2 / 3 layers always stack.
 **Coverage:** Kentucky only.
 **Native grid:** EPSG:3089 (Kentucky Single Zone), US survey feet for
 both horizontal and vertical units.

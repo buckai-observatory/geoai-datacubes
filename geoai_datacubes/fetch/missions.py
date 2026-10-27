@@ -2296,6 +2296,21 @@ MISSION_PROFILES = {
 MISSION_PROFILES["Landsat-8"] = MISSION_PROFILES["Landsat"]
 MISSION_PROFILES["Landsat-9"] = MISSION_PROFILES["Landsat"]
 
+# One mission per KyFromAbove survey phase, so a single phase can be
+# fetched through fetch_sentinel_data / `cube` / fusion like any other
+# mission (e.g. Phase 1 and Phase 2 as separate layers for elevation
+# change). Unlike KyFromAbove-DEM, other phases never fill gaps, and an
+# AOI with no tile of that phase gets an all-NaN layer instead of an
+# error ("empty_ok"). Phase 1 is 5 ft (2010-2017), Phases 2-3 are 2 ft.
+import copy as _copy  # stdlib; keeps the module free of third-party imports
+
+for _phase in (1, 2, 3):
+    _p = _copy.deepcopy(MISSION_PROFILES["KyFromAbove-DEM"])
+    _p["providers"]["kyfromabove"]["collections"] = [f"dem-phase{_phase}"]
+    _p["providers"]["kyfromabove"]["empty_ok"] = True
+    MISSION_PROFILES[f"KyFromAbove-DEM-Phase{_phase}"] = _p
+del _phase, _p
+
 
 # ============================================================
 # Tile-callback definitions for direct_http missions.
