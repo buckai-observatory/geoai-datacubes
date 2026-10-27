@@ -113,3 +113,80 @@ def test_fetch_picks_newest_phase_paginates_and_converts_feet(monkeypatch, tmp_p
     assert len(tiffs) == 1
     with rasterio.open(tiffs[0]) as r:
         assert r.crs.is_projected and r.descriptions == ("DEM",)
+
+
+@pytest.mark.parametrize("phase", [1, 2, 3])
+def test_per_phase_missions(phase):
+    from geoai_datacubes.fetch import MISSION_PROFILES
+    from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
+    name = f"KyFromAbove-DEM-Phase{phase}"
+    cfg = MISSION_PROFILES[name]["providers"]["kyfromabove"]
+    assert cfg["collections"] == [f"dem-phase{phase}"]
+    assert cfg["empty_ok"] is True
+    assert PROVIDER_AUTO[name] == "kyfromabove"
+    # The combined mission must be untouched by the per-phase copies.
+    base = MISSION_PROFILES["KyFromAbove-DEM"]["providers"]["kyfromabove"]
+    assert len(base["collections"]) == 3 and not base.get("empty_ok")
+
+
+def test_single_phase_searches_only_that_phase_and_leaves_gaps_blank(monkeypatch, tmp_path):
+    np = pytest.importorskip("numpy")
+    from geoai_datacubes.fetch import fetch_data
+
+    a = (-84.584, 38.481, -84.566, 38.495)
+    calls = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(params)
+        return _Resp({"features": [_stac_item("N059E296", 2020, 2, a)], "links": []})
+
+    def fake_read(url, dst_crs, dst_transform, shape, rs, band_indexes=(1,)):
+        out = np.full((len(band_indexes), *shape), np.nan, dtype="float32")
+        out[:, :, : shape[1] // 2] = 1000.0          # tile covers the west half only
+        return out
+
+    monkeypatch.setattr(fetch_data.requests, "get", fake_get)
+    monkeypatch.setattr(fetch_data, "_read_bands_to_grid", fake_read)
+
+    stacks, _ = fetch_data.fetch_sentinel_data(
+        "KyFromAbove-DEM-Phase2", None, ("2020-01-01", "2020-01-02"),
+        [-84.58, 38.483, -84.55, 38.493], resolution=30, save_folder=str(tmp_path))
+
+    assert calls[0]["collections"] == "dem-phase2"
+    half = stacks[0].shape[2] // 2
+    assert np.isnan(stacks[0][:, :, half:]).all()           # gap stays blank
+    assert np.allclose(stacks[0][:, :, :half], 1000.0 * US_SURVEY_FOOT_M)
+
+
+def test_phase_with_no_tiles_writes_empty_layer_on_same_grid(monkeypatch, tmp_path):
+    np = pytest.importorskip("numpy")
+    rasterio = pytest.importorskip("rasterio")
+    from geoai_datacubes.fetch import fetch_data, plan_grid
+
+    monkeypatch.setattr(fetch_data.requests, "get",
+                        lambda url, params=None, timeout=None: _Resp({"features": [], "links": []}))
+    roi = [-84.58, 38.483, -84.55, 38.493]
+    stacks, bands = fetch_data.fetch_sentinel_data(
+        "KyFromAbove-DEM-Phase3", None, ("2020-01-01", "2020-01-02"), roi,
+        resolution=30, save_folder=str(tmp_path))
+
+    assert bands == ["DEM"] and np.isnan(stacks[0]).all()
+    tiff = next(tmp_path.rglob("KyFromAbove-DEM-Phase3_full_size.tiff"))
+    grid = plan_grid(roi, 30)
+    with rasterio.open(tiff) as r:
+        assert r.shape == grid.shape and r.transform == grid.transform
+        assert r.descriptions == ("DEM",)
+    import json
+    meta = json.loads((tiff.parent / "userdata.json").read_text())
+    assert meta["empty"] is True and meta["collection"] == "dem-phase3"
+
+
+def test_combined_mission_still_errors_when_nothing_found(monkeypatch, tmp_path):
+    from geoai_datacubes.fetch import fetch_data
+
+    monkeypatch.setattr(fetch_data.requests, "get",
+                        lambda url, params=None, timeout=None: _Resp({"features": [], "links": []}))
+    with pytest.raises(RuntimeError, match="No scenes matched"):
+        fetch_data.fetch_sentinel_data(
+            "KyFromAbove-DEM", None, ("2020-01-01", "2020-01-02"),
+            [-90.0, 30.0, -89.99, 30.01], resolution=30, save_folder=str(tmp_path))
