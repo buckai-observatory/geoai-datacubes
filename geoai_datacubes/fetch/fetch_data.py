@@ -64,6 +64,7 @@ PROVIDER_AUTO = {
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
     "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
+    "KyFromAbove-DEM": "kyfromabove",       # Kentucky 2 ft / 5 ft LiDAR DEM, public S3 + STAC
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
@@ -93,6 +94,8 @@ PROVIDER_AUTO = {
     # rasterio. See the missions.py stub and TODO for the planned xarray
     # code path.
 }
+# One mission per KyFromAbove phase (same provider as KyFromAbove-DEM).
+PROVIDER_AUTO.update({f"KyFromAbove-DEM-Phase{p}": "kyfromabove" for p in (1, 2, 3)})
 
 
 # ============================================================
@@ -139,7 +142,7 @@ def fetch_sentinel_data(
     provider : str
         "auto" (default), "earthsearch", "planetary_computer",
         "planet", "direct_http", "earth_engine", "earthdata",
-        "local_files", or "sentinelhub".
+        "kyfromabove", "local_files", or "sentinelhub".
     config : sentinelhub.SHConfig, optional
         Required only when ``provider="sentinelhub"``.
     grid : geoai_datacubes.fetch.plan_grid.Grid, optional
@@ -212,6 +215,13 @@ def fetch_sentinel_data(
             grid=grid,
         )
 
+    if provider == "kyfromabove":
+        return fetch_kyfromabove(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            grid=grid,
+        )
+
     if provider == "local_files":
         return fetch_local_files(
             mission, bands, time_range, roi,
@@ -238,7 +248,7 @@ def fetch_sentinel_data(
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
         f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
-        f"'earthdata', 'local_files', or 'sentinelhub'."
+        f"'earthdata', 'kyfromabove', 'local_files', or 'sentinelhub'."
     )
 
 
@@ -648,6 +658,43 @@ def _resolve_pc_href(href):
 
 
 # ---- Shared core: STAC search + per-band COG read + multi-band TIFF write ----
+def _stac_search(stac_url, body, *, method="POST", paginate=False, max_items=2000):
+    """Run a STAC item search and return the features.
+
+    ``method="GET"`` sends the search as query parameters. With
+    ``paginate=True`` the ``rel="next"`` links are followed (GET href,
+    or POST with the link's ``body``) until there are none or
+    ``max_items`` features have been collected.
+    """
+    if method.upper() == "GET":
+        params = {k: (",".join(str(x) for x in v) if isinstance(v, (list, tuple)) else v)
+                  for k, v in body.items() if k != "query"}
+        r = requests.get(stac_url, params=params, timeout=60)
+    else:
+        r = requests.post(stac_url, json=body, timeout=60)
+    r.raise_for_status()
+    page = r.json()
+    items = list(page.get("features", []))
+    while paginate and len(items) < max_items:
+        nxt = next((l for l in page.get("links", []) if l.get("rel") == "next"), None)
+        if not nxt:
+            break
+        if (nxt.get("method") or "GET").upper() == "POST":
+            r = requests.post(nxt["href"], json={**body, **(nxt.get("body") or {})}, timeout=60)
+        else:
+            r = requests.get(nxt["href"], timeout=60)
+        r.raise_for_status()
+        page = r.json()
+        feats = page.get("features", [])
+        if not feats:
+            break
+        items.extend(feats)
+    if paginate and len(items) >= max_items:
+        print(f"⚠️  STAC search hit max_items={max_items}; the AOI may be "
+              f"larger than this provider should serve in one fetch.")
+    return items[:max_items]
+
+
 def _fetch_via_stac(
     mission, bands, time_range, roi,
     *,
@@ -655,8 +702,30 @@ def _fetch_via_stac(
     max_cloud_coverage, min_cloud_coverage=0.0,
     stac_url, collection, asset_map, url_resolver, provider_label,
     grid=None,
+    static_group_key=None, static_rank=None, scale_factors=None,
+    search_method="POST", paginate=False, max_items=2000,
+    asset_aliases=None,
 ):
+    """Shared STAC search -> mosaic -> GeoTIFF path.
+
+    The keyword-only extras below default to the original behaviour and
+    are only switched on by providers that need them (KyFromAbove):
+
+    ``collection`` may be a list to search several collections at once.
+    ``static_group_key(item)`` groups static tiles that cover the same
+    place (default: rounded bbox); ``static_rank(item)`` picks the best
+    item in each group, highest wins (default: newest ``datetime``).
+    ``scale_factors`` maps band -> multiplier applied after reading
+    (e.g. feet -> metres). ``search_method="GET"`` for STAC APIs that
+    only accept query-string searches. ``paginate=True`` follows
+    ``rel="next"`` links up to ``max_items`` items. ``asset_aliases``
+    maps an alternate asset key to the one in ``asset_map`` for
+    collections that name the same asset differently across items
+    (KyFromAbove Phase 3 uses ``data``, Phases 1-2 use ``asset``).
+    """
     profile = get_profile(mission)
+    collections = list(collection) if isinstance(collection, (list, tuple)) else [collection]
+    collection = ",".join(collections)
 
     # Final band list. If the caller passed bands=None they wanted the
     # convenient default flow: mission defaults plus helper bands (SCL/BQA/
@@ -681,7 +750,7 @@ def _fetch_via_stac(
     is_static = bool(profile.get("static"))
 
     # 1. STAC search (anonymous). Static products skip datetime/cloud filtering.
-    body = {"collections": [collection], "bbox": roi, "limit": 100}
+    body = {"collections": collections, "bbox": roi, "limit": 100}
     if not is_static:
         body["datetime"] = f"{time_range[0]}T00:00:00Z/{time_range[1]}T23:59:59Z"
         if profile["cloud_filter"]:
@@ -694,14 +763,18 @@ def _fetch_via_stac(
           + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
           + ((f" with cloud {int(min_cloud_coverage*100)}%-{int(max_cloud_coverage*100)}%" if min_cloud_coverage > 0 else f" with cloud<{int(max_cloud_coverage*100)}%") if profile["cloud_filter"] else "")
           + " ...")
-    r = requests.post(stac_url, json=body, timeout=60)
-    r.raise_for_status()
-    items = r.json().get("features", [])
+    items = _stac_search(stac_url, body, method=search_method,
+                         paginate=paginate, max_items=max_items)
     if not items:
         raise RuntimeError(
             "No scenes matched. Try widening the time range"
             + (" or raising max_cloud_coverage." if profile["cloud_filter"] else ".")
         )
+
+    for it in items:
+        for alias, canonical in (asset_aliases or {}).items():
+            if canonical not in it["assets"] and alias in it["assets"]:
+                it["assets"][canonical] = it["assets"][alias]
 
     # 2. Pick scene(s)
     if is_static:
@@ -710,7 +783,9 @@ def _fetch_via_stac(
         from collections import defaultdict
         groups = defaultdict(list)
         for it in items:
-            groups[tuple(round(x, 4) for x in it["bbox"])].append(it)
+            key = (static_group_key(it) if static_group_key
+                   else tuple(round(x, 4) for x in it["bbox"]))
+            groups[key].append(it)
         # Resolution preference for collections that ship multiple resolutions
         # at the same bbox. 3DEP-seamless stores 1/3 arc-second (~10 m, item
         # IDs ending in "-13") alongside 1 arc-second (~30 m, "-1") for the
@@ -721,11 +796,12 @@ def _fetch_via_stac(
         for k, g in list(groups.items()):
             if any(it.get("id", "").endswith("-13") for it in g):
                 groups[k] = [it for it in g if not it.get("id", "").endswith("-1")]
-        items = [
-            sorted(g, key=lambda x: x["properties"].get("datetime") or "", reverse=True)[0]
-            for g in groups.values()
-        ]
-        representative = items[0]
+        rank = static_rank or (lambda x: x["properties"].get("datetime") or "")
+        items = [sorted(g, key=rank, reverse=True)[0] for g in groups.values()]
+        # Mosaicking paints later tiles over earlier ones, so put the
+        # preferred items last in case tiles from different groups overlap.
+        items.sort(key=rank)
+        representative = items[-1]
         latest_dt = max((it["properties"].get("datetime") or "") for it in items)
         print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI"
               f"(latest version {latest_dt[:10] or 'n/a'})")
@@ -854,6 +930,12 @@ def _fetch_via_stac(
                                               (out_h, out_w), rs,
                                               band_indexes=band_indexes)
 
+    # 5b. Unit conversion (e.g. KyFromAbove elevations are US survey feet).
+    for i, b in enumerate(final_bands):
+        factor = (scale_factors or {}).get(b)
+        if factor is not None:
+            stack[i] *= np.float32(factor)
+
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which
     #    pixels are invalid.
@@ -906,11 +988,16 @@ def _fetch_via_stac(
     # silently trains on half-NaN inputs.
     nan_frac = float(np.mean(np.isnan(stack))) if stack.size else 0.0
     if nan_frac > 0.25:
-        print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
-              f"For MODIS this typically means the AOI crosses a "
-              f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
-              f"the AOI to land within a single tile, or wait for cross-tile "
-              f"mosaicking support.")
+        if is_static:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN "
+                  f"(no data). The AOI extends beyond the {len(items)} tile(s) "
+                  f"available for {collection!r}; those pixels are left blank.")
+        else:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
+                  f"For MODIS this typically means the AOI crosses a "
+                  f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
+                  f"the AOI to land within a single tile, or wait for cross-tile "
+                  f"mosaicking support.")
 
     return [stack], final_bands
 
@@ -918,6 +1005,70 @@ def _fetch_via_stac(
 # ============================================================
 # Public provider wrappers
 # ============================================================
+def fetch_kyfromabove(
+    mission, bands, time_range, roi,
+    resolution=1.0, save_folder="data",
+    grid=None, phases=None, allow_empty=None,
+):
+    """KyFromAbove (Kentucky) STAC + public S3 COGs (anonymous HTTPS).
+
+    Searches every DEM phase over the AOI and keeps, for each 5,000 ft
+    grid cell, the tile from the newest phase available there (Phase 3
+    where it has been flown, else Phase 2, else Phase 1). Tiles are
+    mosaicked onto the AOI-centroid UTM grid at ``resolution`` metres
+    (2 ft is 0.6096 m) and elevation is converted from US survey feet
+    to metres, so slope / aspect / hillshade from
+    :mod:`geoai_datacubes.viz.terrain` come out right.
+
+    ``phases``: optional collection ids, newest-preferred first, e.g.
+    ``("dem-phase2",)`` to use only the statewide 2019-2024 survey. The
+    ``KyFromAbove-DEM-Phase1/2/3`` missions set this for you. Tiles a
+    phase does not have are left blank (NaN); other phases never fill in.
+
+    ``allow_empty``: when no tile of the requested phase(s) touches the
+    AOI, write an all-NaN layer on the same grid instead of raising, so
+    a multi-layer cube stays aligned. Defaults to ``True`` for the
+    per-phase missions and ``False`` for ``KyFromAbove-DEM``.
+    ``time_range`` is ignored (static product).
+    """
+    cfg = get_provider_config(mission, "kyfromabove")
+    collections = list(phases or cfg["collections"])
+    if allow_empty is None:
+        allow_empty = bool(cfg.get("empty_ok"))
+    try:
+        return _fetch_kfa_stac(mission, bands, time_range, roi, resolution,
+                               save_folder, grid, cfg, collections)
+    except RuntimeError as e:
+        if not (allow_empty and str(e).startswith("No scenes matched")):
+            raise
+    from ._kyfromabove import write_empty_layer
+    return write_empty_layer(mission, bands, roi, resolution, save_folder,
+                             grid, collections)
+
+
+def _fetch_kfa_stac(mission, bands, time_range, roi, resolution, save_folder,
+                    grid, cfg, collections):
+    from ._kyfromabove import (KFA_STAC_URL, kfa_phase, kfa_tile_key,
+                               resolve_kfa_href)
+    return _fetch_via_stac(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        max_cloud_coverage=1.0,
+        stac_url=KFA_STAC_URL,
+        collection=collections,
+        asset_map=cfg["asset_map"],
+        url_resolver=resolve_kfa_href,
+        provider_label="kyfromabove",
+        grid=grid,
+        static_group_key=kfa_tile_key,
+        static_rank=kfa_phase,
+        scale_factors=cfg.get("scale_factors"),
+        search_method="GET",
+        paginate=True,
+        asset_aliases={"data": "asset"},
+    )
+
+
 def fetch_earthsearch(
     mission, bands, time_range, roi,
     resolution=10, save_folder="data",

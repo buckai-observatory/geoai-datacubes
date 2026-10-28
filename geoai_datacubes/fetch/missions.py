@@ -787,6 +787,34 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # KyFromAbove DEM (Commonwealth of Kentucky). Airborne-LiDAR bare-
+    # earth DEM, statewide: Phase 1 5 ft (2010-2017), Phase 2 2 ft
+    # (2019-2024), Phase 3 2 ft (2022-, partial). Public COGs in
+    # s3://kyfromabove behind a STAC API; EPSG:3089, US survey feet.
+    # Fetched per 5,000 ft tile, newest phase per tile, converted to
+    # metres. Kentucky only. See fetch/_kyfromabove.py.
+    # ============================================================
+    "KyFromAbove-DEM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "kyfromabove": {
+                "collections":   ["dem-phase3", "dem-phase2", "dem-phase1"],
+                "asset_map":     {"DEM": "asset"},
+                # US survey feet -> metres (1200/3937).
+                "scale_factors": {"DEM": 1200.0 / 3937.0},
+            },
+        },
+    },
+
+    # ============================================================
     # Copernicus DEM GLO-90 (TanDEM-X 90 m derivative). PC collection
     # "cop-dem-glo-90". Static global mosaic, 90 m. The lower-resolution
     # complement to GLO-30 (we already have); pick GLO-90 when you need
@@ -2267,6 +2295,21 @@ MISSION_PROFILES = {
 # Convenience aliases (Sentinel Hub LANDSAT_OT_L2 is combined 8/9)
 MISSION_PROFILES["Landsat-8"] = MISSION_PROFILES["Landsat"]
 MISSION_PROFILES["Landsat-9"] = MISSION_PROFILES["Landsat"]
+
+# One mission per KyFromAbove survey phase, so a single phase can be
+# fetched through fetch_sentinel_data / `cube` / fusion like any other
+# mission (e.g. Phase 1 and Phase 2 as separate layers for elevation
+# change). Unlike KyFromAbove-DEM, other phases never fill gaps, and an
+# AOI with no tile of that phase gets an all-NaN layer instead of an
+# error ("empty_ok"). Phase 1 is 5 ft (2010-2017), Phases 2-3 are 2 ft.
+import copy as _copy  # stdlib; keeps the module free of third-party imports
+
+for _phase in (1, 2, 3):
+    _p = _copy.deepcopy(MISSION_PROFILES["KyFromAbove-DEM"])
+    _p["providers"]["kyfromabove"]["collections"] = [f"dem-phase{_phase}"]
+    _p["providers"]["kyfromabove"]["empty_ok"] = True
+    MISSION_PROFILES[f"KyFromAbove-DEM-Phase{_phase}"] = _p
+del _phase, _p
 
 
 # ============================================================
