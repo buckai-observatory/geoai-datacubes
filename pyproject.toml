@@ -73,7 +73,7 @@ dependencies = [
 # to a fresh install, but is only needed if you want to *train* models
 # on the cubes, run the LazyTileDataset PyTorch surface, or export to
 # Zarr via geotiff_to_zarr. Fetch and fuse work without this extra.
-# Prior to v0.2 these deps were bundled into core; separated out per
+# Prior to v1.0.0 these deps were bundled into core; separated out per
 # JOSS reviewer feedback (openjournals/joss-reviews#11034, Aug 2026).
 #
 #     pip install geoai-datacubes[ml]

@@ -26,16 +26,13 @@ authors:
 repository-code: "https://github.com/buckai-observatory/geoai-datacubes"
 url: "https://github.com/buckai-observatory/geoai-datacubes"
 license: MIT
-version: "0.1.0"
-date-released: "2026-06-24"
+version: "1.0.0"
+date-released: "2026-11-02"
 # Concept DOI: always resolves to the latest version on Zenodo.
 identifiers:
   - type: doi
     value: "10.5281/zenodo.20829119"
     description: "Concept DOI (always-latest version)"
-  - type: doi
-    value: "10.5281/zenodo.20829120"
-    description: "Version DOI for v0.1.0"
 keywords:
   - remote sensing
   - earth observation

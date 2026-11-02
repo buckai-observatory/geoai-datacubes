@@ -102,10 +102,10 @@ for `[planet]`. The `pip` recipes are convenient when you already
 have a working conda env, and pin slightly faster on a few
 fast-moving ML packages (ultralytics, transformers).
 
-> **v0.1.1 note.** Prior to v0.1.1, `torch`, `torchvision`, and
+> **v1.0.0 note.** Prior to v1.0.0, `torch`, `torchvision`, and
 > `scikit-image` were core dependencies -- fetch-only users paid the
 > full 2 GB PyTorch install even if they never touched a model.
-> That's fixed as of v0.1.1: those three moved to `[ml]`. If you
+> That's fixed as of v1.0.0: those three moved to `[ml]`. If you
 > `pip install geoai-datacubes` today and try to use
 > `LazyTileDataset` or `geotiff_to_zarr`, you'll get a clear
 > ImportError telling you to add `[ml]`. See
@@ -132,7 +132,7 @@ docker run -p 127.0.0.1:8888:8888 \
     ghcr.io/buckai-observatory/geoai-datacubes:latest
 ```
 
-Tags follow the PyPI version (`:0.1.0`, `:0.1`, `:latest`). On academic
+Tags follow the PyPI version (for example `:1.0.0`, `:1.0`, `:latest`). On academic
 HPC clusters with Apptainer / Singularity, the image can be pulled
 directly: `apptainer pull docker://ghcr.io/buckai-observatory/geoai-datacubes:latest`.
 See the [`Dockerfile`](../Dockerfile) for the exact build recipe.

@@ -98,7 +98,7 @@ paper table), move the JSONL under a dated subfolder such as
   numbers.
 * **What retroactive pinning can and can't guarantee.** The JSONL
   headers written 2026-09-03 captured Python + OS + arch + CPU
-  count + memory but not per-package versions. From v0.1.1 onwards
+  count + memory but not per-package versions. From v1.0.0 onwards
   (this commit) the `_machine_fingerprint()` helper adds `commit`,
   `dirty`, and a `packages` dict (rasterio, pystac, pystac-client,
   planetary-computer, numpy, requests, GDAL via rasterio) to every
