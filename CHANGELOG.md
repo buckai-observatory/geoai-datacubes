@@ -11,6 +11,7 @@ Joachim Moortgat.
 
 This release collects all changes made during the JOSS review at openjournals/joss-reviews#11034. It is numbered 1.0.0 rather than 0.1.1 because it adds features and includes one breaking packaging change (PyTorch moved to the `[ml]` extra), and because the public interface is now treated as stable.
 
+- Archived at Zenodo as version DOI `10.5281/zenodo.23885990` (concept DOI `10.5281/zenodo.20829119`).
 - **Paper** (response to the JOSS editor): citation and formatting fixes in `paper.md`; `CITATION.cff` uses the paper title so the Zenodo record matches the paper.
 
 - **Fix** (`tiler`, [#11](https://github.com/buckai-observatory/geoai-datacubes/pull/11), Aswathnarayan "Ash" Radhakrishnan): `_resolve_region_specs` was using a stale absolute import `from aoi import resolve_aoi`, a leftover from the pre-package flat layout. Any call to `split_regions` with an AOI dict (as opposed to a raw bbox list) crashed with `ModuleNotFoundError`. Fixed to `from ..fetch.aoi import resolve_aoi`; adds `tests/test_tiler_regions.py` regression coverage.
