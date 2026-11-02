@@ -75,17 +75,17 @@ down that's the provider's ceiling, not ours. Rough shape:
 | `sentinelhub` | Free Sentinel Hub OAuth | Free tier gives ~30k "processing units" per month; heavy runs consume the tier quickly. Paid tiers scale linearly. | Server-side clip + band math means fewer bytes moved per PU than STAC-fetch-then-clip. |
 | `planet` | `PL_API_KEY` (commercial) | Commercial usage-based billing; NICFI / Education programs offer higher no-cost caps. Consult your Planet contract before large orders. | Orders API adds a queue-and-clip step. |
 
-The `earthdata` (NASA CMR), `earth_engine` (Google Earth Engine), and `local_files` provider classes are on the v0.2-preview branch (`feature/earth-engine-provider`) and will be added to this table with their own credential-setup walkthroughs when v0.2 lands on `main`.
+The `earthdata` (NASA CMR), `earth_engine` (Google Earth Engine), and `local_files` provider classes are on the `feature/earth-engine-provider` branch, planned for v1.1, and will be added to this table with their own credential-setup walkthroughs when that branch lands on `main`.
 
 **Estimating cost before you fetch.** For track-heavy earthdata products
 with big per-file sizes (Sentinel-5P TROPOMI ~600 MB/file, ATL03
 500 MB – 2 GB/file), the earthdata fetcher prints an estimated total
 download size before the download starts and enforces per-mission
 `max_download_gb` / `max_granules` caps set in `MISSION_PROFILES`
-(introduced in v0.2 after an ATL03 fetch accidentally pulled 28 GB in a
+(introduced on the `feature/earth-engine-provider` branch after an ATL03 fetch accidentally pulled 28 GB in a
 smoke test). Users doing intentional bulk aggregation can override
 these in code. Adding the same estimate + cap to the STAC provider
-paths is tracked as a v0.3 UX improvement (raised during JOSS review at
+paths is tracked as a UX improvement for a later release (raised during JOSS review at
 openjournals/joss-reviews#11034).
 
 ---
@@ -139,19 +139,18 @@ bugs.
   aggregated products are sufficient, prefer `Sentinel-2` +
   `Copernicus-DEM` on the default STAC path.
 
-**Resolution in v0.2 (post-review, on `feature/earth-engine-provider`).**
-An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on the
-v0.2 branch returns MODIS reflectance and LST **directly in UTM** with
+**Resolution planned for v1.1 (post-review, on `feature/earth-engine-provider`).**
+An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on that
+branch returns MODIS reflectance and LST **directly in UTM** with
 server-side cross-tile mosaicking, closing the sparsity gap for these
-missions. The v0.2 branch also introduces `plan_grid(aoi, resolution)`
+missions. The same branch also introduces `plan_grid(aoi, resolution)`
 so every fetch — MODIS included — lands on a deterministic
 AOI-centroid grid regardless of the source scene's native CRS. Both
 are tracked at
 [`#10`](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
 and [`#35`](https://github.com/buckai-observatory/geoai-datacubes/issues/35)
 and live on the `feature/earth-engine-provider` branch, not on the
-reviewed `main` branch. They ship when v0.2 lands on `main` after this
-review closes.
+reviewed `main` branch. They ship in v1.1, when that branch lands on `main`.
 
 ### 2. Sentinel Hub authenticated path is supported but not exercised in CI
 

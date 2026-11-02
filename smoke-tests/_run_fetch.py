@@ -263,7 +263,7 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
     # not a fetch bug; it is a real property of a sinusoidal-tiled
     # product clipped to a small sub-window. Marked as known_limitation
     # for this AOI (see docs/providers.md "Known limitations of the
-    # reviewed release" and issue #10). The v0.2 Earth Engine provider
+    # reviewed release" and issue #10). The Earth Engine provider planned for v1.1
     # (feature/earth-engine-provider) resolves this by returning MODIS
     # directly in UTM.
     "MODIS_SR": {
@@ -294,7 +294,7 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
             "MODIS LST via PC returns native sinusoidal; small "
             "non-central AOIs can be sparse (LST_Night frequently "
             "all-NaN over the Columbus smoke AOI). Resolved on the "
-            "v0.2 EE provider (feature/earth-engine-provider). "
+            "EE provider planned for v1.1 (feature/earth-engine-provider). "
             "See issue #10 and docs/providers.md 'Known limitations'."
         ),
     },

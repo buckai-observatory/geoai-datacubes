@@ -157,7 +157,7 @@ Two published examples anchor current use:
 - Hsu & Moortgat 2026, *Remote Sensing* 18(11):1768, [10.3390/rs18111768](https://doi.org/10.3390/rs18111768) — Sentinel-2 satellite-derived bathymetry, with the pipeline used for the S2 acquisition and preprocessing stages.
 - Chowdhury et al. 2026, *WACV*, [10.1109/WACV61042.2026.00205](https://doi.org/10.1109/WACV61042.2026.00205) — the ML-side companion work.
 
-`geoai-datacubes` reached its first public PyPI release (v0.1.0) in June 2026, so it is at an early stage as an open-source tool. This JOSS submission is precisely the vehicle through which we aim to make it visible and accessible to the broader Earth-observation and AI community.
+`geoai-datacubes` reached its first public PyPI release (v0.1.0) in June 2026, and v1.0.0, the version reviewed in the Journal of Open Source Software, in November 2026. It is a young open-source tool, and the JOSS publication is how we aim to make it visible and accessible to the broader Earth-observation and AI community.
 
 ## About
 
