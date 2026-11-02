@@ -129,8 +129,8 @@ tooling:
    provenance preserved in mission-prefixed band descriptions. A fused cube
    is a single multi-band cloud-optimised GeoTIFF that any `torchgeo`-style
    PyTorch dataset can consume directly.
-3. **Band-aware handling of missing data and spatially-aware data sampling
-   (`nan_handling="auto"`).** Per-kind NaN fill
+3. **Band-aware handling of missing data and spatially-aware data
+   sampling.** With `nan_handling="auto"`, per-kind NaN fill
    (mean for spectral / SAR, biharmonic in-painting for elevation, NN-rounded
    for categorical, tile-drop on QA NaN) plus four split strategies
    (`random`, `block`, `stripes`, `regions`) close the train / test leakage
