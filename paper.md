@@ -47,14 +47,15 @@ bibliography: paper.bib
 Earth-observation imagery into AI-ready data cubes for machine-learning and
 deep-learning workflows. From a single configuration block — a region of
 interest, a time window, a set of bands — it fetches, co-registers, fuses, and
-tiles imagery from **26 missions** spanning direct sensor observations
-(Sentinel-2 L1C and L2A [@sentinel2], Sentinel-1 RTC [@sentinel1],
+tiles imagery from **26 missions**. The direct sensor observations are
+Sentinel-2 L1C and L2A [@sentinel2], Sentinel-1 RTC [@sentinel1],
 Landsat 8/9 C2 L2 [@landsat], NAIP, PlanetScope 4-band and 8-band, MODIS
 reflectance and land-surface temperature, HLS, ALOS PALSAR, Copernicus DEM
-at 30 m and 90 m, USGS 3DEP) and derived products (ESA WorldCover
+at 30 m and 90 m, and USGS 3DEP. The derived products are ESA WorldCover
 [@esa_worldcover], ALOS Forest / Non-Forest, USDA CDL, USGS LCMAP, Impact
 Observatory annual LULC, JRC Global Surface Water, Hansen Global Forest Change,
-Chloris biomass). Per-mission details are in `docs/data_layers.md`. Four data
+and Chloris biomass. Per-mission details are in
+[`docs/data_layers.md`](https://buckai-observatory.org/geoai-datacubes/docs/data_layers.html). Four data
 providers are unified behind one dispatcher — Element 84 Earth Search, Microsoft
 Planetary Computer, the commercial Planet Orders API, and a `direct_http` path
 for non-STAC datasets such as Hansen GFC on Google Cloud Storage. The output is
@@ -107,8 +108,12 @@ multi-mission-fusion, spatially-aware-split, or HPC-integration concerns
 
 # Software design
 
-Three architectural decisions distinguish `geoai-datacubes` from generic
-raster tooling:
+Machine learning on multi-mission satellite data needs every band to be
+normalised according to what it measures, all missions to share one pixel
+grid, and missing data and train / test splits to be handled without
+leaking information between tiles. Three architectural decisions follow from
+these requirements and distinguish `geoai-datacubes` from generic raster
+tooling:
 
 1. **A declarative per-band metadata system (`band_meta`)** pairing every
    band with a `kind` (`spectral`, `sar`, `elevation`, `temperature`, `index`,
@@ -118,13 +123,14 @@ raster tooling:
    `apply_band_norm` and `get_band_norm` produce ML-ready features by
    applying those defaults explicitly. A regex fallback infers a sensible
    recipe for unregistered bands.
-2. **Multi-mission fusion onto a common UTM grid** (`fuse_response_tiffs`)
+2. **Multi-mission fusion onto a common UTM grid (`fuse_response_tiffs`)**
    with per-band-correct resampling — bilinear for continuous reflectance
    and elevation, nearest-neighbour for categorical and QA bands — and
    provenance preserved in mission-prefixed band descriptions. A fused cube
    is a single multi-band cloud-optimised GeoTIFF that any `torchgeo`-style
    PyTorch dataset can consume directly.
-3. **`nan_handling="auto"` with spatially-aware splits.** Per-kind NaN fill
+3. **Band-aware handling of missing data and spatially-aware data sampling
+   (`nan_handling="auto"`).** Per-kind NaN fill
    (mean for spectral / SAR, biharmonic in-painting for elevation, NN-rounded
    for categorical, tile-drop on QA NaN) plus four split strategies
    (`random`, `block`, `stripes`, `regions`) close the train / test leakage
@@ -137,13 +143,13 @@ without ever materialising a tile to disk.
 
 # Research impact statement
 
-The pipeline underpins ongoing research within the authors' group. Hsu and
-Moortgat use it to fuse Sentinel-2 reflectance with airborne-LIDAR bathymetry
-and benchmark classical machine learning against deep learning for
-transferable satellite-derived bathymetry [@hsu2026local]. A parallel
+The pipeline underpins ongoing research within the authors' group.
+@hsu2026local use it to fuse Sentinel-2 reflectance with airborne-LIDAR
+bathymetry and benchmark classical machine learning against deep learning for
+transferable satellite-derived bathymetry. A parallel
 interpretability line fine-tunes deep networks on Sentinel-2 cubes assembled
 by the same pipeline and probes how those networks weight individual bands
-when regressing water depth [@Chowdhury_2026_WACV; @chowdhury2026bands]. The
+when regressing water depth [@Chowdhury_2026_WACV]. The
 library is being adopted by additional graduate students in the BuckAI
 Observatory for water-resource remote sensing and cross-city
 land-cover-transfer experiments.
