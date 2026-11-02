@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use geoai-datacubes in your research, please cite it using the metadata below."
-title: "geoai-datacubes: AI-ready multi-mission Earth-observation data cubes for machine-learning and deep-learning workflows"
+title: "geoai-datacubes: AI-ready multi-mission satellite data cubes for Earth-observation machine learning"
 authors:
   - family-names: Moortgat
     given-names: Joachim
