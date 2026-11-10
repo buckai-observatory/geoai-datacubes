@@ -15,6 +15,13 @@ Each resolves to the same output: a WGS84 bounding box
 
        AOI = {"shapefile": "/path/to/aoi.shp"}
 
+   Add ``"clip_to_geometry": True`` to keep the true polygon (holes
+   included): the search still uses the bbox, and pixels outside the
+   polygon are set to NaN after the fetch. See :func:`resolve_aoi_geometry`
+   and :func:`geoai_datacubes.preprocessing.clip_to_geometry`::
+
+       AOI = {"shapefile": "/path/to/lagoon.gpkg", "clip_to_geometry": True}
+
 3. **Square around a centre point** -- supply a centre as
    ``(lat, lon)`` and a side length in miles::
 
@@ -36,6 +43,12 @@ def resolve_aoi(spec):
     """
     if not isinstance(spec, dict):
         raise TypeError("AOI spec must be a dict. See aoi.py docstring for examples.")
+
+    if spec.get("clip_to_geometry") and "shapefile" not in spec:
+        raise ValueError(
+            "'clip_to_geometry' only applies to {'shapefile': ...} AOIs; "
+            "the other AOI formats are already rectangles."
+        )
 
     if "bbox" in spec:
         bbox = list(spec["bbox"])
@@ -63,8 +76,31 @@ def resolve_aoi(spec):
     )
 
 
-def _bbox_from_vector_file(path):
-    """Read a vector file and return the bbox of its (combined) geometry in WGS84."""
+def resolve_aoi_geometry(spec):
+    """Return the AOI's true polygon(s) in WGS84, or ``None``.
+
+    Only ``{"shapefile": ...}`` AOIs have a shape beyond their bbox; every
+    other spec returns ``None``. The result is a list of GeoJSON-like
+    geometry dicts (one per feature, interior rings kept), ready to pass to
+    :func:`geoai_datacubes.preprocessing.clip_to_geometry`.
+    """
+    if not isinstance(spec, dict) or "shapefile" not in spec:
+        return None
+    gdf = _read_vector_file(spec["shapefile"])
+    geoms = [g for g in gdf.geometry if g is not None and not g.is_empty]
+    bad = sorted({g.geom_type for g in geoms} - {"Polygon", "MultiPolygon"})
+    if bad:
+        raise ValueError(
+            f"{spec['shapefile']}: clipping needs polygon geometries, "
+            f"found {', '.join(bad)}."
+        )
+    if not geoms:
+        raise ValueError(f"{spec['shapefile']}: no non-empty geometries found.")
+    return [g.__geo_interface__ for g in geoms]
+
+
+def _read_vector_file(path):
+    """Read a vector file into a GeoDataFrame in WGS84."""
     try:
         import geopandas as gpd
     except ImportError as e:
@@ -82,6 +118,12 @@ def _bbox_from_vector_file(path):
         )
     if gdf.crs.to_epsg() != 4326:
         gdf = gdf.to_crs(epsg=4326)
+    return gdf
+
+
+def _bbox_from_vector_file(path):
+    """Read a vector file and return the bbox of its (combined) geometry in WGS84."""
+    gdf = _read_vector_file(path)
     minx, miny, maxx, maxy = gdf.total_bounds  # combined bounds over all features
     return [float(minx), float(miny), float(maxx), float(maxy)]
 
@@ -186,7 +228,7 @@ def _bbox_from_s2_tile(lat, lon):
     point. No credentials required.
     """
     try:
-        import requests
+        import requests  # noqa: F401
     except ImportError as e:
         raise ImportError("`requests` is required for the 'tile_around' AOI option.") from e
 
@@ -195,11 +237,11 @@ def _bbox_from_s2_tile(lat, lon):
         "intersects": {"type": "Point", "coordinates": [lon, lat]},
         "limit": 1,
     }
-    r = requests.post(
-        "https://earth-search.aws.element84.com/v1/search",
+    from .fetch_data import _request_with_retry
+    r = _request_with_retry(
+        "post", "https://earth-search.aws.element84.com/v1/search",
         json=body, timeout=30,
     )
-    r.raise_for_status()
     items = r.json().get("features", [])
     if not items:
         raise RuntimeError(

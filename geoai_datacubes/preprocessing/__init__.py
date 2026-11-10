@@ -15,6 +15,8 @@ Public API:
   for ``DataLoader(num_workers > 0)``.
 * :func:`export_temporal_cube_chunk` / :func:`merge_chunks` -- resumable,
   SLURM-array-safe export of multi-temporal patch cubes to Zarr.
+* :func:`clip_to_geometry` -- NaN-out pixels outside a polygon AOI
+  (holes included) in a fetched GeoTIFF.
 * :func:`geotiff_to_zarr` -- convert a GeoTIFF cube to Zarr (useful for
   cluster training: zarr chunks parallelise far better than monolithic
   COGs over networked filesystems).
@@ -107,10 +109,12 @@ from .checkpointed_export import (
     export_temporal_cube_chunk, merge_chunks, read_patch_meta,
 )
 from .band_select import select_bands, write_label_uint8, BAND_PRESETS
+from .clip import clip_to_geometry
 
 __all__ = [
     "fuse_response_tiffs",
     "tile_geotiff",
+    "clip_to_geometry",
     "AVAILABLE_AUGMENTATIONS",
     "LazyTileDataset",
     "geotiff_to_zarr",
