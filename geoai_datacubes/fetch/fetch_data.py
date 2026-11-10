@@ -483,21 +483,30 @@ def _resolve_es_href(href):
     raise ValueError(f"Unrecognized asset href scheme: {href}")
 
 
-# ---- planetary_computer URL resolver (sign via SAS endpoint) ----
-_PC_RETRY_STATUS = (429, 500, 502, 503, 504)
+# ---- HTTP retry for public endpoints (STAC search, PC signing) ----
+_RETRY_STATUS = (429, 500, 502, 503, 504)
 
 
-def _resolve_pc_href(href, max_retries=4):
-    """Sign a Planetary Computer asset URL using the public SAS endpoint.
+def _request_with_retry(method, url, *, max_retries=4, **kwargs):
+    """``requests.request`` with exponential backoff for transient failures.
 
-    The public endpoint rate-limits (HTTP 429), so rate-limit and transient
-    server errors are retried with exponential backoff (honouring
-    ``Retry-After``) before the error is raised.
+    Public endpoints rate-limit (HTTP 429) and return 5xx errors under load,
+    which is common when many SLURM array tasks hit the same catalogue at
+    once. Those responses, plus connection errors and timeouts, are retried
+    with exponential backoff (2, 4, 8, ... s, capped at 60 s, honouring
+    ``Retry-After``). Other errors and the last failed attempt are raised.
     """
     delay = 2.0
     for attempt in range(max_retries + 1):
-        r = requests.get(PC_SIGN_URL, params={"href": href}, timeout=30)
-        if r.status_code in _PC_RETRY_STATUS and attempt < max_retries:
+        try:
+            r = getattr(requests, method)(url, **kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt >= max_retries:
+                raise
+            time.sleep(min(delay, 60.0))
+            delay *= 2
+            continue
+        if r.status_code in _RETRY_STATUS and attempt < max_retries:
             try:
                 wait = float(r.headers.get("Retry-After", delay))
             except ValueError:
@@ -506,7 +515,19 @@ def _resolve_pc_href(href, max_retries=4):
             delay *= 2
             continue
         r.raise_for_status()
-        return r.json()["href"]
+        return r
+
+
+# ---- planetary_computer URL resolver (sign via SAS endpoint) ----
+def _resolve_pc_href(href, max_retries=4):
+    """Sign a Planetary Computer asset URL using the public SAS endpoint.
+
+    Rate-limit and transient server errors are retried with backoff
+    (see :func:`_request_with_retry`).
+    """
+    r = _request_with_retry("get", PC_SIGN_URL, max_retries=max_retries,
+                            params={"href": href}, timeout=30)
+    return r.json()["href"]
 
 
 # ---- Shared core: STAC search + per-band COG read + multi-band TIFF write ----
@@ -555,8 +576,7 @@ def _fetch_via_stac(
           + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
           + ((f" with cloud {int(min_cloud_coverage*100)}%-{int(max_cloud_coverage*100)}%" if min_cloud_coverage > 0 else f" with cloud<{int(max_cloud_coverage*100)}%") if profile["cloud_filter"] else "")
           + " ...")
-    r = requests.post(stac_url, json=body, timeout=60)
-    r.raise_for_status()
+    r = _request_with_retry("post", stac_url, json=body, timeout=60)
     items = r.json().get("features", [])
     if not items:
         raise RuntimeError(

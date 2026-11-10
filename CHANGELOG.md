@@ -5,6 +5,10 @@ School of Earth Sciences and the Department of Computer Science and
 Engineering at The Ohio State University, under the direction of
 Joachim Moortgat.
 
+## Unreleased
+
+- **Fix** (`fetch`, part of [#13](https://github.com/buckai-observatory/geoai-datacubes/issues/13)): STAC searches (the `earthsearch` and `planetary_computer` paths, and the `tile_around` AOI lookup) now retry HTTP 429 / 5xx responses, connection errors and timeouts with exponential backoff (2, 4, 8, ... s, capped at 60 s, honouring `Retry-After`) instead of failing on the first transient error. This matters most when many SLURM array tasks hit the same public catalogue at once. Planetary Computer URL signing now uses the same helper.
+
 ## Released versions
 
 ### `1.0.0` — 2026-11-02 — version reviewed and published in JOSS
