@@ -166,6 +166,7 @@ quartodoc:
       contents:
         - fetch.fetch_sentinel_data
         - fetch.resolve_aoi
+        - fetch.resolve_aoi_geometry
         - fetch.MISSION_PROFILES
         - fetch.get_profile
         - fetch.get_provider_config
@@ -180,6 +181,7 @@ quartodoc:
       contents:
         - preprocessing.fuse_response_tiffs
         - preprocessing.tile_geotiff
+        - preprocessing.clip_to_geometry
         - preprocessing.AVAILABLE_AUGMENTATIONS
         - preprocessing.LazyTileDataset
         - preprocessing.geotiff_to_zarr
