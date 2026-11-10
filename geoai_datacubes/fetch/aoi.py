@@ -186,7 +186,7 @@ def _bbox_from_s2_tile(lat, lon):
     point. No credentials required.
     """
     try:
-        import requests
+        import requests  # noqa: F401
     except ImportError as e:
         raise ImportError("`requests` is required for the 'tile_around' AOI option.") from e
 
@@ -195,11 +195,11 @@ def _bbox_from_s2_tile(lat, lon):
         "intersects": {"type": "Point", "coordinates": [lon, lat]},
         "limit": 1,
     }
-    r = requests.post(
-        "https://earth-search.aws.element84.com/v1/search",
+    from .fetch_data import _request_with_retry
+    r = _request_with_retry(
+        "post", "https://earth-search.aws.element84.com/v1/search",
         json=body, timeout=30,
     )
-    r.raise_for_status()
     items = r.json().get("features", [])
     if not items:
         raise RuntimeError(
