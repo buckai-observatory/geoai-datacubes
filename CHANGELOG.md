@@ -5,6 +5,10 @@ School of Earth Sciences and the Department of Computer Science and
 Engineering at The Ohio State University, under the direction of
 Joachim Moortgat.
 
+## Unreleased
+
+- **Feature** (`preprocessing`, [#13](https://github.com/buckai-observatory/geoai-datacubes/issues/13)): new `export_temporal_cube_chunk` and `merge_chunks` for resumable, SLURM-array-safe export of multi-temporal patch cubes `(N, T, C, H, W)` to Zarr. A per-patch CSV log lets a killed job resume where it stopped instead of restarting from patch 0; each array task writes its own chunk store, and `merge_chunks` combines them (refusing unfinished chunks unless `allow_incomplete=True`). Per-patch metadata is stored as fixed-width JSON bytes, read back with `read_patch_meta`. Images default to float32 with NaN for unused time steps; integer dtypes such as `uint16` are available for raw digital numbers.
+
 ## Released versions
 
 ### `1.0.0` — 2026-11-02 — version reviewed and published in JOSS

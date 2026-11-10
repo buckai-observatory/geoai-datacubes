@@ -196,6 +196,16 @@ For Zarr export (recommended for cluster training where COG reads
 over networked filesystems are slow) chain in
 `geoai_datacubes.preprocessing.geotiff_to_zarr` after `fuse_response_tiffs`.
 
+For long multi-temporal exports over many patches (days to weeks against
+a rate-limited STAC endpoint), use
+`geoai_datacubes.preprocessing.export_temporal_cube_chunk` instead. It
+logs every finished patch, so a killed or timed-out job resumes where it
+stopped. Inside a SLURM array, pass
+`array_idx=int(os.environ["SLURM_ARRAY_TASK_ID"])` and
+`array_size=int(os.environ["SLURM_ARRAY_TASK_COUNT"])` so each task writes
+its own chunk, then run `merge_chunks(split, out_root)` once all tasks
+have finished.
+
 ---
 
 ## 5. Model training (GPU-friendly)
