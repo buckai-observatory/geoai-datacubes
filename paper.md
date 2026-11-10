@@ -49,7 +49,7 @@ deep-learning workflows. From a single configuration block — a region of
 interest, a time window, a set of bands — it fetches, co-registers, fuses, and
 tiles imagery from **26 missions**. The direct sensor observations are
 Sentinel-2 L1C and L2A [@sentinel2], Sentinel-1 RTC [@sentinel1],
-Landsat 8/9 C2 L2 [@landsat], NAIP, PlanetScope 4-band and 8-band, MODIS
+Landsat 8/9 C2 L2 [@landsat], NAIP, PlanetScope 4-band and 8-band imagery, MODIS
 reflectance and land-surface temperature, HLS, ALOS PALSAR, Copernicus DEM
 at 30 m and 90 m, and USGS 3DEP. The derived products are ESA WorldCover
 [@esa_worldcover], ALOS Forest / Non-Forest, USDA CDL, USGS LCMAP, Impact
@@ -69,8 +69,8 @@ notebook that trains and compares logistic regression, random forest
 a conditional NDWI [@ndwi] spectral-index baseline, and an *integration*
 notebook that composes `geoai-datacubes` with the `opengeos/geoai` modelling
 library [@wu2026geoai] across a multi-AOI Cleveland / Cincinnati / Columbus
-experiment. A `smoke-tests/` folder ships SLURM-or-bash scripts for every
-mission.
+experiment. The `smoke-tests/` folder includes Slurm and Bash scripts for
+every mission.
 
 # Statement of need
 
@@ -78,11 +78,12 @@ As foundation models and pretrained wrappers for Earth observation become one
 `pip install` away, the bottleneck for machine-learning research on satellite
 imagery is more often the data preparation pipeline than the model itself.
 A typical workflow stitches together vendor SDKs, manual reprojection between
-coordinate systems, per-mission cloud masks, ad-hoc nodata handling,
+coordinate systems, per-mission cloud masks, ad hoc nodata handling,
 band-specific normalisation, and thousands of tile files written to disk.
 Each step silently degrades the final model: cloud-smeared nodata biases
 predictions, integer QA bands resampled bilinearly become nonsense,
-un-normalised DN values collapse CNN training without an error message.
+unnormalised digital number (DN) values can cause CNN training to fail
+without an error message.
 `geoai-datacubes` consolidates these steps into a single configuration-driven
 pipeline. The library targets graduate students and postdocs entering
 Earth-observation machine learning, researchers running cross-modal
@@ -96,11 +97,11 @@ jobs from laptop to cluster, and instructors teaching applied remote sensing.
 raster missions one at a time — no multi-mission fusion, per-band
 normalisation, or spatially-aware splits. Our library fills exactly that
 data-engineering gap, and a bundled `select_bands` helper plus `BAND_PRESETS`
-dict lets `geoai`'s loaders consume our cubes without modification; notebook
+dictionary lets `geoai`'s loaders consume our cubes without modification; notebook
 03 demonstrates the end-to-end hand-off with honest in-distribution
-F1 $\approx 0.95$ and held-out-city F1 $\approx 0.05$. Beyond `geoai`:
-`pystac` [@stac-spec] handles STAC catalogue queries, `rasterio` [@rasterio]
-and `xarray` [@xarray] handle raster I/O, and `torchgeo` [@torchgeo] provides
+F1 $\approx 0.95$ and held-out-city F1 $\approx 0.05$. Beyond `geoai`,
+PySTAC [@stac-spec] handles STAC catalogue queries, Rasterio [@rasterio]
+and xarray [@xarray] handle raster I/O, and TorchGeo [@torchgeo] provides
 PyTorch datasets for pre-existing benchmark cubes and is the lingua franca
 for the raster-dataset abstraction. None address the per-band-metadata,
 multi-mission-fusion, spatially-aware-split, or HPC-integration concerns
@@ -124,17 +125,18 @@ tooling:
    applying those defaults explicitly. A regex fallback infers a sensible
    recipe for unregistered bands.
 2. **Multi-mission fusion onto a common UTM grid (`fuse_response_tiffs`)**
-   with per-band-correct resampling — bilinear for continuous reflectance
+   with band-appropriate resampling — bilinear for continuous reflectance
    and elevation, nearest-neighbour for categorical and QA bands — and
    provenance preserved in mission-prefixed band descriptions. A fused cube
-   is a single multi-band cloud-optimised GeoTIFF that any `torchgeo`-style
+   is a single multi-band cloud-optimised GeoTIFF that any TorchGeo-style
    PyTorch dataset can consume directly.
 3. **Band-aware handling of missing data and spatially-aware data
    sampling.** With `nan_handling="auto"`, per-kind NaN fill
-   (mean for spectral / SAR, biharmonic in-painting for elevation, NN-rounded
-   for categorical, tile-drop on QA NaN) plus four split strategies
-   (`random`, `block`, `stripes`, `regions`) close the train / test leakage
-   hole that random tile splits leave open in spatially-autocorrelated
+   (mean for spectral / SAR, biharmonic in-painting for elevation,
+   nearest-neighbour fill rounded to integer class values for categorical
+   bands, tile-drop on QA NaN) plus four split strategies (`random`,
+   `block`, `stripes`, `regions`) reduce the risk of train/test data
+   leakage associated with random tile splits in spatially-autocorrelated
    imagery.
 
 A `LazyTileDataset` class lets researchers sweep tile size, stride,
@@ -144,7 +146,7 @@ without ever materialising a tile to disk.
 # Research impact statement
 
 The pipeline underpins ongoing research within the authors' group.
-@hsu2026local use it to fuse Sentinel-2 reflectance with airborne-LIDAR
+@hsu2026local use it to fuse Sentinel-2 reflectance with airborne LiDAR
 bathymetry and benchmark classical machine learning against deep learning for
 transferable satellite-derived bathymetry. A parallel
 interpretability line fine-tunes deep networks on Sentinel-2 cubes assembled
@@ -160,9 +162,9 @@ This work was supported by The Ohio State University's BuckAI Observatory
 and School of Earth Sciences. The pipeline's foundational Sentinel-1 /
 Sentinel-2 acquisition and tiling layer was prototyped by Jain and
 Radhakrishnan in August–October 2025; the multi-mission expansion, ML/DL
-notebooks, and the present documentation are by Moortgat; review and testing
-during 2026 by Chowdhury and Hsu. Open data are provided by ESA Copernicus,
-USGS, and the Copernicus DEM programme; cloud-hosted imagery by Element 84
+notebooks, and the present documentation are by Moortgat; and review and
+testing during 2026 were conducted by Chowdhury and Hsu. Open data are
+provided by ESA Copernicus, USGS, and the Copernicus DEM programme; cloud-hosted imagery by Element 84
 and Microsoft Planetary Computer; commercial PlanetScope by Planet's
 Education and Research Program.
 
