@@ -187,6 +187,9 @@ quartodoc:
         - preprocessing.geotiff_to_zarr
         - preprocessing.export_to_zarr
         - preprocessing.export_to_lmdb
+        - preprocessing.export_temporal_cube_chunk
+        - preprocessing.merge_chunks
+        - preprocessing.read_patch_meta
     - title: "Band math + metadata"
       desc: "Per-band normalisation, cloud masking, mission-aware NaN handling."
       contents:

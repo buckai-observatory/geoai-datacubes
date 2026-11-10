@@ -13,6 +13,8 @@ Public API:
 * :class:`LazyTileDataset` -- ``torch.utils.data.Dataset`` that reads
   tile windows on demand from a GeoTIFF cube or a Zarr store; pickle-safe
   for ``DataLoader(num_workers > 0)``.
+* :func:`export_temporal_cube_chunk` / :func:`merge_chunks` -- resumable,
+  SLURM-array-safe export of multi-temporal patch cubes to Zarr.
 * :func:`clip_to_geometry` -- NaN-out pixels outside a polygon AOI
   (holes included) in a fetched GeoTIFF.
 * :func:`geotiff_to_zarr` -- convert a GeoTIFF cube to Zarr (useful for
@@ -103,6 +105,9 @@ from .band_ops import (
 )
 from .export_zarr import export_to_zarr
 from .export_lmdb import export_to_lmdb
+from .checkpointed_export import (
+    export_temporal_cube_chunk, merge_chunks, read_patch_meta,
+)
 from .band_select import select_bands, write_label_uint8, BAND_PRESETS
 from .clip import clip_to_geometry
 
@@ -115,6 +120,9 @@ __all__ = [
     "geotiff_to_zarr",
     "export_to_zarr",
     "export_to_lmdb",
+    "export_temporal_cube_chunk",
+    "merge_chunks",
+    "read_patch_meta",
     "normalize_band",
     "compute_ndvi",
     "compute_ndwi",
