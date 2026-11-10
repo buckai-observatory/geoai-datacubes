@@ -8,6 +8,8 @@ Joachim Moortgat.
 ## Unreleased
 
 - **Fix** (`fetch`, part of [#13](https://github.com/buckai-observatory/geoai-datacubes/issues/13)): STAC searches (the `earthsearch` and `planetary_computer` paths, and the `tile_around` AOI lookup) now retry HTTP 429 / 5xx responses, connection errors and timeouts with exponential backoff (2, 4, 8, ... s, capped at 60 s, honouring `Retry-After`) instead of failing on the first transient error. This matters most when many SLURM array tasks hit the same public catalogue at once. Planetary Computer URL signing now uses the same helper.
+- **Feature** (`fetch`, [#15](https://github.com/buckai-observatory/geoai-datacubes/issues/15)): the `userdata.json` sidecar written by the STAC path now records `sunAzimuth`, `sunElevation`, `viewAzimuth` and `viewIncidenceAngle` from the STAC `view` extension, plus `sceneId` (the raw STAC item id) next to `tileId`. Collections that do not publish `view:*` properties get `null`.
+- **Feature** (`tiler`, [#16](https://github.com/buckai-observatory/geoai-datacubes/issues/16)): new `cloud_mask_dilation_px` option on `tile_geotiff` grows the combined SCL / QA / UDM2 cloud mask by N pixels to catch the under-flagged halo at cloud edges (most visible over water). The default `0` leaves behaviour unchanged. Each tile reads a halo around its window before dilating, so the mask does not depend on where tile edges fall. Dilation adds NaN pixels before NaN handling, so re-check `nan_max_fraction` and `nan_interp_max_dist` when turning it on. Each tile records the value in its `tile_cloud_mask_dilation_px` tag.
 
 ## Released versions
 

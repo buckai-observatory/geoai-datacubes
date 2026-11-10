@@ -531,6 +531,33 @@ def _resolve_pc_href(href, max_retries=4):
 
 
 # ---- Shared core: STAC search + per-band COG read + multi-band TIFF write ----
+def _stac_userdata(representative, *, mission, acquisition_date, tile_id,
+                   provider_label, collection, bands, is_static, mosaic_tiles):
+    """Build the ``userdata.json`` sidecar dict for a STAC fetch.
+
+    Sun / view geometry comes from the STAC ``view`` extension; collections
+    that omit it get ``None`` rather than an error. ``sceneId`` is the raw
+    STAC item id, so the source item can be re-queried later.
+    """
+    props = representative["properties"]
+    return {
+        "satellite":          props.get("platform", mission),
+        "acquisitionDate":    acquisition_date,
+        "cloudCover":         props.get("eo:cloud_cover"),
+        "sunAzimuth":         props.get("view:sun_azimuth"),
+        "sunElevation":       props.get("view:sun_elevation"),
+        "viewAzimuth":        props.get("view:azimuth"),
+        "viewIncidenceAngle": props.get("view:incidence_angle"),
+        "tileId":             tile_id,
+        "sceneId":            representative.get("id"),
+        "provider":           provider_label,
+        "collection":         collection,
+        "bands":              bands,
+        "static":             is_static,
+        "mosaic_tiles":       mosaic_tiles,
+    }
+
+
 def _fetch_via_stac(
     mission, bands, time_range, roi,
     *,
@@ -765,17 +792,13 @@ def _fetch_via_stac(
             dst.set_band_description(i, b)
 
     # 7. Sidecar metadata
-    userdata = {
-        "satellite":       representative["properties"].get("platform", mission),
-        "acquisitionDate": scene_dt_for_userdata,
-        "cloudCover":      representative["properties"].get("eo:cloud_cover"),
-        "tileId":          rep_scene_id,
-        "provider":        provider_label,
-        "collection":      collection,
-        "bands":           final_bands,
-        "static":          is_static,
-        "mosaic_tiles":    len(items) if is_static else 1,
-    }
+    userdata = _stac_userdata(
+        representative, mission=mission,
+        acquisition_date=scene_dt_for_userdata, tile_id=rep_scene_id,
+        provider_label=provider_label, collection=collection,
+        bands=final_bands, is_static=is_static,
+        mosaic_tiles=len(items) if is_static else 1,
+    )
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)
 
