@@ -5,6 +5,10 @@ School of Earth Sciences and the Department of Computer Science and
 Engineering at The Ohio State University, under the direction of
 Joachim Moortgat.
 
+## Unreleased
+
+- **Feature** (`fetch` + `preprocessing`, [#14](https://github.com/buckai-observatory/geoai-datacubes/issues/14)): opt-in clipping to the true AOI polygon. `AOI = {"shapefile": ..., "clip_to_geometry": True}` keeps the bbox for the provider search, then sets pixels outside the polygon (and inside any holes) to NaN in the fetched GeoTIFF. New public helpers: `fetch.resolve_aoi_geometry(spec)` returns the polygon(s) in WGS84, and `preprocessing.clip_to_geometry(tiff_path, geometries)` does the clip for any provider's output. `main.py` applies it when the flag is set. Default behaviour is unchanged; `clip_to_geometry` on a non-shapefile AOI raises a clear error.
+
 ## Released versions
 
 ### `1.0.0` — 2026-11-02 — version reviewed and published in JOSS
