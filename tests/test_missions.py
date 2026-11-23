@@ -10,7 +10,7 @@ _EXPECTED_MISSIONS = (
     "Sentinel-2", "Sentinel-2-L1C",
     "Sentinel-1",
     "Landsat",
-    "Copernicus-DEM", "Copernicus-DEM-90",
+    "Copernicus-DEM", "Copernicus-DEM-90", "ALOS-DEM",
     "ESA-WorldCover",
     "NAIP",
     "MODIS_SR", "MODIS_LST",
@@ -19,7 +19,7 @@ _EXPECTED_MISSIONS = (
     "JRC-GSW",
     "ALOS-PALSAR", "ALOS-FNF",
     "Hansen-GFC",
-    "USDA-CDL", "LCMAP-CONUS", "IO-LULC",
+    "USDA-CDL", "LCMAP-CONUS", "IO-LULC", "ESA-CCI-LC",
     "Chloris-Biomass",
     "PlanetScope-4b", "PlanetScope-8b",
     "Sentinel-5P", "GEDI-L4B", "GEBCO",          # documented stubs
@@ -64,3 +64,40 @@ def test_stub_missions_have_no_providers():
     for stub in ("GEDI-L4B", "GEBCO"):
         # No router entry == cannot be fetched (which is the contract).
         assert stub not in PROVIDER_AUTO or not PROVIDER_AUTO[stub]
+
+
+# ---- ALOS-DEM and ESA-CCI-LC (issue #7) ----
+
+def test_new_pc_missions_are_auto_routed():
+    from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
+    for mission in ("ALOS-DEM", "ESA-CCI-LC"):
+        assert PROVIDER_AUTO[mission] == "planetary_computer"
+        assert "planetary_computer" in MISSION_PROFILES[mission]["providers"]
+
+
+def test_esa_cci_lc_bands_resample_nearest():
+    # Class codes and QA counts must never be averaged by bilinear resampling.
+    from rasterio.warp import Resampling
+    from geoai_datacubes.fetch.fetch_data import _resampling_for_band
+    profile = MISSION_PROFILES["ESA-CCI-LC"]
+    for band in profile["providers"]["planetary_computer"]["asset_map"]:
+        assert _resampling_for_band(band, None, profile) == Resampling.nearest
+
+
+def test_esa_cci_lc_one_hot_covers_all_lccs_classes():
+    classes = MISSION_PROFILES["ESA-CCI-LC"]["band_meta"]["LCCS"]["norm"][1]
+    assert len(classes) == len(set(classes)) == 37
+    assert 0 not in classes          # 0 is no-data
+    assert {10, 190, 210, 220} <= set(classes)
+
+
+def test_esa_cci_lc_processed_flag_is_opt_in():
+    profile = MISSION_PROFILES["ESA-CCI-LC"]
+    assert "processed_flag" not in profile["default_bands"] + profile["extra_bands"]
+    assert "processed_flag" in profile["providers"]["planetary_computer"]["asset_map"]
+
+
+def test_alos_dem_is_static_elevation():
+    profile = MISSION_PROFILES["ALOS-DEM"]
+    assert profile["static"] is True
+    assert profile["band_meta"]["DEM"]["kind"] == "elevation"

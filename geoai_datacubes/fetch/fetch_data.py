@@ -74,6 +74,8 @@ PROVIDER_AUTO = {
     "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)
     "IO-LULC":        "planetary_computer", # annual global 10 m LULC
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
+    "ALOS-DEM":       "planetary_computer", # PC only; AW3D30 static 30 m DSM
+    "ESA-CCI-LC":     "planetary_computer", # PC only; annual 300 m LULC, 1992-2020
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray

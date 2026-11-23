@@ -698,6 +698,34 @@ MISSION_PROFILES = {
     },
 
     # ============================================================
+    # ALOS World 3D-30m (AW3D30, JAXA). PC collection "alos-dem".
+    # Static global DSM at 1 arc-second (~30 m), one int16 COG per
+    # 1 deg x 1 deg lat/lon tile, native CRS EPSG:4326. Built from
+    # PRISM optical stereo (2006-2011), so it is a *surface* model
+    # (canopy and building tops), like Copernicus DEM. An independent
+    # second 30 m DEM is useful for cross-checking Copernicus-DEM or
+    # filling its voids. JAXA terms: free use with attribution
+    # ("(c) JAXA").
+    # ============================================================
+    "ALOS-DEM": {
+        "default_bands": ["DEM"],
+        "extra_bands":   [],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        True,
+        "band_meta": {
+            "DEM": {"kind": "elevation", "norm": ('mean_subtract', 1000.0)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "alos-dem",
+                "asset_map":  {"DEM": "data"},
+            },
+        },
+    },
+
+    # ============================================================
     # ALOS PALSAR Annual Mosaic (L-band SAR backscatter, JAXA).
     # PC collection "alos-palsar-mosaic". Annual mosaic, 2015-2021,
     # 25 m native resolution, served as one COG per 1 deg x 1 deg lat/lon
@@ -909,6 +937,59 @@ MISSION_PROFILES = {
             "planetary_computer": {
                 "collection": "io-lulc-annual-v02",
                 "asset_map": {"LULC": "data"},
+            },
+        },
+    },
+
+    # ============================================================
+    # ESA CCI Land Cover (ESA Climate Change Initiative / C3S).
+    # PC collection "esa-cci-lc". Annual global 300 m land-cover maps,
+    # 1992-2020 (v2.0.7 for 1992-2015, C3S v2.1.1 for 2016-2020), one
+    # COG per 45 deg x 45 deg tile, native CRS EPSG:4326. The longest
+    # consistent annual land-cover record available, so it suits
+    # change studies that need to reach back before Sentinel-2.
+    #
+    # LCCS: UN-FAO Land Cover Classification System codes (37 classes,
+    # 0 = no data), e.g. 10 cropland rainfed, 50 broadleaved evergreen
+    # forest, 190 urban, 210 water. Per-pixel helper layers:
+    #   current_pixel_state  1 land, 2 water, 3 snow, 4 cloud, 5 shadow
+    #   processed_flag       1 = processed, 0 = not processed
+    #   observation_count    valid satellite observations used
+    #   change_count         class changes over the full record
+    # Free to use with attribution (ESA CCI / C3S data policy).
+    # ============================================================
+    "ESA-CCI-LC": {
+        "default_bands": ["LCCS"],
+        # processed_flag is left out of the defaults: the source marks
+        # some pixels with a valid LCCS class as no-data (255) in it, and
+        # NaN in a "qa" band makes tile_geotiff drop the whole tile. It
+        # can still be requested explicitly.
+        "extra_bands":   ["current_pixel_state",
+                          "observation_count", "change_count"],
+        "cloud_filter":  False,
+        "ndvi":          None,
+        "cloud_mask":    None,
+        "static":        False,    # one map per year; pick it with TIME_RANGE
+        "band_meta": {
+            "LCCS": {"kind": "categorical", "norm": ("one_hot", (
+                10, 11, 12, 20, 30, 40, 50, 60, 61, 62, 70, 71, 72, 80, 81,
+                82, 90, 100, 110, 120, 121, 122, 130, 140, 150, 151, 152,
+                153, 160, 170, 180, 190, 200, 201, 202, 210, 220))},
+            "current_pixel_state": {"kind": "qa",    "norm": ("passthrough",)},
+            "processed_flag":      {"kind": "qa",    "norm": ("passthrough",)},
+            "observation_count":   {"kind": "qa",    "norm": ("passthrough",)},
+            "change_count":        {"kind": "qa",    "norm": ("passthrough",)},
+        },
+        "providers": {
+            "planetary_computer": {
+                "collection": "esa-cci-lc",
+                "asset_map": {
+                    "LCCS":                "lccs_class",
+                    "current_pixel_state": "current_pixel_state",
+                    "processed_flag":      "processed_flag",
+                    "observation_count":   "observation_count",
+                    "change_count":        "change_count",
+                },
             },
         },
     },

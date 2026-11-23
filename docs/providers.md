@@ -27,10 +27,11 @@ continent-scale workflow.
 | **PlanetScope (3 m)** | — | — | ✅ 4-band legacy + 8-band SuperDove SR + UDM2 | — |
 | **NAIP (1 m US aerial)** | — | ✅ | — | — |
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) |
-| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, ESA-CCI-LC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs |
 
 **Newer additions** (MODIS, HLS, JRC-GSW, 3DEP, Copernicus-DEM-90,
-ALOS-PALSAR, ALOS-FNF, USDA-CDL, LCMAP-CONUS, IO-LULC, Chloris-Biomass)
+ALOS-PALSAR, ALOS-FNF, ALOS-DEM, USDA-CDL, LCMAP-CONUS, IO-LULC,
+ESA-CCI-LC, Chloris-Biomass)
 are all served by Microsoft Planetary Computer; `Hansen-GFC` is served
 by the `direct_http` provider (anonymous Google Cloud Storage COGs,
 no STAC). `Sentinel-5P`, `GEDI-L4B`, and `GEBCO` are documented stubs
@@ -49,7 +50,7 @@ for the full bands and normalisation recipes.
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
 | `MODIS_SR` / `MODIS_LST` / `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
-| `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
+| `ALOS-PALSAR` / `ALOS-FNF` / `ALOS-DEM` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `ESA-CCI-LC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
 | `Sentinel-5P` / `GEDI-L4B` / `GEBCO` | not routed (stubbed) | Pending NetCDF reader / Earthdata-Login / cache-download work |
