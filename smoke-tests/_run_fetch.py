@@ -83,6 +83,8 @@ DEFAULT_BANDS = {
     "LCMAP-CONUS":      ["lcpri", "lcpconf"],
     "IO-LULC":          ["LULC"],
     "Chloris-Biomass":  ["biomass"],
+    "ALOS-DEM":         ["DEM"],
+    "ESA-CCI-LC":       ["LCCS"],
 }
 DEFAULT_DATES = {
     # Optical: clear summer-2024 window over the US Midwest.
@@ -119,6 +121,8 @@ DEFAULT_DATES = {
     "LCMAP-CONUS":    ("2020-01-01", "2020-12-31"),     # annual
     "IO-LULC":        ("2020-01-01", "2020-12-31"),     # annual; year-tiled items
     "Chloris-Biomass": ("2018-01-01", "2018-12-31"),    # annual; 2003-2019 available
+    "ALOS-DEM":       ("2020-01-01", "2020-12-31"),     # static (AW3D30)
+    "ESA-CCI-LC":     ("2020-01-01", "2020-12-31"),     # annual; 1992-2020 available
 }
 DEFAULT_RES = {
     "Sentinel-2":     10,  "Sentinel-2-L1C": 10,  "Sentinel-1":     10,
@@ -131,6 +135,7 @@ DEFAULT_RES = {
     "Copernicus-DEM-90": 90,  "USDA-CDL":       30,
     "LCMAP-CONUS":    30,  "IO-LULC":         10,
     "Chloris-Biomass": 5000,   # ~4.6 km, round up
+    "ALOS-DEM":        30,     "ESA-CCI-LC":     300,
 }
 TIGHT_AOI_MISSIONS = {"NAIP", "PlanetScope-4b", "PlanetScope-8b"}
 
@@ -303,6 +308,7 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
     "Copernicus-DEM":    {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
     "Copernicus-DEM-90": {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
     "3DEP":              {"max_nan_fraction": 0.05, "value_range": (-500.0, 5000.0)},
+    "ALOS-DEM":          {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
 
     # ---- Hydrology (percent occurrence 0..100) ----
     "JRC-GSW":        {"max_nan_fraction": 0.02, "value_range": (0.0, 100.0)},
@@ -352,6 +358,13 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
     # backward-compat safety valve for older catalogue entries.
     "ALOS-FNF":       {"max_nan_fraction": 0.02,
                         "categorical_values": {0, 1, 2, 3, 4}},
+    # ESA CCI LC: UN-FAO LCCS codes (0 = no data).
+    "ESA-CCI-LC":     {"max_nan_fraction": 0.02,
+                        "categorical_values": {
+                            10, 11, 12, 20, 30, 40, 50, 60, 61, 62, 70, 71,
+                            72, 80, 81, 82, 90, 100, 110, 120, 121, 122,
+                            130, 140, 150, 151, 152, 153, 160, 170, 180,
+                            190, 200, 201, 202, 210, 220}},
     "IO-LULC":        {
         "max_nan_fraction": 0.30,   # 10 m tiles have visible edges in mosaics
         "categorical_values": {1, 2, 4, 5, 7, 8, 9, 10, 11},

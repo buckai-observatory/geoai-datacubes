@@ -84,7 +84,7 @@ Each entry in `MISSION_PROFILES` has this shape:
 ```
 
 Variations across missions:
-- **Static missions** (Copernicus DEM GLO-30 / GLO-90, ESA WorldCover,
+- **Static missions** (Copernicus DEM GLO-30 / GLO-90, ALOS-DEM, ESA WorldCover,
   JRC-GSW, 3DEP, ALOS-PALSAR, ALOS-FNF, USDA-CDL, LCMAP-CONUS, IO-LULC,
   Chloris-Biomass, Hansen-GFC) set `"static": True` to skip date
   filtering and trigger the cross-tile static-mosaic path.
