@@ -7,6 +7,14 @@ Joachim Moortgat.
 
 ## Unreleased
 
+Nothing yet.
+
+## Released versions
+
+### `1.1.0` — 2026-11-24
+
+The first release after the JOSS paper was published (Moortgat et al. 2026, *JOSS* 11(127):11034, [10.21105/joss.11034](https://doi.org/10.21105/joss.11034)). It adds the Earth Engine, Earthdata, KyFromAbove and 3DEP lidar data sources and the `agents/` files for AI coding assistants. No breaking changes: with `provider="auto"`, every mission available in 1.0.0 is fetched from the same provider as before.
+
 - **Feature** (`fetch`, [#18](https://github.com/buckai-observatory/geoai-datacubes/pull/18)): Google Earth Engine provider (`earth_engine`) with Dynamic World, JRC-GFC2020 and AlphaEarth embeddings. MODIS_SR and MODIS_LST gain an opt-in Earth Engine path (`provider="earth_engine"`) that mosaics sinusoidal tiles server-side ([#10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); `provider="auto"` keeps them on the credential-free `planetary_computer` path.
 - **Feature** (`fetch`, [#18](https://github.com/buckai-observatory/geoai-datacubes/pull/18)): NASA Earthdata provider (`earthdata`) for NISAR-L, ICESat-2 (ATL03/06/08/13), GEDI L4A/L4B, SWOT-HR, CryoSat-RDEFT4, SMAP-L3 and Sentinel-5P NO2, with download-size estimates and per-mission caps. New `direct_http` missions ArcticDEM and GEBCO-2024, and a `local_files` provider for registering the user's own rasters.
 - **Feature** (`fetch` + `viz`, [#48](https://github.com/buckai-observatory/geoai-datacubes/pull/48), Samir Pahari): KyFromAbove provider for Kentucky's statewide LiDAR DEMs (`KyFromAbove-DEM` and one mission per survey phase), and a `terrain` command writing slope, aspect and hillshade GeoTIFFs.
@@ -19,8 +27,6 @@ Joachim Moortgat.
 - **Fix** (`fetch`, part of [#13](https://github.com/buckai-observatory/geoai-datacubes/issues/13)): STAC searches (the `earthsearch` and `planetary_computer` paths, and the `tile_around` AOI lookup) now retry HTTP 429 / 5xx responses, connection errors and timeouts with exponential backoff (2, 4, 8, ... s, capped at 60 s, honouring `Retry-After`) instead of failing on the first transient error. This matters most when many SLURM array tasks hit the same public catalogue at once. Planetary Computer URL signing now uses the same helper.
 - **Feature** (`fetch`, [#15](https://github.com/buckai-observatory/geoai-datacubes/issues/15)): the `userdata.json` sidecar written by the STAC path now records `sunAzimuth`, `sunElevation`, `viewAzimuth` and `viewIncidenceAngle` from the STAC `view` extension, plus `sceneId` (the raw STAC item id) next to `tileId`. Collections that do not publish `view:*` properties get `null`.
 - **Feature** (`tiler`, [#16](https://github.com/buckai-observatory/geoai-datacubes/issues/16)): new `cloud_mask_dilation_px` option on `tile_geotiff` grows the combined SCL / QA / UDM2 cloud mask by N pixels to catch the under-flagged halo at cloud edges (most visible over water). The default `0` leaves behaviour unchanged. Each tile reads a halo around its window before dilating, so the mask does not depend on where tile edges fall. Dilation adds NaN pixels before NaN handling, so re-check `nan_max_fraction` and `nan_interp_max_dist` when turning it on. Each tile records the value in its `tile_cloud_mask_dilation_px` tag.
-
-## Released versions
 
 ### `1.0.0` — 2026-11-02 — version reviewed and published in JOSS
 

@@ -9,7 +9,7 @@
 [![notebooks](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/notebooks.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/notebooks.yml)
 [![PyPI](https://img.shields.io/pypi/v/geoai-datacubes.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/geoai-datacubes/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
-[![status](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00/status.svg)](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00)
+[![JOSS](https://joss.theoj.org/papers/10.21105/joss.11034/status.svg)](https://doi.org/10.21105/joss.11034)
 [![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://ai-observatory.osu.edu)
 
 **Full documentation:** <https://buckai-observatory.github.io/geoai-datacubes/>
@@ -319,6 +319,10 @@ Built and maintained by the [**BuckAI Observatory**](https://ai-observatory.osu.
 
 This project was developed over approximately one year by **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**; **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou**; and **Moortgat, Joachim** (principal investigator) at OSU. See [`CHANGELOG.md`](CHANGELOG.md) for the full timeline and [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of who contributed what. Code development since May 2026 was substantially accelerated by [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, used under continuous human direction and review.
 
-If you use `geoai-datacubes` in your research, please cite via the GitHub "Cite this repository" dropdown (sourced from [`CITATION.cff`](CITATION.cff)) or the JOSS paper draft at [`paper.md`](paper.md).
+If you use `geoai-datacubes` in your research, please cite the JOSS paper:
+
+> Moortgat, J., Jain, B., Radhakrishnan, A., Chowdhury, S. R., & Hsu, H. J. (2026). geoai-datacubes: AI-ready multi-mission satellite data cubes for Earth-observation machine learning. *Journal of Open Source Software*, 11(127), 11034. https://doi.org/10.21105/joss.11034
+
+To cite a specific software version, use its Zenodo DOI (the concept DOI [10.5281/zenodo.20829119](https://doi.org/10.5281/zenodo.20829119) always resolves to the latest version) or the GitHub "Cite this repository" dropdown, which reads [`CITATION.cff`](CITATION.cff).
 
 We welcome collaboration. If this tool helps your research, we'd love to hear about it.

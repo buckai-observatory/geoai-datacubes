@@ -144,7 +144,7 @@ If you use `geoai-datacubes` in your research, please cite the archived software
 }
 ```
 
-A software paper is currently [under review](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00) at the *Journal of Open Source Software* — this page will link to the accepted paper once published.
+The software is described in a paper in the *Journal of Open Source Software*: Moortgat et al. (2026), *JOSS* 11(127):11034, [10.21105/joss.11034](https://doi.org/10.21105/joss.11034).
 
 ## Who's using this
 
