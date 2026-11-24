@@ -168,6 +168,7 @@ earthdata = [
     "h5py>=3.0",
     "xarray>=2023.1",       # NetCDF-4 readers (SWOT, CryoSat RDEFT4, ...)
     "h5netcdf>=1.0",        # xarray NetCDF-4 backend without needing libnetcdf
+    "pyarrow>=12",          # <band>_observations.parquet sidecars (tracks flow)
 ]
 
 # Development tooling (formatter, linter, tests).
@@ -338,6 +339,7 @@ earthaccess = ">=0.11"
 h5py        = ">=3.0"
 xarray      = ">=2023.1"
 h5netcdf    = ">=1.0"
+pyarrow     = ">=12"
 
 [tool.pixi.feature.earthengine.dependencies]
 earthengine-api = "*"
