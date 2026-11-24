@@ -8,6 +8,9 @@ from geoai_datacubes.fetch import MISSION_PROFILES, fetch_data
 
 
 class _Resp:
+    status_code = 200
+    headers = {}
+
     def __init__(self, payload):
         self._payload = payload
 
