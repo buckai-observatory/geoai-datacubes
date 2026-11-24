@@ -174,6 +174,15 @@ def cmd_quality(a):
     print(quality_report(a.cube))
 
 
+def cmd_terrain(a):
+    from geoai_datacubes.viz.terrain import write_terrain
+    products = tuple(p.strip() for p in a.products.split(",") if p.strip())
+    out = write_terrain(a.dem, band=a.band, out_dir=a.output_dir,
+                        products=products, z_factor=a.z_factor)
+    for name, path in out.items():
+        print(f"{name}: {path}")
+
+
 def cmd_hillshade(a):
     from geoai_datacubes.viz.terrain import write_hillshade
 
@@ -307,6 +316,16 @@ def build_parser():
     s = sub.add_parser("quality", help="Print a quality report for a cube")
     s.add_argument("cube")
     s.set_defaults(func=cmd_quality)
+
+    s = sub.add_parser("terrain", help="Write slope, aspect and hillshade GeoTIFFs from a DEM")
+    s.add_argument("dem")
+    s.add_argument("--band", type=int, default=1)
+    s.add_argument("--products", default="slope,aspect,hillshade",
+                   help="Comma-separated subset of slope,aspect,hillshade")
+    s.add_argument("--z-factor", type=float, default=1.0,
+                   help="Multiply elevation first (only if its units differ from the grid's)")
+    s.add_argument("-o", "--output-dir", help="Default: next to the DEM")
+    s.set_defaults(func=cmd_terrain)
 
     s = sub.add_parser("hillshade", help="Write a hillshade GeoTIFF (QGIS doesn't need this)")
     s.add_argument("dem")

@@ -33,6 +33,7 @@ from .fetch_data import (
     fetch_sentinelhub,
     fetch_planet,
     fetch_local_files,
+    fetch_kyfromabove,
 )
 from ._local_files import register_local_mission, unregister_local_mission
 from .parallel_fetch import fetch_many_in_parallel
@@ -51,6 +52,7 @@ __all__ = [
     "fetch_sentinelhub",
     "fetch_planet",
     "fetch_local_files",
+    "fetch_kyfromabove",
     "register_local_mission",
     "unregister_local_mission",
     "fetch_many_in_parallel",

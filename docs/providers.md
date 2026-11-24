@@ -267,6 +267,15 @@ the separate `earthdata` provider, not here.
 
 ---
 
+## `kyfromabove` (Kentucky STAC API, no credentials)
+
+The Commonwealth of Kentucky's KyFromAbove program serves statewide
+LiDAR DEMs as public COGs in `s3://kyfromabove` with its own STAC API.
+The provider reuses the shared STAC fetch path with four switches:
+GET searches with pagination, tiles grouped by their 5,000 ft grid
+cell with the newest phase winning, and a feet-to-metres scale factor.
+Mission: `KyFromAbove-DEM` (see `data_layers.md`). Kentucky only.
+
 ## Direct AWS access (anonymous boto3, no Earth Search)
 
 **What it is.** Skip Earth Search's STAC layer entirely and use a

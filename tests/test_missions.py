@@ -17,6 +17,7 @@ _EXPECTED_MISSIONS = (
     "MODIS_SR", "MODIS_LST",
     "HLS_S30", "HLS_L30",
     "3DEP",
+    "KyFromAbove-DEM",
     "JRC-GSW",
     "ALOS-PALSAR", "ALOS-FNF",
     "Hansen-GFC",
