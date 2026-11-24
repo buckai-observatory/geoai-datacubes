@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Run Python from the `geoai-cubes` conda env without activating it.
+# `conda activate` often does nothing in a non-interactive shell, and the
+# commands then run on the wrong Python. Every agent command goes through
+# this one wrapper, so a single allow-list entry covers all of them.
+#
+#   scripts/geoai-python -m geoai_datacubes cube "Stromboli"
+#
+# Override the interpreter with GEOAI_PYTHON, or the env name with GEOAI_ENV_NAME.
+ENV_NAME="${GEOAI_ENV_NAME:-geoai-cubes}"
+
+if [ -n "$GEOAI_PYTHON" ]; then
+    exec "$GEOAI_PYTHON" "$@"
+fi
+
+try() { [ -n "$1" ] && [ -x "$1/envs/$ENV_NAME/bin/python" ] && exec "$1/envs/$ENV_NAME/bin/python" "${@:2}"; }
+
+for base in "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3" \
+            /opt/anaconda3 /opt/miniconda3 /opt/miniforge3; do
+    try "$base" "$@"
+done
+try "$(conda info --base 2>/dev/null)" "$@"  # slow (~1 s), so only as a last resort
+
+echo "geoai-python: conda env '$ENV_NAME' not found; using $(command -v python3 || command -v python)" >&2
+exec "$(command -v python3 || command -v python)" "$@"

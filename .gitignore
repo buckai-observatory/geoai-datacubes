@@ -47,6 +47,8 @@ notebooks/_ml_outputs/
 notebooks/_outputs_obj/
 notebooks/_outputs_nb03/
 notebooks/_outputs_nb03_train/
+notebooks/_outputs_nb04/
+notebooks/_outputs_nb05/
 notebooks/logs/
 
 # Misc local caches.
@@ -71,6 +73,14 @@ _site/
 
 /.quarto/
 **/*.quarto_ipynb
+
+# Scratch space for one-off demo/session scripts (see agents/skills/demo.md).
+# Writing here instead of an external scratchpad avoids sandbox path issues
+# some session types hit with paths outside the repo.
+/scratch/
+
+# Demo/session downloads (data_<place>/ folders from `geoai_datacubes cube`).
+/data_*/
 # Fresh user perf-benchmark runs stay local by default so contributors
 # don't accidentally add every laptop timing they collect. The committed
 # reference dataset from the paper's benchmark tables is exempted

@@ -169,7 +169,7 @@ def fuse_response_tiffs(
             for i in indices:
                 # NaN-initialised destination + src_nodata + dst_nodata=NaN
                 # prevents nodata edges from being smeared by bilinear/cubic
-                # resampling. See fetch_data._read_band_to_grid for the same
+                # resampling. See fetch_data._read_bands_to_grid for the same
                 # discipline.
                 out = np.full((out_h, out_w), np.nan, dtype=np.float32)
                 bname = descriptions[i]

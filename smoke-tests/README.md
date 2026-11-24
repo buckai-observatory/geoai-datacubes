@@ -3,7 +3,7 @@
 End-to-end smoke tests that exercise the public surface of
 `geoai-datacubes`: one fetch test per mission (23 fetch scripts today,
 covering the 23 user-facing working missions out of the 26 catalogued;
-Sentinel-5P, GEDI-L4B, and GEBCO are stubs without runnable tests),
+Sentinel-5P is the only remaining stub without a runnable test),
 plus pipeline tests for `tile_geotiff(nan_handling="auto")`.
 
 ## What's here

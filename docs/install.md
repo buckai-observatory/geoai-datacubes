@@ -87,7 +87,13 @@ tax:
 Install syntax:
 
 ```bash
-pip install geoai-datacubes[ml]              # fetch + fuse + ML/DL
+pip install -e ".[ml]"            # + scikit-learn, XGBoost, Ultralytics YOLO, transformers
+pip install -e ".[geoai]"         # + opengeos/geoai (Wu 2026, JOSS 11(118):9605)
+pip install -e ".[notebooks]"     # + jupyterlab, ipywidgets, seaborn, geopandas, contextily
+pip install -e ".[planet]"        # + Planet Orders + Sentinel Hub (commercial providers)
+pip install -e ".[earthengine]"   # + Google Earth Engine provider (Dynamic World, JRC-GFC2020, MODIS with EE tile-mosaicking)
+pip install -e ".[earthdata]"     # + NASA Earthdata provider (NISAR L-band SAR, GEDI, SMAP, ICESat-2, ...)
+pip install -e ".[all]"           # everything above
 pip install geoai-datacubes[ml,earthdata]    # multiple extras — comma-separated inside brackets
 pip install -e ".[dev,earthdata]"            # from a local clone
 ```
@@ -101,6 +107,14 @@ geopandas contextily` for `[notebooks]`; `python-dotenv sentinelhub`
 for `[planet]`. The `pip` recipes are convenient when you already
 have a working conda env, and pin slightly faster on a few
 fast-moving ML packages (ultralytics, transformers).
+
+For `[earthengine]` and `[earthdata]` in particular, **mamba is
+strongly preferred over pip** — both pull in cloud-provider auth stacks
+(Google for `earthengine-api`, Google + AWS for `earthaccess`) that
+have shadowed pip-installed packages in this project's env before. See
+[`docs/providers/earth_engine.md`](providers/earth_engine.md) and
+[`docs/providers/earthdata.md`](providers/earthdata.md) for the full
+auth setups and the credential-selection modes.
 
 > **v1.0.0 note.** Prior to v1.0.0, `torch`, `torchvision`, and
 > `scikit-image` were core dependencies -- fetch-only users paid the

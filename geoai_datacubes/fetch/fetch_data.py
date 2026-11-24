@@ -40,6 +40,7 @@ from rasterio.warp import Resampling, reproject, transform_bounds
 from tqdm.auto import tqdm
 
 from .missions import get_profile, get_provider_config
+from .plan_grid import Grid, plan_grid
 
 
 # STAC endpoints (both anonymous)
@@ -60,20 +61,41 @@ PROVIDER_AUTO = {
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
     "NAIP":           "planetary_computer", # PC only; US aerial imagery
-    "MODIS_SR":       "planetary_computer", # PC only; surface reflectance 8-day
-    "MODIS_LST":      "planetary_computer", # PC only; daily land surface temperature
+    # MODIS stays on the anonymous PC path by default. provider="earth_engine"
+    # mosaics sinusoidal tiles server-side (Issue #10) but needs EE credentials.
+    "MODIS_SR":       "planetary_computer",
+    "MODIS_LST":      "planetary_computer",
     "HLS_S30":        "planetary_computer", # PC only; harmonized S2 leg
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water
     "3DEP":           "planetary_computer", # PC only; US DEM (10 m / 1 m)
+    "KyFromAbove-DEM": "kyfromabove",       # Kentucky 2 ft / 5 ft LiDAR DEM, public S3 + STAC
+    "3DEP-Lidar-DTM": "planetary_computer", # 2 m bare earth from 3DEP point clouds (partial US coverage)
+    "3DEP-Lidar-DSM": "planetary_computer", # 2 m first-surface (trees, buildings) from 3DEP point clouds
     "ALOS-PALSAR":    "planetary_computer", # PC only; L-band SAR annual mosaic
     "ALOS-FNF":       "planetary_computer", # PC only; forest/non-forest annual
     "Hansen-GFC":     "direct_http",        # Hansen Global Forest Change, GCS-hosted
+    "ArcticDEM":      "direct_http",        # PGC ArcticDEM v4.1 32 m mosaic, AWS Open Data
+    "GEBCO-2024":     "direct_http",        # BODC/CEDA GEBCO 2024 15-arcsec global bathymetry/elevation
     "Copernicus-DEM-90": "planetary_computer", # 90 m static, lower-res complement
     "USDA-CDL":       "planetary_computer", # annual US crop-type raster
     "LCMAP-CONUS":    "planetary_computer", # annual US LULC (NLCD substitute)
     "IO-LULC":        "planetary_computer", # annual global 10 m LULC
     "Chloris-Biomass": "planetary_computer", # annual ~4.6 km global biomass
+    "Dynamic-World":  "earth_engine",       # per-Sentinel-2-scene 9-class LULC
+    "JRC-GFC2020":    "earth_engine",       # EUDR-baseline global forest cover 2020
+    "AlphaEarth":     "earth_engine",       # Google DeepMind 64-dim per-pixel embeddings (annual mosaics 2017+)
+    "NISAR-L":        "earthdata",          # NASA NISAR L-band SAR (ASF DAAC, EDL auth)
+    "ICESat-2-ATL03": "earthdata",          # NSIDC DAAC, per-photon geolocated photons (tracks flow, downsampled)
+    "ICESat-2-ATL06": "earthdata",          # NSIDC DAAC, multi-granule track aggregation
+    "ICESat-2-ATL08": "earthdata",          # NSIDC DAAC, land + vegetation heights (100 m tracks flow)
+    "ICESat-2-ATL13": "earthdata",          # NSIDC DAAC, along-track inland water surface heights (tracks flow)
+    "SWOT-HR":        "earthdata",          # PODAAC, KaRIn L2 HR Raster NetCDF (250 m default)
+    "CryoSat-RDEFT4": "earthdata",          # NSIDC DAAC, monthly NH sea-ice thickness (25 km)
+    "GEDI-L4B":       "earthdata",          # ORNL DAAC, 1 km global gridded biomass (EASE-Grid 2.0)
+    "GEDI-L4A":       "earthdata",          # ORNL DAAC, per-shot 25 m footprint biomass (tracks flow)
+    "SMAP-L3":        "earthdata",          # NSIDC DAAC, daily global 9 km enhanced soil moisture (SPL3SMP_E V006)
+    "Sentinel-5P-NO2": "earthdata",         # GES_DISC, TROPOMI L2 NO2 HiR v2 (tracks flow, ~590 MB/orbit)
     "ALOS-DEM":       "planetary_computer", # PC only; AW3D30 static 30 m DSM
     "ESA-CCI-LC":     "planetary_computer", # PC only; annual 300 m LULC, 1992-2020
     # "Sentinel-5P": deliberately NOT registered. The PC collection
@@ -81,6 +103,8 @@ PROVIDER_AUTO = {
     # rasterio. See the missions.py stub and TODO for the planned xarray
     # code path.
 }
+# One mission per KyFromAbove phase (same provider as KyFromAbove-DEM).
+PROVIDER_AUTO.update({f"KyFromAbove-DEM-Phase{p}": "kyfromabove" for p in (1, 2, 3)})
 
 
 # ============================================================
@@ -97,6 +121,7 @@ def fetch_sentinel_data(
     min_cloud_coverage=0.0,        # raise to force *cloudy* scenes (for demos)
     provider="auto",
     config=None,
+    grid=None,
 ):
     """
     Fetch imagery for any supported mission and provider.
@@ -116,15 +141,29 @@ def fetch_sentinel_data(
     roi : [lon_min, lat_min, lon_max, lat_max]
         Bounding box in WGS84.
     resolution : float
-        Output pixel size in metres (output CRS is the scene's native UTM/EPSG).
+        Output pixel size in metres. When ``grid`` is not supplied,
+        the output CRS is the AOI-centroid UTM zone (deterministic
+        across repeat fetches -- see :func:`~.plan_grid.plan_grid`).
     save_folder : str
         Where to write ``<scene_id>/<Mission>_full_size.tiff``.
     max_cloud_coverage : float
         Scene-level cloud-cover threshold (0-1).
     provider : str
-        "auto" (default), "earthsearch", "planetary_computer", or "sentinelhub".
+        "auto" (default), "earthsearch", "planetary_computer",
+        "planet", "direct_http", "earth_engine", "earthdata",
+        "kyfromabove", "local_files", or "sentinelhub".
     config : sentinelhub.SHConfig, optional
         Required only when ``provider="sentinelhub"``.
+    grid : geoai_datacubes.fetch.plan_grid.Grid, optional
+        Force the output onto a specific pre-planned grid. Use this
+        for multi-temporal / multi-mission fetches that must share
+        the same raster -- build once with ``plan_grid(roi,
+        resolution)`` and pass to every call. When ``None`` (default),
+        each call plans its own deterministic AOI-centroid grid.
+        Supported by the ``earthsearch``, ``planetary_computer``, and
+        ``planet`` providers; the other providers already picked
+        AOI-centroid grids and accept the same argument for API
+        consistency. Not yet supported by ``sentinelhub``.
     """
     # NOTE: we intentionally pass `bands` through as-is (incl. None) so each
     # provider can distinguish "user wants the convenient defaults + helper
@@ -150,6 +189,7 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
             min_cloud_coverage=min_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "planetary_computer":
@@ -158,6 +198,7 @@ def fetch_sentinel_data(
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
             min_cloud_coverage=min_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "planet":
@@ -165,18 +206,54 @@ def fetch_sentinel_data(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
             max_cloud_coverage=max_cloud_coverage,
+            grid=grid,
         )
 
     if provider == "direct_http":
         return fetch_direct_http(
             mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
+            grid=grid,
+        )
+
+    if provider == "earth_engine":
+        return fetch_earth_engine(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            grid=grid,
+        )
+
+    if provider == "earthdata":
+        return fetch_earthdata(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            grid=grid,
+        )
+
+    if provider == "kyfromabove":
+        return fetch_kyfromabove(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            grid=grid,
+        )
+
+    if provider == "local_files":
+        return fetch_local_files(
+            mission, bands, time_range, roi,
+            resolution=resolution, save_folder=save_folder,
+            grid=grid,
         )
 
     if provider == "sentinelhub":
         if config is None:
             from .config import get_config_from_env
             config = get_config_from_env()
+        if grid is not None:
+            raise NotImplementedError(
+                "grid= is not yet wired for the sentinelhub provider "
+                "(its Process API picks its own grid server-side). "
+                "Open a follow-up issue if you need it."
+            )
         return fetch_sentinelhub(
             config, mission, bands, time_range, roi,
             resolution=resolution, save_folder=save_folder,
@@ -185,12 +262,14 @@ def fetch_sentinel_data(
 
     raise ValueError(
         f"Unknown provider {provider!r}. Choose 'auto', 'earthsearch', "
-        f"'planetary_computer', 'planet', 'direct_http', or 'sentinelhub'."
+        f"'planetary_computer', 'planet', 'direct_http', 'earth_engine', "
+        f"'earthdata', 'kyfromabove', 'local_files', or 'sentinelhub'."
     )
 
 
 def fetch_direct_http(mission, bands, time_range, roi,
-                       resolution=10, save_folder="data"):
+                       resolution=10, save_folder="data",
+                       grid=None):
     """Direct-HTTP / S3 tile-indexed fetcher for missions outside STAC.
 
     Hansen GFC (Google Cloud Storage), Lang 2023 (ETH), Tolan 2024 (AWS
@@ -199,6 +278,11 @@ def fetch_direct_http(mission, bands, time_range, roi,
     tile-discovery logic lives in ``missions.py`` next to the profile;
     this function just runs the resulting tile list through the
     shared mosaic-and-reproject pipeline.
+
+    ``grid`` (optional): pin the output raster; see
+    :func:`fetch_sentinel_data`. The direct_http path already picks
+    an AOI-centroid UTM grid by default (deterministic across repeat
+    fetches); pass ``grid=`` when aligning with another provider.
     """
     from ._direct_fetch import _fetch_via_direct_http
     profile = get_profile(mission)
@@ -218,6 +302,113 @@ def fetch_direct_http(mission, bands, time_range, roi,
         tile_callback=cfg["tile_callback"],
         band_meta=profile.get("band_meta"),
         release_tag=cfg.get("release_tag"),
+        grid=grid,
+    )
+
+
+def fetch_earth_engine(mission, bands, time_range, roi,
+                       resolution=10, save_folder="data",
+                       grid=None):
+    """Google Earth Engine fetcher (see ``fetch._earth_engine``).
+
+    Reads the mission's ``earth_engine`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earth_engine``, which
+    reduces the collection server-side, downloads the payload (auto-tiling
+    for large AOIs), and writes the standard ``<Mission>_full_size.tiff`` +
+    ``userdata.json`` layout so fusion / tiling need no provider-specific
+    code.
+
+    Auth is env-driven; see the docstring of
+    ``_earth_engine._ensure_ee_initialized`` for the credential-selection
+    order.
+    """
+    from ._earth_engine import _fetch_via_earth_engine
+    cfg = get_provider_config(mission, "earth_engine")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earth_engine(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        ee_collection=cfg["collection"],
+        band_map=cfg["band_map"],
+        reducer_groups=cfg.get("reducer_groups"),
+        static=profile.get("static", False),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
+        scale_factors=cfg.get("scale_factors"),
+        is_image=cfg.get("is_image", False),
+        unmask_value=cfg.get("unmask_value"),
+        project=cfg.get("project"),
+        grid=grid,
+    )
+
+
+def fetch_local_files(mission, bands, time_range, roi,
+                        resolution=10, save_folder="data",
+                        grid=None):
+    """Local-files fetcher (see ``fetch._local_files``).
+
+    Wraps a user-registered set of local raster files (GeoTIFF in v1,
+    NetCDF/HDF5 on the roadmap) as a first-class mission -- same
+    fetch/fuse/tile pipeline, output contract, and downstream ML flow
+    as any other provider.
+
+    Users register missions at runtime with
+    :func:`geoai_datacubes.fetch.register_local_mission`; there is no
+    hardcoded mission profile in ``missions.py`` for this provider.
+    """
+    from ._local_files import _fetch_via_local_files
+    cfg = get_provider_config(mission, "local_files")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_local_files(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        path=cfg["path"],
+        reader=cfg.get("reader", "geotiff"),
+        band_map=cfg.get("band_map"),
+        band_meta=profile.get("band_meta"),
+        time_from_filename=cfg.get("time_from_filename"),
+        grid=grid,
+    )
+
+
+def fetch_earthdata(mission, bands, time_range, roi,
+                     resolution=30, save_folder="data",
+                     grid=None):
+    """NASA Earthdata / CMR fetcher (see ``fetch._earthdata``).
+
+    Reads the mission's ``earthdata`` provider config from
+    ``MISSION_PROFILES`` and delegates to ``_fetch_via_earthdata``, which
+    authenticates via NASA Earthdata Login, searches CMR, downloads the
+    granule, extracts the AOI window with the per-product reader
+    (``nisar_gcov_h5``, ``geotiff``, ...), reprojects to local UTM, and
+    writes the standard ``<Mission>_full_size.tiff`` + ``userdata.json``
+    layout.
+
+    Auth is env-driven; see ``_earthdata._ensure_earthdata_initialized``.
+    """
+    from ._earthdata import _fetch_via_earthdata
+    cfg = get_provider_config(mission, "earthdata")
+    profile = get_profile(mission)
+    if bands is None:
+        bands = list(profile.get("default_bands", [])) + list(profile.get("extra_bands", []))
+    return _fetch_via_earthdata(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        short_name=cfg["short_name"],
+        band_map=cfg["band_map"],
+        reader=cfg.get("reader", "nisar_gcov_h5"),
+        band_meta=profile.get("band_meta"),
+        filters=cfg.get("filters"),
+        default_reducer=cfg.get("default_reducer", "mean"),
+        reader_kwargs=cfg.get("reader_kwargs"),
+        # Per-mission download guards; ignored by non-tracks readers.
+        max_granules=cfg.get("max_granules"),
+        max_download_gb=cfg.get("max_download_gb"),
+        grid=grid,
     )
 
 
@@ -356,14 +547,51 @@ def _resampling_for_band(band_name, cloud_mask_spec, profile=None):
     return Resampling.bilinear
 
 
-def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
-                       band_index=1):
-    """Open a COG via /vsicurl from a ready-to-use URL and reproject one band.
+# GDAL settings for reading cloud-hosted COGs over /vsicurl: don't list the
+# remote "directory", merge adjacent byte ranges into one request, reuse
+# connections (HTTP/2), and cache fetched blocks for the second open below.
+_COG_ENV = {
+    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+    "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
+    "GDAL_HTTP_MULTIPLEX": "YES",
+    "GDAL_HTTP_VERSION": "2",
+    "VSI_CACHE": "TRUE",
+}
 
-    ``band_index`` (1-based) selects which band of the COG to read. Defaults
-    to 1 for products that store one band per asset (Sentinel-2, Landsat,
-    DEM, WorldCover); set higher for multi-band-per-asset products such as
-    NAIP, whose 4-band COG carries Red / Green / Blue / NIR in bands 1-4.
+
+def _overview_level(src, dst_res_m, resampling):
+    """Coarsest overview still at least as fine as the output grid, or -1.
+
+    Same rule as gdalwarp's default ``-ovr AUTO``: warping 0.3 m NAIP onto
+    a 1 m grid from the 0.6 m overview reads ~1/4 of the bytes of the full
+    image. Nearest-neighbour (class) bands always use full resolution,
+    because overviews may have been built by averaging class codes.
+    """
+    if resampling == Resampling.nearest:
+        return -1
+    src_res = abs(src.transform.a)
+    if src.crs is not None and src.crs.is_geographic:
+        src_res *= 111_320.0  # degrees -> metres (latitude spacing)
+    level = -1
+    for i, factor in enumerate(src.overviews(1)):
+        if src_res * factor > dst_res_m * (1 + 1e-6):
+            break
+        level = i
+    return level
+
+
+def _read_bands_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
+                        band_indexes=(1,)):
+    """Open a COG via /vsicurl and reproject bands onto the output grid.
+
+    All ``band_indexes`` (1-based) of the file are read in one pass. That
+    matters for multi-band-per-asset products such as NAIP (R/G/B/NIR in
+    bands 1-4): the file stores the bands pixel-interleaved, so reading
+    them one at a time downloads the same blocks four times. When the
+    output grid is coarser than the source, the read uses the file's
+    built-in overviews (see :func:`_overview_level`).
+
+    Returns a float32 array of shape ``(len(band_indexes), *dst_shape)``.
 
     Nodata handling (critical -- prevents zero-smearing at source edges):
 
@@ -375,21 +603,27 @@ def _read_band_to_grid(asset_url, dst_crs, dst_transform, dst_shape, resampling,
       - ``dst_nodata=NaN`` tells rasterio to emit NaN wherever the resampler
         couldn't produce a clean value.
     """
-    out = np.full(dst_shape, np.nan, dtype=np.float32)
-    with rasterio.open(f"/vsicurl/{asset_url}") as src:
-        # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
-        src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-        reproject(
-            source=rasterio.band(src, band_index),
-            destination=out,
-            src_transform=src.transform,
-            src_crs=src_crs,
-            src_nodata=src.nodata,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            dst_nodata=float("nan"),
-            resampling=resampling,
-        )
+    band_indexes = list(band_indexes)
+    out = np.full((len(band_indexes), *dst_shape), np.nan, dtype=np.float32)
+    path = f"/vsicurl/{asset_url}"
+    with rasterio.Env(**_COG_ENV):
+        with rasterio.open(path) as src:
+            level = _overview_level(src, abs(dst_transform.a), resampling)
+        open_opts = {"OVERVIEW_LEVEL": str(level)} if level >= 0 else {}
+        with rasterio.open(path, **open_opts) as src:
+            # Some products (e.g. raw S1 GRD) lack an explicit CRS but have GCPs.
+            src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
+            reproject(
+                source=rasterio.band(src, band_indexes),
+                destination=out,
+                src_transform=src.transform,
+                src_crs=src_crs,
+                src_nodata=src.nodata,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                dst_nodata=float("nan"),
+                resampling=resampling,
+            )
     return out
 
 
@@ -419,35 +653,20 @@ def _item_datetime(item):
 
 
 def _read_mosaic_to_grid(asset_urls, dst_crs, dst_transform, dst_shape, resampling,
-                         band_index=1):
+                         band_indexes=(1,)):
     """Mosaic multiple tessellated COG tiles into a single output grid.
 
-    ``band_index`` (1-based) selects which band of each tile to read; used
-    for multi-band-per-asset products like NAIP where every COG carries
-    R/G/B/NIR in bands 1-4. Each source is reprojected into a NaN-
-    initialised temp array; only the pixels that came back as valid (not
-    NaN) are composited into the output. Source nodata is propagated so
-    resampling never smears 0s across tile boundaries. NaN is preserved
-    -- callers are expected to declare ``nodata=NaN`` on the output
-    GeoTIFF so the rest of the pipeline (tiler, fusion) treats those
-    pixels correctly.
+    Each tile is read with :func:`_read_bands_to_grid` (all requested bands
+    in one pass) into a NaN-initialised array; only pixels that came back
+    valid (not NaN) are composited into the output, so resampling never
+    smears 0s across tile boundaries. NaN is preserved -- callers declare
+    ``nodata=NaN`` on the output GeoTIFF so the rest of the pipeline
+    (tiler, fusion) treats those pixels correctly.
     """
-    out = np.full(dst_shape, np.nan, dtype=np.float32)
+    out = np.full((len(band_indexes), *dst_shape), np.nan, dtype=np.float32)
     for url in asset_urls:
-        tmp = np.full(dst_shape, np.nan, dtype=np.float32)
-        with rasterio.open(f"/vsicurl/{url}") as src:
-            src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-            reproject(
-                source=rasterio.band(src, band_index),
-                destination=tmp,
-                src_transform=src.transform,
-                src_crs=src_crs,
-                src_nodata=src.nodata,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                dst_nodata=float("nan"),
-                resampling=resampling,
-            )
+        tmp = _read_bands_to_grid(url, dst_crs, dst_transform, dst_shape, resampling,
+                                  band_indexes)
         mask = ~np.isnan(tmp)
         out[mask] = tmp[mask]
     return out
@@ -533,6 +752,42 @@ def _resolve_pc_href(href, max_retries=4):
 
 
 # ---- Shared core: STAC search + per-band COG read + multi-band TIFF write ----
+def _stac_search(stac_url, body, *, method="POST", paginate=False, max_items=2000):
+    """Run a STAC item search and return the features.
+
+    ``method="GET"`` sends the search as query parameters. With
+    ``paginate=True`` the ``rel="next"`` links are followed (GET href,
+    or POST with the link's ``body``) until there are none or
+    ``max_items`` features have been collected.
+    """
+    if method.upper() == "GET":
+        params = {k: (",".join(str(x) for x in v) if isinstance(v, (list, tuple)) else v)
+                  for k, v in body.items() if k != "query"}
+        r = _request_with_retry("get", stac_url, params=params, timeout=60)
+    else:
+        r = _request_with_retry("post", stac_url, json=body, timeout=60)
+    page = r.json()
+    items = list(page.get("features", []))
+    while paginate and len(items) < max_items:
+        nxt = next((l for l in page.get("links", []) if l.get("rel") == "next"), None)
+        if not nxt:
+            break
+        if (nxt.get("method") or "GET").upper() == "POST":
+            r = _request_with_retry("post", nxt["href"],
+                                    json={**body, **(nxt.get("body") or {})}, timeout=60)
+        else:
+            r = _request_with_retry("get", nxt["href"], timeout=60)
+        page = r.json()
+        feats = page.get("features", [])
+        if not feats:
+            break
+        items.extend(feats)
+    if paginate and len(items) >= max_items:
+        print(f"⚠️  STAC search hit max_items={max_items}; the AOI may be "
+              f"larger than this provider should serve in one fetch.")
+    return items[:max_items]
+
+
 def _stac_userdata(representative, *, mission, acquisition_date, tile_id,
                    provider_label, collection, bands, is_static, mosaic_tiles):
     """Build the ``userdata.json`` sidecar dict for a STAC fetch.
@@ -566,8 +821,31 @@ def _fetch_via_stac(
     resolution, save_folder,
     max_cloud_coverage, min_cloud_coverage=0.0,
     stac_url, collection, asset_map, url_resolver, provider_label,
+    grid=None,
+    static_group_key=None, static_rank=None, scale_factors=None,
+    search_method="POST", paginate=False, max_items=2000,
+    asset_aliases=None,
 ):
+    """Shared STAC search -> mosaic -> GeoTIFF path.
+
+    The keyword-only extras below default to the original behaviour and
+    are only switched on by providers that need them (KyFromAbove):
+
+    ``collection`` may be a list to search several collections at once.
+    ``static_group_key(item)`` groups static tiles that cover the same
+    place (default: rounded bbox); ``static_rank(item)`` picks the best
+    item in each group, highest wins (default: newest ``datetime``).
+    ``scale_factors`` maps band -> multiplier applied after reading
+    (e.g. feet -> metres). ``search_method="GET"`` for STAC APIs that
+    only accept query-string searches. ``paginate=True`` follows
+    ``rel="next"`` links up to ``max_items`` items. ``asset_aliases``
+    maps an alternate asset key to the one in ``asset_map`` for
+    collections that name the same asset differently across items
+    (KyFromAbove Phase 3 uses ``data``, Phases 1-2 use ``asset``).
+    """
     profile = get_profile(mission)
+    collections = list(collection) if isinstance(collection, (list, tuple)) else [collection]
+    collection = ",".join(collections)
 
     # Final band list. If the caller passed bands=None they wanted the
     # convenient default flow: mission defaults plus helper bands (SCL/BQA/
@@ -592,7 +870,7 @@ def _fetch_via_stac(
     is_static = bool(profile.get("static"))
 
     # 1. STAC search (anonymous). Static products skip datetime/cloud filtering.
-    body = {"collections": [collection], "bbox": roi, "limit": 100}
+    body = {"collections": collections, "bbox": roi, "limit": 100}
     if not is_static:
         body["datetime"] = f"{time_range[0]}T00:00:00Z/{time_range[1]}T23:59:59Z"
         if profile["cloud_filter"]:
@@ -605,13 +883,19 @@ def _fetch_via_stac(
           + (f" in {time_range[0]}..{time_range[1]}" if not is_static else " (static)")
           + ((f" with cloud {int(min_cloud_coverage*100)}%-{int(max_cloud_coverage*100)}%" if min_cloud_coverage > 0 else f" with cloud<{int(max_cloud_coverage*100)}%") if profile["cloud_filter"] else "")
           + " ...")
-    r = _request_with_retry("post", stac_url, json=body, timeout=60)
-    items = r.json().get("features", [])
+    items = _stac_search(stac_url, body, method=search_method,
+                         paginate=paginate, max_items=max_items)
     if not items:
         raise RuntimeError(
             "No scenes matched. Try widening the time range"
             + (" or raising max_cloud_coverage." if profile["cloud_filter"] else ".")
+            + (f" {profile['no_coverage_hint']}" if profile.get("no_coverage_hint") else "")
         )
+
+    for it in items:
+        for alias, canonical in (asset_aliases or {}).items():
+            if canonical not in it["assets"] and alias in it["assets"]:
+                it["assets"][canonical] = it["assets"][alias]
 
     # 2. Pick scene(s)
     if is_static:
@@ -620,7 +904,9 @@ def _fetch_via_stac(
         from collections import defaultdict
         groups = defaultdict(list)
         for it in items:
-            groups[tuple(round(x, 4) for x in it["bbox"])].append(it)
+            key = (static_group_key(it) if static_group_key
+                   else tuple(round(x, 4) for x in it["bbox"]))
+            groups[key].append(it)
         # Resolution preference for collections that ship multiple resolutions
         # at the same bbox. 3DEP-seamless stores 1/3 arc-second (~10 m, item
         # IDs ending in "-13") alongside 1 arc-second (~30 m, "-1") for the
@@ -631,11 +917,16 @@ def _fetch_via_stac(
         for k, g in list(groups.items()):
             if any(it.get("id", "").endswith("-13") for it in g):
                 groups[k] = [it for it in g if not it.get("id", "").endswith("-1")]
-        items = [
-            sorted(g, key=lambda x: x["properties"].get("datetime") or "", reverse=True)[0]
-            for g in groups.values()
-        ]
-        representative = items[0]
+        # Collections that describe a survey period (3DEP lidar) leave
+        # `datetime` null and set start/end instead; rank by the end date.
+        rank = static_rank or (lambda x: x["properties"].get("datetime")
+                               or x["properties"].get("end_datetime")
+                               or x["properties"].get("start_datetime") or "")
+        items = [sorted(g, key=rank, reverse=True)[0] for g in groups.values()]
+        # Mosaicking paints later tiles over earlier ones, so put the
+        # preferred items last in case tiles from different groups overlap.
+        items.sort(key=rank)
+        representative = items[-1]
         latest_dt = max((it["properties"].get("datetime") or "") for it in items)
         print(f"✅ Static mosaic: {len(items)} tile(s) covering the AOI"
               f"(latest version {latest_dt[:10] or 'n/a'})")
@@ -705,64 +996,74 @@ def _fetch_via_stac(
     os.makedirs(out_dir, exist_ok=True)
 
     # 4. Determine output grid.
-    #    Use the representative item's first asset CRS, EXCEPT when it is
-    #    geographic (lat/lon, EPSG:4326) -- in that case the user's
-    #    ``resolution`` is in metres but the source CRS uses degrees, so
-    #    we project to the local UTM zone covering the ROI centre so the
-    #    meter-based resolution makes sense.
-    _first_key, _ = _resolve_band_mapping(asset_map[final_bands[0]])
-    first_url = url_resolver(representative["assets"][_first_key]["href"])
-    with rasterio.open(f"/vsicurl/{first_url}") as src:
-        src_crs = src.crs or (src.gcps[1] if src.gcps and src.gcps[1] else None)
-    if src_crs is None:
-        raise RuntimeError(
-            f"Could not determine a CRS for the selected scene's first asset. "
-            f"Try a different provider or mission combination."
-        )
-    if src_crs.is_geographic:
-        cx = (roi[0] + roi[2]) / 2.0
-        cy = (roi[1] + roi[3]) / 2.0
-        zone = int((cx + 180) // 6) + 1
-        epsg = (32600 if cy >= 0 else 32700) + zone
-        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
-        print(f"(source CRS is geographic; output in {dst_crs} so resolution={resolution} m is correct)")
-    else:
-        dst_crs = src_crs
-    roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
-    out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
-    out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
-    dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    #
+    # Deterministic-grid convention (issue #35 fix): the grid is picked from
+    # the AOI centroid alone, not from the returned scene. That means
+    # two fetches over the same AOI in different date windows land on
+    # byte-identical rasters -- the invariant an AI-ready multi-
+    # temporal cube needs. Callers who want to reuse an exact grid
+    # (across mosaics, months, or missions) build one once via
+    # ``plan_grid(roi, resolution)`` and pass ``grid=`` into the
+    # public fetch entry points, which forward it here.
+    #
+    # Before the fix, this block opened the representative scene's
+    # first asset via /vsicurl/ to read its native CRS and used that
+    # as ``dst_crs``. For AOIs near an MGRS tile edge or a UTM zone
+    # boundary, different date windows returned different first
+    # scenes in different UTM zones, so repeat cubes over the "same"
+    # AOI landed on different grids.
+    grid_pinned = grid is not None
+    if grid is None:
+        grid = plan_grid(roi, resolution)
+    dst_crs = rasterio.crs.CRS.from_string(grid.crs)
+    dst_transform = grid.transform
+    out_h, out_w = grid.shape
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}"
+          f"{' (caller-pinned)' if grid_pinned else ' (AOI-centroid UTM)'}")
 
     # 5. Pull each requested band into the output grid. Whenever the
     #    selection step picked more than one item we mosaic them -- static
     #    products (DEM, WorldCover) and now also non-static missions where
     #    a single scene did not cover the AOI (e.g. Sentinel-1 orbit strips).
     stack = np.empty((len(final_bands), out_h, out_w), dtype=np.float32)
-    band_bar = tqdm(
-        enumerate(final_bands), total=len(final_bands),
-        desc=f"{mission} bands", unit="band",
-        disable=not sys.stdout.isatty(), leave=False,
-    )
-    for i, b in band_bar:
+    # Bands that live in the same file (NAIP's R/G/B/NIR) and share a
+    # resampling method are read together in one pass.
+    groups = {}
+    for i, b in enumerate(final_bands):
         rs = _resampling_for_band(b, profile["cloud_mask"], profile)
         asset_key, band_index = _resolve_band_mapping(asset_map[b])
-        label = f"{asset_key}[band{band_index}]" if band_index != 1 else asset_key
+        groups.setdefault((asset_key, rs), []).append((i, b, band_index))
+    group_bar = tqdm(
+        groups.items(), total=len(groups),
+        desc=f"{mission} bands", unit="file",
+        disable=not sys.stdout.isatty(), leave=False,
+    )
+    for (asset_key, rs), members in group_bar:
+        rows = [i for i, _, _ in members]
+        band_indexes = [bi for _, _, bi in members]
+        names = ",".join(b for _, b, _ in members)
+        label = asset_key if band_indexes == [1] else f"{asset_key}{band_indexes}"
         if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_key]["href"]) for it in items]
-            tqdm.write(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}"
+            tqdm.write(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}"
                        f"mosaic of {len(urls)} scene(s)")
-            stack[i] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
-                                              (out_h, out_w), rs,
-                                              band_index=band_index)
+            stack[rows] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
+                                               (out_h, out_w), rs,
+                                               band_indexes=band_indexes)
         else:
             url = url_resolver(representative["assets"][asset_key]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            tqdm.write(f"↓ {b:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
-            stack[i] = _read_band_to_grid(url, dst_crs, dst_transform,
-                                            (out_h, out_w), rs,
-                                            band_index=band_index)
-        band_bar.set_postfix_str(b)
+            tqdm.write(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
+            stack[rows] = _read_bands_to_grid(url, dst_crs, dst_transform,
+                                              (out_h, out_w), rs,
+                                              band_indexes=band_indexes)
+        group_bar.set_postfix_str(names)
+
+    # 5b. Unit conversion (e.g. KyFromAbove elevations are US survey feet).
+    for i, b in enumerate(final_bands):
+        factor = (scale_factors or {}).get(b)
+        if factor is not None:
+            stack[i] *= np.float32(factor)
 
     # 6. Validate nodata coverage and write multi-band <Mission>_full_size.tiff with
     #    nodata=NaN so downstream readers (tiler, fusion, QGIS) know which
@@ -812,11 +1113,16 @@ def _fetch_via_stac(
     # silently trains on half-NaN inputs.
     nan_frac = float(np.mean(np.isnan(stack))) if stack.size else 0.0
     if nan_frac > 0.25:
-        print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
-              f"For MODIS this typically means the AOI crosses a "
-              f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
-              f"the AOI to land within a single tile, or wait for cross-tile "
-              f"mosaicking support.")
+        if is_static:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN "
+                  f"(no data). The AOI extends beyond the {len(items)} tile(s) "
+                  f"available for {collection!r}; those pixels are left blank.")
+        else:
+            print(f"   WARNING: {nan_frac*100:.1f}% of returned pixels are NaN. "
+                  f"For MODIS this typically means the AOI crosses a "
+                  f"sinusoidal-tile seam (e.g. h11v04 / h11v05); widen / shift "
+                  f"the AOI to land within a single tile, or wait for cross-tile "
+                  f"mosaicking support.")
 
     return [stack], final_bands
 
@@ -824,12 +1130,84 @@ def _fetch_via_stac(
 # ============================================================
 # Public provider wrappers
 # ============================================================
+def fetch_kyfromabove(
+    mission, bands, time_range, roi,
+    resolution=1.0, save_folder="data",
+    grid=None, phases=None, allow_empty=None,
+):
+    """KyFromAbove (Kentucky) STAC + public S3 COGs (anonymous HTTPS).
+
+    Searches every DEM phase over the AOI and keeps, for each 5,000 ft
+    grid cell, the tile from the newest phase available there (Phase 3
+    where it has been flown, else Phase 2, else Phase 1). Tiles are
+    mosaicked onto the AOI-centroid UTM grid at ``resolution`` metres
+    (2 ft is 0.6096 m) and elevation is converted from US survey feet
+    to metres, so slope / aspect / hillshade from
+    :mod:`geoai_datacubes.viz.terrain` come out right.
+
+    ``phases``: optional collection ids, newest-preferred first, e.g.
+    ``("dem-phase2",)`` to use only the statewide 2019-2024 survey. The
+    ``KyFromAbove-DEM-Phase1/2/3`` missions set this for you. Tiles a
+    phase does not have are left blank (NaN); other phases never fill in.
+
+    ``allow_empty``: when no tile of the requested phase(s) touches the
+    AOI, write an all-NaN layer on the same grid instead of raising, so
+    a multi-layer cube stays aligned. Defaults to ``True`` for the
+    per-phase missions and ``False`` for ``KyFromAbove-DEM``.
+    ``time_range`` is ignored (static product).
+    """
+    cfg = get_provider_config(mission, "kyfromabove")
+    collections = list(phases or cfg["collections"])
+    if allow_empty is None:
+        allow_empty = bool(cfg.get("empty_ok"))
+    try:
+        return _fetch_kfa_stac(mission, bands, time_range, roi, resolution,
+                               save_folder, grid, cfg, collections)
+    except RuntimeError as e:
+        if not (allow_empty and str(e).startswith("No scenes matched")):
+            raise
+    from ._kyfromabove import write_empty_layer
+    return write_empty_layer(mission, bands, roi, resolution, save_folder,
+                             grid, collections)
+
+
+def _fetch_kfa_stac(mission, bands, time_range, roi, resolution, save_folder,
+                    grid, cfg, collections):
+    from ._kyfromabove import (KFA_STAC_URL, kfa_phase, kfa_tile_key,
+                               resolve_kfa_href)
+    return _fetch_via_stac(
+        mission, bands, time_range, roi,
+        resolution=resolution, save_folder=save_folder,
+        max_cloud_coverage=1.0,
+        stac_url=KFA_STAC_URL,
+        collection=collections,
+        asset_map=cfg["asset_map"],
+        url_resolver=resolve_kfa_href,
+        provider_label="kyfromabove",
+        grid=grid,
+        static_group_key=kfa_tile_key,
+        static_rank=kfa_phase,
+        scale_factors=cfg.get("scale_factors"),
+        search_method="GET",
+        paginate=True,
+        asset_aliases={"data": "asset"},
+    )
+
+
 def fetch_earthsearch(
     mission, bands, time_range, roi,
     resolution=10, save_folder="data",
     max_cloud_coverage=0.10, min_cloud_coverage=0.0,
+    grid=None,
 ):
-    """Earth Search STAC + AWS Open-Data COGs (anonymous HTTPS)."""
+    """Earth Search STAC + AWS Open-Data COGs (anonymous HTTPS).
+
+    ``grid`` (optional): a :class:`~.plan_grid.Grid` to force the
+    output onto exactly the same raster as another fetch. When
+    ``None`` (default), the fetcher picks a deterministic grid from
+    the AOI centroid via :func:`~.plan_grid.plan_grid`, so repeat
+    fetches over the same AOI stack directly.
+    """
     cfg = get_provider_config(mission, "earthsearch")
     return _fetch_via_stac(
         mission, bands, time_range, roi,
@@ -841,6 +1219,7 @@ def fetch_earthsearch(
         asset_map=cfg["asset_map"],
         url_resolver=_resolve_es_href,
         provider_label="earthsearch",
+        grid=grid,
     )
 
 
@@ -848,8 +1227,12 @@ def fetch_planetary_computer(
     mission, bands, time_range, roi,
     resolution=10, save_folder="data",
     max_cloud_coverage=0.10, min_cloud_coverage=0.0,
+    grid=None,
 ):
-    """Microsoft Planetary Computer STAC + Azure blob (anonymous, SAS-signed)."""
+    """Microsoft Planetary Computer STAC + Azure blob (anonymous, SAS-signed).
+
+    ``grid`` (optional): see :func:`fetch_earthsearch`.
+    """
     cfg = get_provider_config(mission, "planetary_computer")
     return _fetch_via_stac(
         mission, bands, time_range, roi,
@@ -861,6 +1244,7 @@ def fetch_planetary_computer(
         asset_map=cfg["asset_map"],
         url_resolver=_resolve_pc_href,
         provider_label="planetary_computer",
+        grid=grid,
     )
 
 
@@ -990,7 +1374,7 @@ def _read_multiband_asset_to_grid(asset_path, band_indices,
                                   dst_crs, dst_transform, dst_shape, resampling):
     """Reproject N requested 1-based band indices from a local multi-band raster
     onto the common output grid. Same NaN/nodata discipline as
-    ``_read_band_to_grid`` so AOI-edge nodata never smears into valid pixels.
+    ``_read_bands_to_grid`` so AOI-edge nodata never smears into valid pixels.
     Returns a list of ``(out_h, out_w)`` float32 arrays, one per index."""
     outs = [np.full(dst_shape, np.nan, dtype=np.float32) for _ in band_indices]
     with rasterio.open(asset_path) as src:
@@ -1014,6 +1398,7 @@ def fetch_planet(
     mission, bands, time_range, roi,
     resolution=3, save_folder="data", max_cloud_coverage=0.10,
     poll_seconds=15, max_wait_seconds=3600,
+    grid=None,
 ):
     """PlanetScope via the Planet Data + Orders APIs (requires PL_API_KEY).
 
@@ -1163,25 +1548,22 @@ def fetch_planet(
             f"UDM2 bands {udm2} requested but no *udm*.tif file in the order "
             f"delivery. Got: {sorted(files)}")
 
-    # 4) Build the common output grid. Reproject from analytic asset's CRS to
-    #    local UTM (mirroring _fetch_via_stac so resolution stays in metres).
-    with rasterio.open(analytic_path) as src:
-        src_crs = src.crs
-    if src_crs is None:
-        raise RuntimeError("PlanetScope analytic asset has no CRS -- unexpected.")
-    if src_crs.is_geographic:
-        cx = (roi[0] + roi[2]) / 2.0
-        cy = (roi[1] + roi[3]) / 2.0
-        zone = int((cx + 180) // 6) + 1
-        epsg = (32600 if cy >= 0 else 32700) + zone
-        dst_crs = rasterio.crs.CRS.from_epsg(epsg)
-    else:
-        dst_crs = src_crs
-    roi_proj = transform_bounds(rasterio.crs.CRS.from_epsg(4326), dst_crs, *roi)
-    out_w = max(1, int(np.ceil((roi_proj[2] - roi_proj[0]) / resolution)))
-    out_h = max(1, int(np.ceil((roi_proj[3] - roi_proj[1]) / resolution)))
-    dst_transform = from_bounds(*roi_proj, out_w, out_h)
-    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}")
+    # 4) Build the common output grid.
+    #
+    # Deterministic-grid convention (see the analogous block in
+    # _fetch_via_stac and issue #35): pick the grid from the AOI
+    # centroid alone so repeat fetches over the same AOI on
+    # different dates land on byte-identical rasters. Callers can
+    # override with ``grid=`` to force a shared grid across missions
+    # or across a Planet + Sentinel fusion.
+    grid_pinned = grid is not None
+    if grid is None:
+        grid = plan_grid(roi, resolution)
+    dst_crs = rasterio.crs.CRS.from_string(grid.crs)
+    dst_transform = grid.transform
+    out_h, out_w = grid.shape
+    print(f"Output grid: {out_w}x{out_h} px at {resolution} m in {dst_crs}"
+          f"{' (caller-pinned)' if grid_pinned else ' (AOI-centroid UTM)'}")
 
     # 5) Read the requested bands. Spectral bands -> bilinear; UDM2 -> nearest
     #    (so 0/1 class codes survive resampling).
