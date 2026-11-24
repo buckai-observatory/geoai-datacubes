@@ -1,0 +1,129 @@
+{
+  "test": "fetch_hls-l30",
+  "mission": "HLS_L30",
+  "started_at": "2026-09-16T17:34:41",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "B04",
+    "B05",
+    "Fmask"
+  ],
+  "time_range": [
+    "2024-06-15",
+    "2024-07-15"
+  ],
+  "resolution_m": 30,
+  "save_folder": "/tmp/geoai_smoke_final_54848/HLS_L30",
+  "acceptance": {
+    "max_nan_fraction": 0.3,
+    "value_range": [
+      -2000.0,
+      20000.0
+    ],
+    "bands": {
+      "Fmask": {
+        "categorical_values": null,
+        "value_range": null
+      }
+    }
+  },
+  "elapsed_sec": 5.6,
+  "bands_returned": [
+    "B04",
+    "B05",
+    "Fmask"
+  ],
+  "scene": "HLS_L30_2024-07-12_HLS.L30.T17TLE.2024194T161011.v2.0",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/HLS_L30/HLS_L30_2024-07-12_HLS.L30.T17TLE.2024194T161011.v2.0/HLS_L30_full_size.tiff",
+    "shape": [
+      87,
+      59,
+      3
+    ],
+    "bands": [
+      "B04",
+      "B05",
+      "Fmask"
+    ],
+    "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      29.921966829205967,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -29.792656260489046,
+      4431748.439527453
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "B04",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": -20.86787986755371,
+        "max": 7400.283203125,
+        "mean": 1659.0185546875,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "B05",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 555.8104858398438,
+        "max": 8004.60693359375,
+        "mean": 3300.359619140625,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 3,
+        "description": "Fmask",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 64.0,
+        "max": 228.0,
+        "mean": 174.35067749023438,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          64,
+          66,
+          68,
+          72,
+          76,
+          96,
+          128,
+          130,
+          132,
+          134,
+          136,
+          140,
+          160,
+          192,
+          194,
+          196,
+          198,
+          200,
+          202,
+          204,
+          206,
+          224,
+          228
+        ]
+      }
+    ],
+    "size_bytes": 44770
+  },
+  "finished_at": "2026-09-16T17:34:47"
+}

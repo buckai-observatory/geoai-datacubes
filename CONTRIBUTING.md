@@ -240,7 +240,7 @@ single-PR contributors there as well.
 ## 8. Project context
 
 `geoai-datacubes` is developed at the
-[**BuckAI Observatory**](https://buckai-observatory.org) at
+[**BuckAI Observatory**](https://ai-observatory.osu.edu) at
 The Ohio State University, with primary maintainership from
 [Joachim Moortgat](https://earthsciences.osu.edu/people/moortgat.1)
 (School of Earth Sciences). The project's broader scientific

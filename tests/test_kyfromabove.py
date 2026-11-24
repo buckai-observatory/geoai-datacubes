@@ -51,6 +51,9 @@ def test_href_resolver():
 
 
 class _Resp:
+    status_code = 200
+    headers = {}
+
     def __init__(self, payload):
         self._payload = payload
 

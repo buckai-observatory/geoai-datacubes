@@ -1,0 +1,93 @@
+# Architecture
+
+Two diagrams that map the pipeline end-to-end: how a `fetch_sentinel_data`
+call routes through validation, provider dispatch, and the shared
+post-fetch reproject-and-write stages; and which missions live on which
+provider class.
+
+## 1. Fetch pipeline
+
+From user parameters to a georeferenced multi-band GeoTIFF. All five
+provider classes converge on the same post-fetch stages
+(determine output grid → per-band read + reproject → write
+`<Mission>_full_size.tiff` + `userdata.json` sidecar), so downstream
+tools never need to care which provider served the scene.
+
+```{mermaid}
+flowchart TD
+    U["fetch_sentinel_data(mission, bands, roi, time_range)"]
+    V["validate_query"]
+    RES["resolve_aoi"]
+    D{"dispatch on provider"}
+    ES["fetch_earthsearch"]
+    PC["fetch_planetary_computer"]
+    PL["fetch_planet"]
+    SH["fetch_sentinelhub"]
+    DH["fetch_direct_http"]
+    STAC["_fetch_via_stac"]
+    SEL["_select_scenes_for_mosaic"]
+    TILE["_fetch_via_direct_http"]
+    GRID["determine output grid (UTM, resolution)"]
+    READ["per-band read and reproject via vsicurl"]
+    OUT["Mission_full_size.tiff plus userdata.json"]
+
+    U --> V --> RES --> D
+    D --> ES --> STAC
+    D --> PC --> STAC
+    D --> PL
+    D --> SH
+    D --> DH --> TILE
+    STAC --> SEL --> GRID
+    TILE --> GRID
+    PL --> GRID
+    SH --> GRID
+    GRID --> READ --> OUT
+```
+
+The stages in words:
+
+- `validate_query` — shape, lon/lat ranges, antimeridian, ISO-8601 dates
+  (added in [#21](https://github.com/buckai-observatory/geoai-datacubes/pull/21)).
+- `resolve_aoi` — normalises the AOI from bbox, shapefile, centre+miles,
+  or Sentinel-2 tile ID into a `[west, south, east, north]` bbox.
+- `_fetch_via_stac` — STAC search, ranking, and same-day mosaic
+  selection. Shared by `earthsearch` and `planetary_computer`.
+- `_fetch_via_direct_http` — per-tile discovery via a mission-supplied
+  `tile_callback`, then the same per-band read-and-reproject stage.
+- `fetch_planet` and `fetch_sentinelhub` — provider-specific request
+  paths, but write into the same output-grid + reproject stage.
+
+## 2. Provider architecture
+
+`MISSION_PROFILES` (in `geoai_datacubes/fetch/missions.py`) is the single
+source of truth for which provider a mission uses, which bands it
+exposes, and how those bands map onto the provider's assets.
+`provider="auto"` picks the recommended provider per mission; a user can
+override it at call time.
+
+```{mermaid}
+flowchart LR
+    MP["MISSION_PROFILES (26 missions)"]
+    ES["earthsearch"]
+    PC["planetary_computer"]
+    PL["planet"]
+    SH["sentinelhub"]
+    DH["direct_http"]
+
+    ES_M["Sentinel-2 L2A and L1C, Copernicus DEM, MERIT DEM, NASA DEM, ESA WorldCover"]
+    PC_M["Sentinel-1 RTC, Landsat-8 and 9 C2 L2, NAIP, 3DEP, MODIS, ALOS PALSAR and FNF, IO-LULC"]
+    PL_M["PlanetScope 3 m daily (requires credentials)"]
+    SH_M["Sentinel-2 L1C, Sentinel-3 OLCI (requires credentials)"]
+    DH_M["Hansen GFC, Lang 2023, Tolan 2024, GEDI L4B"]
+
+    MP --> ES --> ES_M
+    MP --> PC --> PC_M
+    MP --> PL --> PL_M
+    MP --> SH --> SH_M
+    MP --> DH --> DH_M
+```
+
+Provider trade-offs, credential setup, and per-provider rate-limit
+guidance live in [`docs/providers.md`](providers.md). The full
+26-mission table (per-mission bands, native resolution, value ranges,
+provider assignment) lives in [`docs/data_layers.md`](data_layers.md).

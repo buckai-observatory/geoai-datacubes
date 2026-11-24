@@ -20,4 +20,11 @@
 # shellcheck source=_common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
+# S2-L1C via Earth Search serves .jp2 assets. Rasterio/GDAL need the
+# libgdal-jp2openjpeg driver to read them; that is now part of the
+# recommended install recipe (docs/install.md + README). Microsoft
+# Planetary Computer does not host L1C -- only L2A -- so the `auto`
+# routing to earthsearch is the only free path. If the JP2 driver is
+# missing, _run_fetch.py detects it and marks S2-L1C skipped rather
+# than hard-failing.
 python smoke-tests/_run_fetch.py "Sentinel-2-L1C"

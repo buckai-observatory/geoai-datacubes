@@ -15,6 +15,10 @@ on:
       - "CODE_OF_CONDUCT.md"
       - "scripts/quarto-cleanup.sh"
       - ".github/workflows/quarto-pages.yml"
+      # docstrings feed the auto-generated API reference; rebuild on
+      # any Python change so the docs stay in sync.
+      - "geoai_datacubes/**"
+      - "pyproject.toml"
   workflow_dispatch:
 
 # Only one deploy at a time
@@ -37,6 +41,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: quarto-dev/quarto-actions/setup@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package + doc-gen deps
+        # Editable install so quartodoc can import geoai_datacubes and
+        # read its docstrings.  Explicit griffe pin because quartodoc
+        # 0.11.x is incompatible with griffe 2.x (parser signature).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Build API reference from docstrings
+        # Emits docs/api/*.qmd + docs/api/_sidebar.yml, consumed by
+        # the `docs/api/*.qmd` glob in the render list and the
+        # metadata-files line in _quarto.yml.
+        run: quartodoc build
 
       - name: Render site
         run: quarto render

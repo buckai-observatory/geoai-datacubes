@@ -15,6 +15,13 @@ Each resolves to the same output: a WGS84 bounding box
 
        AOI = {"shapefile": "/path/to/aoi.shp"}
 
+   Add ``"clip_to_geometry": True`` to keep the true polygon (holes
+   included): the search still uses the bbox, and pixels outside the
+   polygon are set to NaN after the fetch. See :func:`resolve_aoi_geometry`
+   and :func:`geoai_datacubes.preprocessing.clip_to_geometry`::
+
+       AOI = {"shapefile": "/path/to/lagoon.gpkg", "clip_to_geometry": True}
+
 3. **Square around a centre point** -- supply a centre as
    ``(lat, lon)`` and a side length in miles::
 
@@ -36,6 +43,12 @@ def resolve_aoi(spec):
     """
     if not isinstance(spec, dict):
         raise TypeError("AOI spec must be a dict. See aoi.py docstring for examples.")
+
+    if spec.get("clip_to_geometry") and "shapefile" not in spec:
+        raise ValueError(
+            "'clip_to_geometry' only applies to {'shapefile': ...} AOIs; "
+            "the other AOI formats are already rectangles."
+        )
 
     if "bbox" in spec:
         bbox = list(spec["bbox"])
@@ -63,8 +76,31 @@ def resolve_aoi(spec):
     )
 
 
-def _bbox_from_vector_file(path):
-    """Read a vector file and return the bbox of its (combined) geometry in WGS84."""
+def resolve_aoi_geometry(spec):
+    """Return the AOI's true polygon(s) in WGS84, or ``None``.
+
+    Only ``{"shapefile": ...}`` AOIs have a shape beyond their bbox; every
+    other spec returns ``None``. The result is a list of GeoJSON-like
+    geometry dicts (one per feature, interior rings kept), ready to pass to
+    :func:`geoai_datacubes.preprocessing.clip_to_geometry`.
+    """
+    if not isinstance(spec, dict) or "shapefile" not in spec:
+        return None
+    gdf = _read_vector_file(spec["shapefile"])
+    geoms = [g for g in gdf.geometry if g is not None and not g.is_empty]
+    bad = sorted({g.geom_type for g in geoms} - {"Polygon", "MultiPolygon"})
+    if bad:
+        raise ValueError(
+            f"{spec['shapefile']}: clipping needs polygon geometries, "
+            f"found {', '.join(bad)}."
+        )
+    if not geoms:
+        raise ValueError(f"{spec['shapefile']}: no non-empty geometries found.")
+    return [g.__geo_interface__ for g in geoms]
+
+
+def _read_vector_file(path):
+    """Read a vector file into a GeoDataFrame in WGS84."""
     try:
         import geopandas as gpd
     except ImportError as e:
@@ -82,6 +118,12 @@ def _bbox_from_vector_file(path):
         )
     if gdf.crs.to_epsg() != 4326:
         gdf = gdf.to_crs(epsg=4326)
+    return gdf
+
+
+def _bbox_from_vector_file(path):
+    """Read a vector file and return the bbox of its (combined) geometry in WGS84."""
+    gdf = _read_vector_file(path)
     minx, miny, maxx, maxy = gdf.total_bounds  # combined bounds over all features
     return [float(minx), float(miny), float(maxx), float(maxy)]
 
@@ -98,6 +140,87 @@ def _bbox_from_center_side(lat, lon, side_miles):
     return [lon - half_lon, lat - half_lat, lon + half_lon, lat + half_lat]
 
 
+def validate_query(roi, time_range=None):
+    """Validate an AOI + optional time_range early, before any provider
+    call. Raises ``ValueError`` with an actionable message on any of:
+
+    - roi is not a 4-tuple ``[lon_min, lat_min, lon_max, lat_max]``
+    - lon out of [-180, 180] or lat out of [-90, 90]
+    - lat_min >= lat_max (empty or inverted latitude range)
+    - lon_min > lon_max, i.e. the AOI crosses the +/- 180 antimeridian.
+      A single call across the antimeridian is not supported by our
+      current provider paths (the STAC / earthdata bboxes are read as
+      "regular" west->east). Users should split into two AOIs on either
+      side of the antimeridian and fetch each separately.
+    - time_range is not a 2-element (start, end) tuple/list of ISO-8601
+      date strings that pandas can parse
+    - time_range start >= end (empty or inverted window)
+
+    Called from ``fetch_sentinel_data`` before dispatch so every provider
+    path shares the same up-front sanity check. Deliberately does NOT
+    check for provider-specific temporal coverage (e.g. NISAR-L only
+    2026-06-17 onward) -- that lives in the per-provider search step
+    where the actionable message can name the product.
+
+    Motivating review comment: reviewer noted that queries across the
+    antimeridian and inverted time_ranges silently returned unexpected
+    results downstream. See openjournals/joss-reviews#11034 (Aug 24 2026).
+    """
+    if not (isinstance(roi, (list, tuple)) and len(roi) == 4):
+        raise ValueError(
+            f"AOI must be a 4-element [lon_min, lat_min, lon_max, lat_max] "
+            f"in WGS84 degrees, got {roi!r}. See docs/data_layers.md for "
+            f"the four supported AOI input formats.")
+    try:
+        lon_min, lat_min, lon_max, lat_max = (float(x) for x in roi)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"AOI values must be numeric, got {roi!r}: {e}") from e
+
+    if not -180.0 <= lon_min <= 180.0 or not -180.0 <= lon_max <= 180.0:
+        raise ValueError(
+            f"AOI longitudes must be in [-180, 180] degrees, got "
+            f"lon_min={lon_min}, lon_max={lon_max}. "
+            "If your source used [0, 360], subtract 360 from anything > 180.")
+    if not -90.0 <= lat_min <= 90.0 or not -90.0 <= lat_max <= 90.0:
+        raise ValueError(
+            f"AOI latitudes must be in [-90, 90] degrees, got "
+            f"lat_min={lat_min}, lat_max={lat_max}.")
+    if lat_min >= lat_max:
+        raise ValueError(
+            f"AOI has empty or inverted latitude range: "
+            f"lat_min={lat_min} >= lat_max={lat_max}.")
+    if lon_min > lon_max:
+        raise ValueError(
+            f"AOI has lon_min={lon_min} > lon_max={lon_max}. This most "
+            "commonly means the AOI is meant to cross the +/- 180 "
+            "antimeridian. That is not supported by a single fetch -- "
+            "split into two AOIs on either side of the antimeridian "
+            "(e.g. [lon_min, lat_min, 180, lat_max] and "
+            "[-180, lat_min, lon_max, lat_max]) and fetch each "
+            "separately.")
+
+    if time_range is None:
+        return
+    if not (isinstance(time_range, (list, tuple)) and len(time_range) == 2):
+        raise ValueError(
+            f"time_range must be a (start, end) tuple of ISO-8601 date "
+            f"strings, got {time_range!r}.")
+    try:
+        import pandas as pd
+        t0 = pd.to_datetime(time_range[0])
+        t1 = pd.to_datetime(time_range[1])
+    except Exception as e:
+        raise ValueError(
+            f"time_range values must be ISO-8601 date strings that "
+            f"pandas can parse, got {time_range!r}: {e}") from e
+    if t0 >= t1:
+        raise ValueError(
+            f"time_range has start >= end: {time_range[0]!r} >= "
+            f"{time_range[1]!r}. Provide (start, end) with start "
+            "strictly before end.")
+
+
 def _bbox_from_s2_tile(lat, lon):
     """
     Look up any Sentinel-2 L2A item that intersects the point and return its
@@ -105,7 +228,7 @@ def _bbox_from_s2_tile(lat, lon):
     point. No credentials required.
     """
     try:
-        import requests
+        import requests  # noqa: F401
     except ImportError as e:
         raise ImportError("`requests` is required for the 'tile_around' AOI option.") from e
 
@@ -114,11 +237,11 @@ def _bbox_from_s2_tile(lat, lon):
         "intersects": {"type": "Point", "coordinates": [lon, lat]},
         "limit": 1,
     }
-    r = requests.post(
-        "https://earth-search.aws.element84.com/v1/search",
+    from .fetch_data import _request_with_retry
+    r = _request_with_retry(
+        "post", "https://earth-search.aws.element84.com/v1/search",
         json=body, timeout=30,
     )
-    r.raise_for_status()
     items = r.json().get("features", [])
     if not items:
         raise RuntimeError(

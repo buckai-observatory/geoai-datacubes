@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use geoai-datacubes in your research, please cite it using the metadata below."
-title: "geoai-datacubes: AI-ready multi-mission Earth-observation data cubes for machine-learning and deep-learning workflows"
+title: "geoai-datacubes: AI-ready multi-mission satellite data cubes for Earth-observation machine learning"
 authors:
   - family-names: Moortgat
     given-names: Joachim
@@ -26,16 +26,16 @@ authors:
 repository-code: "https://github.com/buckai-observatory/geoai-datacubes"
 url: "https://github.com/buckai-observatory/geoai-datacubes"
 license: MIT
-version: "0.1.0"
-date-released: "2026-06-24"
+version: "1.0.0"
+date-released: "2026-11-02"
 # Concept DOI: always resolves to the latest version on Zenodo.
 identifiers:
   - type: doi
     value: "10.5281/zenodo.20829119"
     description: "Concept DOI (always-latest version)"
   - type: doi
-    value: "10.5281/zenodo.20829120"
-    description: "Version DOI for v0.1.0"
+    value: "10.5281/zenodo.23885990"
+    description: "Version DOI for v1.0.0 (the version reviewed in JOSS)"
 keywords:
   - remote sensing
   - earth observation

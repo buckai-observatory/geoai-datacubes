@@ -1,0 +1,125 @@
+{
+  "test": "fetch_sentinel-2",
+  "mission": "Sentinel-2",
+  "started_at": "2026-09-16T17:33:32",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "B04",
+    "B08",
+    "SCL"
+  ],
+  "time_range": [
+    "2024-06-15",
+    "2024-06-30"
+  ],
+  "resolution_m": 10,
+  "save_folder": "/tmp/geoai_smoke_final_54848/Sentinel-2",
+  "acceptance": {
+    "max_nan_fraction": 0.3,
+    "value_range": [
+      -2000.0,
+      20000.0
+    ],
+    "bands": {
+      "SCL": {
+        "categorical_values": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "value_range": null
+      }
+    }
+  },
+  "elapsed_sec": 6.7,
+  "bands_returned": [
+    "B04",
+    "B08",
+    "SCL"
+  ],
+  "scene": "Sentinel-2_2024-06-17_S2A_17TLE_20240617_0_L2A",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/Sentinel-2/Sentinel-2_2024-06-17_S2A_17TLE_20240617_0_L2A/Sentinel-2_full_size.tiff",
+    "shape": [
+      260,
+      177,
+      3
+    ],
+    "bands": [
+      "B04",
+      "B08",
+      "SCL"
+    ],
+    "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      9.973988943068655,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -9.96908113331749,
+      4431748.439527453
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "B04",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 133.81101989746094,
+        "max": 10209.8271484375,
+        "mean": 2013.364013671875,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "B08",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 76.50685119628906,
+        "max": 9964.45703125,
+        "mean": 2973.439208984375,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 3,
+        "description": "SCL",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 3.0,
+        "max": 9.0,
+        "mean": 5.597214698791504,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          3,
+          4,
+          5,
+          7,
+          8,
+          9
+        ]
+      }
+    ],
+    "size_bytes": 373022
+  },
+  "finished_at": "2026-09-16T17:33:39"
+}

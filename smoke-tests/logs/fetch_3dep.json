@@ -1,0 +1,71 @@
+{
+  "test": "fetch_3dep",
+  "mission": "3DEP",
+  "started_at": "2026-09-16T17:33:07",
+  "status": "passed",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "DEM"
+  ],
+  "time_range": [
+    "2020-01-01",
+    "2020-12-31"
+  ],
+  "resolution_m": 10,
+  "save_folder": "/tmp/geoai_smoke_final_54848/3DEP",
+  "acceptance": {
+    "max_nan_fraction": 0.05,
+    "value_range": [
+      -500.0,
+      5000.0
+    ]
+  },
+  "elapsed_sec": 7.1,
+  "bands_returned": [
+    "DEM"
+  ],
+  "scene": "3DEP_3dep-seamless_mosaic_2020-02-28",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/3DEP/3DEP_3dep-seamless_mosaic_2020-02-28/3DEP_full_size.tiff",
+    "shape": [
+      260,
+      177,
+      1
+    ],
+    "bands": [
+      "DEM"
+    ],
+    "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      9.973988943068655,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -9.96908113331749,
+      4431748.439527453
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "DEM",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 216.38095092773438,
+        "max": 242.921875,
+        "mean": 228.57431030273438,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 149336
+  },
+  "finished_at": "2026-09-16T17:33:14"
+}

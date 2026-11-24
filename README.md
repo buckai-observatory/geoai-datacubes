@@ -2,17 +2,21 @@
 
 **Turn raw satellite imagery into AI-ready data cubes — pick a place, pick a time, get clean training data.**
 
+[![Docs](https://img.shields.io/badge/docs-Quarto%20site-2563EB.svg?style=flat-square&logo=quarto&logoColor=white)](https://buckai-observatory.github.io/geoai-datacubes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-BA0C2F.svg?style=flat-square)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![tests](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/tests.yml)
+[![notebooks](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/notebooks.yml/badge.svg)](https://github.com/buckai-observatory/geoai-datacubes/actions/workflows/notebooks.yml)
 [![PyPI](https://img.shields.io/pypi/v/geoai-datacubes.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/geoai-datacubes/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20829119.svg)](https://doi.org/10.5281/zenodo.20829119)
 [![status](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00/status.svg)](https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00)
-[![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://buckai-observatory.org)
+[![BuckAI Observatory](https://img.shields.io/badge/BuckAI-Observatory-BA0C2F.svg?style=flat-square)](https://ai-observatory.osu.edu)
+
+**Full documentation:** <https://buckai-observatory.github.io/geoai-datacubes/>
 
 > **New here?** Two ready-to-run paths get you started directly in Colab — no install, no credentials needed:
 >
-> - **Data acquisition & pre-processing** — the grand-tour notebook walks through every pipeline feature on the data side: every mission, AOI format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
+> - **Data acquisition & pre-processing** — the grand-tour notebook walks through every pipeline feature on the data side: every mission (data source), AOI (area of interest) format, cloud masking, NaN handling, tiling, multi-mission fusion, and SLURM submission.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/00_geoai_datacubes_tour.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
@@ -32,12 +36,21 @@
 
 ## What is this?
 
-`geoai-datacubes` is an open-source tool developed at the [**BuckAI Observatory**](https://buckai-observatory.org) at **The Ohio State University**, intended for the worldwide Earth-observation and AI research communities. It gives you ready-to-use pipelines that **download satellite imagery** for any region and time you choose, then **pre-process it into AI-ready "data cubes"** — cloud-filtered, normalised, tiled, augmented, and split into training / validation / test sets that you can feed straight into a machine-learning model.
+`geoai-datacubes` is an open-source tool developed at the [**BuckAI Observatory**](https://ai-observatory.osu.edu) at **The Ohio State University**, intended for the worldwide Earth-observation and AI research communities. It gives you ready-to-use pipelines that **download satellite imagery** for any region and time you choose, then **pre-process it into AI-ready "data cubes"** — cloud-filtered, normalised, tiled, augmented, and split into training / validation / test sets that you can feed straight into a machine-learning model.
 
 The repo is designed to lower the entry barrier into Earth-observation ML for anyone — researchers, postdocs, graduate students, undergraduate research assistants, or industry / non-profit practitioners. If you have never touched an HPC or a satellite API before, you can still follow the steps below and produce a usable dataset without first having to stitch together half a dozen vendor SDKs. Tooling the BuckAI Observatory builds is open-sourced under permissive licences so that this kind of accessible AI infrastructure can benefit the broader research community, not just OSU's.
 
 > ### What is an "AI-ready data cube"?
-> Raw satellite scenes are huge, messy files: different formats, cloudy pixels, inconsistent value ranges, and far too big to fit on a GPU. A **data cube** is that imagery cleaned up and reshaped into a tidy, stacked array — think of a deck of aligned image layers (the spectral bands) cut into small, equal-sized tiles. Because every tile is the same size, cloud-free, normalised to a common range, and pre-split into train/validation/test groups, you can load it directly into PyTorch or TensorFlow and start training. The cube does the boring, error-prone data prep so you can focus on the science.
+> Raw satellite scenes are huge, messy files: different formats, cloudy pixels, inconsistent value ranges, and far too big to fit on a GPU. A **data cube** is that imagery cleaned up and reshaped into a tidy, stacked array — think of a deck of aligned image layers (the spectral bands) cut into small, equal-sized tiles. Because every tile is the same size, cloud-free, normalised to a common range, and pre-split into train/validation/test groups, you can load it directly into PyTorch or TensorFlow and start training. The cube does the boring, error-prone data prep so you can focus on the science. A *fused* cube is the same thing with layers from more than one mission (say, Sentinel-2 optical plus Sentinel-1 radar plus elevation) resampled onto one grid.
+>
+> It is called a cube because the stack has three axes: rows x columns x bands (a time axis can be added for time series). Every pixel location carries the same list of values, one per layer.
+
+> ### Key terms
+> - **AOI (area of interest)** is the geographic box you want data for. It can be given as a bounding box, a shapefile, a centre point plus a side length, or a point inside a Sentinel-2 tile.
+> - **Mission** is one satellite or data product the package can download, for example Sentinel-2 L2A, Landsat, NAIP or ESA WorldCover. Each has its own bands and resolution. Some entries, such as land-cover maps, are derived products rather than a single satellite.
+> - **Band** is one layer of an image, such as red or near-infrared reflectance.
+> - **Tile (chip)** is a small, equal-sized image crop used as one training sample. **Stride** is how far the tiling window moves between tiles; a stride equal to the tile size means no overlap.
+> - **Provider** is the web service that hosts the data (Earth Search, Planetary Computer, and others).
 
 ---
 
@@ -145,15 +158,26 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ---
 
+## Two ways to use `geoai-datacubes`
+
+The package supports two typical workflows; you can pick either, and you can move between them freely.
+
+- **Notebook path** — the on-ramp for anyone new to satellite data or ML/DL. The bundled notebooks (`notebooks/00_geoai_datacubes_tour.ipynb` and its siblings, above) are documented, interactive, and easy to adapt. Open one in Colab, swap the AOI and time range to your area of interest, and iterate. This is the recommended starting point for students and researchers coming from adjacent fields.
+- **Script / library path** — for users comfortable with remote sensing or ML who want to compose the pipeline into their own code. Import the package as a library, chain the fetch / fuse / tile helpers into your own workflow, embed it in a bigger pipeline, or run headless on an HPC cluster. Notebooks can also be stripped down to a plain Python script for SLURM runs — [`smoke-tests/perf_bench.slurm`](smoke-tests/perf_bench.slurm) is one worked example of that pattern.
+
+Both paths share the same underlying package — the notebooks are just curated call-sites of the same public API a script user would call directly.
+
+---
+
 ## Install
 
-The recommended path is a single `mamba` command from conda-forge plus one `pip install`:
+The recommended path is a single `mamba` (or `conda`) command from conda-forge plus one `pip install`. `mamba` is a drop-in `conda` replacement that solves environments much faster; if you already have `conda` installed, substitute `conda` for `mamba` in the commands below and everything works the same.
 
 ```bash
 mamba create -y -n geoai-cubes -c conda-forge \
     python=3.11 \
     geoai-py leafmap torchgeo omniwatermask \
-    rasterio gdal pyproj shapely \
+    rasterio gdal libgdal-jp2openjpeg pyproj shapely \
     pystac pystac-client planetary-computer \
     "pytorch>=2.0" "torchvision>=0.15" \
     zarr lmdb scikit-image pillow \
@@ -163,6 +187,8 @@ mamba create -y -n geoai-cubes -c conda-forge \
 mamba activate geoai-cubes
 pip install geoai-datacubes              # or: pip install -e . from a clone
 ```
+
+`libgdal-jp2openjpeg` is the JPEG-2000 GDAL plugin — needed for Earth Search's Sentinel-2 L1C assets, which are hosted as `.jp2`. Every other mission is COG-native and does not need it; if you skip it, all missions except S2 L1C still work.
 
 For Docker, pip-only, slimmer installs via `[ml]` / `[geoai]` / `[notebooks]` / `[planet]` extras, and the first-run recipe, see **[`docs/install.md`](docs/install.md)**. PlanetScope and Sentinel Hub credential setup is in **[`docs/credentials.md`](docs/credentials.md)**.
 
@@ -287,9 +313,9 @@ Released under the **MIT License** — see [`LICENSE`](LICENSE) for the full tex
 
 ## Acknowledgements & contact
 
-Built and maintained by the [**BuckAI Observatory**](https://buckai-observatory.org) at The Ohio State University.
+Built and maintained by the [**BuckAI Observatory**](https://ai-observatory.osu.edu) at The Ohio State University.
 
-- Website: <https://buckai-observatory.org>
+- Website: <https://ai-observatory.osu.edu>
 - More tools & tutorials: BuckAI Observatory [resources page](https://buckai-observatory.org/resources.html)
 
 This project was developed over approximately one year by **Jain, Bhavika**; **Radhakrishnan, Aswathnarayan**; **Chowdhury, Satyaki Roy**; **Hsu, Hsiao Jou**; and **Moortgat, Joachim** (principal investigator) at OSU. See [`CHANGELOG.md`](CHANGELOG.md) for the full timeline and [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a per-area breakdown of who contributed what. Code development since May 2026 was substantially accelerated by [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, used under continuous human direction and review.

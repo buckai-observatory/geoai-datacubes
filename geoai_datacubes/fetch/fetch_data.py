@@ -29,12 +29,15 @@ and exporter work unchanged regardless of provider.
 import json
 import os
 import re
+import sys
+import time
 
 import numpy as np
 import rasterio
 import requests
 from rasterio.transform import from_bounds
 from rasterio.warp import Resampling, reproject, transform_bounds
+from tqdm.auto import tqdm
 
 from .missions import get_profile, get_provider_config
 from .plan_grid import Grid, plan_grid
@@ -89,6 +92,8 @@ PROVIDER_AUTO = {
     "GEDI-L4A":       "earthdata",          # ORNL DAAC, per-shot 25 m footprint biomass (tracks flow)
     "SMAP-L3":        "earthdata",          # NSIDC DAAC, daily global 9 km enhanced soil moisture (SPL3SMP_E V006)
     "Sentinel-5P-NO2": "earthdata",         # GES_DISC, TROPOMI L2 NO2 HiR v2 (tracks flow, ~590 MB/orbit)
+    "ALOS-DEM":       "planetary_computer", # PC only; AW3D30 static 30 m DSM
+    "ESA-CCI-LC":     "planetary_computer", # PC only; annual 300 m LULC, 1992-2020
     # "Sentinel-5P": deliberately NOT registered. The PC collection
     # serves NetCDF assets; the current STAC fetcher only reads COGs via
     # rasterio. See the missions.py stub and TODO for the planned xarray
@@ -163,6 +168,12 @@ def fetch_sentinel_data(
     # explicit list surprises callers; not auto-appending them when the
     # caller asked for None loses helpful defaults. Each provider handles
     # this fork.
+
+    # Shared up-front validation of AOI + time_range so every provider
+    # path gets the same actionable error message on antimeridian-crossing
+    # AOIs, out-of-range lon/lat, and inverted time windows.
+    from .aoi import validate_query
+    validate_query(roi, time_range)
 
     if provider == "auto":
         provider = PROVIDER_AUTO.get(mission, "earthsearch")
@@ -270,12 +281,22 @@ def fetch_direct_http(mission, bands, time_range, roi,
     fetches); pass ``grid=`` when aligning with another provider.
     """
     from ._direct_fetch import _fetch_via_direct_http
+    profile = get_profile(mission)
     cfg = get_provider_config(mission, "direct_http")
+    # Match the STAC path's convenience: bands=None means "the mission's
+    # default set + its extra_bands (QA / SCL / etc.)". Without this the
+    # per-mission tile_callback trips over a `for band in None` iteration
+    # a few frames down.
+    if bands is None:
+        bands = list(profile["default_bands"])
+        for b in profile.get("extra_bands", []) or []:
+            if b not in bands:
+                bands.append(b)
     return _fetch_via_direct_http(
         mission, bands, time_range, roi,
         resolution=resolution, save_folder=save_folder,
         tile_callback=cfg["tile_callback"],
-        band_meta=get_profile(mission).get("band_meta"),
+        band_meta=profile.get("band_meta"),
         release_tag=cfg.get("release_tag"),
         grid=grid,
     )
@@ -478,16 +499,46 @@ def _scene_overlap_ratio(item, aoi_bbox):
         return _bbox_overlap_ratio(item.get("bbox") or [], aoi_bbox)
 
 
-def _resampling_for_band(band_name, cloud_mask_spec):
-    """SCL / BQA / quality-class bands MUST use nearest-neighbour resampling."""
+def _resampling_for_band(band_name, cloud_mask_spec, profile=None):
+    """Categorical / QA bands MUST use nearest-neighbour resampling.
+
+    Resolution order:
+
+    1. If the caller passed the mission ``profile`` and its
+       ``band_meta[band_name]["kind"]`` is ``"categorical"`` or
+       ``"qa"``, use nearest. This is the authoritative source of
+       truth -- every mission profile in ``missions.py`` declares
+       band kinds explicitly.
+    2. Else, if the band matches the cloud-mask band declared by the
+       profile, use nearest.
+    3. Else, fall back to a hardcoded set of common categorical /
+       QA band names. This branch exists so third-party mission
+       registrations without band_meta still get the right resampler.
+    4. Else, bilinear (continuous / spectral / SAR / elevation).
+
+    Bug history: prior to 2026-09-16 this function only consulted the
+    hardcoded fallback set, which omitted ``C`` (ALOS-FNF forest /
+    non-forest), ``lcpri`` (LCMAP primary class), ``cropland``
+    (USDA-CDL), and Hansen's ``lossyear`` / ``datamask`` -- so those
+    categorical bands got bilinear resampling and were fractional in
+    the output. Surfaced by the tightened smoke-test acceptance rules
+    (openjournals/joss-reviews#11034 item 1, issue #19). The kind-first
+    dispatch closes the whole class of miss.
+    """
     if cloud_mask_spec and band_name == cloud_mask_spec.get("band"):
         return Resampling.nearest
+    if profile is not None:
+        bmeta = (profile.get("band_meta") or {}).get(band_name) or {}
+        if bmeta.get("kind") in ("categorical", "qa"):
+            return Resampling.nearest
     if band_name in {"SCL", "BQA", "LULC", "Fmask",
                      "extent", "transitions",
-                     "QC", "QC_Day", "QC_Night", "STATE", "DOY"}:
-        # Categorical / classification / QA bands -- MUST be nearest neighbour.
-        # Includes HLS Fmask, JRC-GSW `extent` and `transitions`, and the
-        # MODIS QC / STATE / day-of-year sidecars (all packed-bit integers).
+                     "QC", "QC_Day", "QC_Night", "STATE", "DOY",
+                     # Added 2026-09-16 as a fallback for callers that
+                     # don't pass ``profile``. Keep in sync with the
+                     # ``kind: categorical`` bands in missions.py.
+                     "C", "lcpri", "cropland",
+                     "lossyear", "datamask"}:
         return Resampling.nearest
     return Resampling.bilinear
 
@@ -649,11 +700,50 @@ def _resolve_es_href(href):
     raise ValueError(f"Unrecognized asset href scheme: {href}")
 
 
+# ---- HTTP retry for public endpoints (STAC search, PC signing) ----
+_RETRY_STATUS = (429, 500, 502, 503, 504)
+
+
+def _request_with_retry(method, url, *, max_retries=4, **kwargs):
+    """``requests.request`` with exponential backoff for transient failures.
+
+    Public endpoints rate-limit (HTTP 429) and return 5xx errors under load,
+    which is common when many SLURM array tasks hit the same catalogue at
+    once. Those responses, plus connection errors and timeouts, are retried
+    with exponential backoff (2, 4, 8, ... s, capped at 60 s, honouring
+    ``Retry-After``). Other errors and the last failed attempt are raised.
+    """
+    delay = 2.0
+    for attempt in range(max_retries + 1):
+        try:
+            r = getattr(requests, method)(url, **kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt >= max_retries:
+                raise
+            time.sleep(min(delay, 60.0))
+            delay *= 2
+            continue
+        if r.status_code in _RETRY_STATUS and attempt < max_retries:
+            try:
+                wait = float(r.headers.get("Retry-After", delay))
+            except ValueError:
+                wait = delay
+            time.sleep(min(wait, 60.0))
+            delay *= 2
+            continue
+        r.raise_for_status()
+        return r
+
+
 # ---- planetary_computer URL resolver (sign via SAS endpoint) ----
-def _resolve_pc_href(href):
-    """Sign a Planetary Computer asset URL using the public SAS endpoint."""
-    r = requests.get(PC_SIGN_URL, params={"href": href}, timeout=30)
-    r.raise_for_status()
+def _resolve_pc_href(href, max_retries=4):
+    """Sign a Planetary Computer asset URL using the public SAS endpoint.
+
+    Rate-limit and transient server errors are retried with backoff
+    (see :func:`_request_with_retry`).
+    """
+    r = _request_with_retry("get", PC_SIGN_URL, max_retries=max_retries,
+                            params={"href": href}, timeout=30)
     return r.json()["href"]
 
 
@@ -669,10 +759,9 @@ def _stac_search(stac_url, body, *, method="POST", paginate=False, max_items=200
     if method.upper() == "GET":
         params = {k: (",".join(str(x) for x in v) if isinstance(v, (list, tuple)) else v)
                   for k, v in body.items() if k != "query"}
-        r = requests.get(stac_url, params=params, timeout=60)
+        r = _request_with_retry("get", stac_url, params=params, timeout=60)
     else:
-        r = requests.post(stac_url, json=body, timeout=60)
-    r.raise_for_status()
+        r = _request_with_retry("post", stac_url, json=body, timeout=60)
     page = r.json()
     items = list(page.get("features", []))
     while paginate and len(items) < max_items:
@@ -680,10 +769,10 @@ def _stac_search(stac_url, body, *, method="POST", paginate=False, max_items=200
         if not nxt:
             break
         if (nxt.get("method") or "GET").upper() == "POST":
-            r = requests.post(nxt["href"], json={**body, **(nxt.get("body") or {})}, timeout=60)
+            r = _request_with_retry("post", nxt["href"],
+                                    json={**body, **(nxt.get("body") or {})}, timeout=60)
         else:
-            r = requests.get(nxt["href"], timeout=60)
-        r.raise_for_status()
+            r = _request_with_retry("get", nxt["href"], timeout=60)
         page = r.json()
         feats = page.get("features", [])
         if not feats:
@@ -693,6 +782,33 @@ def _stac_search(stac_url, body, *, method="POST", paginate=False, max_items=200
         print(f"⚠️  STAC search hit max_items={max_items}; the AOI may be "
               f"larger than this provider should serve in one fetch.")
     return items[:max_items]
+
+
+def _stac_userdata(representative, *, mission, acquisition_date, tile_id,
+                   provider_label, collection, bands, is_static, mosaic_tiles):
+    """Build the ``userdata.json`` sidecar dict for a STAC fetch.
+
+    Sun / view geometry comes from the STAC ``view`` extension; collections
+    that omit it get ``None`` rather than an error. ``sceneId`` is the raw
+    STAC item id, so the source item can be re-queried later.
+    """
+    props = representative["properties"]
+    return {
+        "satellite":          props.get("platform", mission),
+        "acquisitionDate":    acquisition_date,
+        "cloudCover":         props.get("eo:cloud_cover"),
+        "sunAzimuth":         props.get("view:sun_azimuth"),
+        "sunElevation":       props.get("view:sun_elevation"),
+        "viewAzimuth":        props.get("view:azimuth"),
+        "viewIncidenceAngle": props.get("view:incidence_angle"),
+        "tileId":             tile_id,
+        "sceneId":            representative.get("id"),
+        "provider":           provider_label,
+        "collection":         collection,
+        "bands":              bands,
+        "static":             is_static,
+        "mosaic_tiles":       mosaic_tiles,
+    }
 
 
 def _fetch_via_stac(
@@ -907,28 +1023,34 @@ def _fetch_via_stac(
     # resampling method are read together in one pass.
     groups = {}
     for i, b in enumerate(final_bands):
-        rs = _resampling_for_band(b, profile["cloud_mask"])
+        rs = _resampling_for_band(b, profile["cloud_mask"], profile)
         asset_key, band_index = _resolve_band_mapping(asset_map[b])
         groups.setdefault((asset_key, rs), []).append((i, b, band_index))
-    for (asset_key, rs), members in groups.items():
+    group_bar = tqdm(
+        groups.items(), total=len(groups),
+        desc=f"{mission} bands", unit="file",
+        disable=not sys.stdout.isatty(), leave=False,
+    )
+    for (asset_key, rs), members in group_bar:
         rows = [i for i, _, _ in members]
         band_indexes = [bi for _, _, bi in members]
         names = ",".join(b for _, b, _ in members)
         label = asset_key if band_indexes == [1] else f"{asset_key}{band_indexes}"
         if len(items) > 1:
             urls = [url_resolver(it["assets"][asset_key]["href"]) for it in items]
-            print(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}"
-                  f"mosaic of {len(urls)} scene(s)")
+            tqdm.write(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}"
+                       f"mosaic of {len(urls)} scene(s)")
             stack[rows] = _read_mosaic_to_grid(urls, dst_crs, dst_transform,
                                                (out_h, out_w), rs,
                                                band_indexes=band_indexes)
         else:
             url = url_resolver(representative["assets"][asset_key]["href"])
             leaf = url.rsplit("?", 1)[0].rsplit("/", 1)[-1]
-            print(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
+            tqdm.write(f"↓ {names:>5}  ({label:>16})  {rs.name:<8}  {leaf}")
             stack[rows] = _read_bands_to_grid(url, dst_crs, dst_transform,
                                               (out_h, out_w), rs,
                                               band_indexes=band_indexes)
+        group_bar.set_postfix_str(names)
 
     # 5b. Unit conversion (e.g. KyFromAbove elevations are US survey feet).
     for i, b in enumerate(final_bands):
@@ -966,17 +1088,13 @@ def _fetch_via_stac(
             dst.set_band_description(i, b)
 
     # 7. Sidecar metadata
-    userdata = {
-        "satellite":       representative["properties"].get("platform", mission),
-        "acquisitionDate": scene_dt_for_userdata,
-        "cloudCover":      representative["properties"].get("eo:cloud_cover"),
-        "tileId":          rep_scene_id,
-        "provider":        provider_label,
-        "collection":      collection,
-        "bands":           final_bands,
-        "static":          is_static,
-        "mosaic_tiles":    len(items) if is_static else 1,
-    }
+    userdata = _stac_userdata(
+        representative, mission=mission,
+        acquisition_date=scene_dt_for_userdata, tile_id=rep_scene_id,
+        provider_label=provider_label, collection=collection,
+        bands=final_bands, is_static=is_static,
+        mosaic_tiles=len(items) if is_static else 1,
+    )
     with open(os.path.join(out_dir, "userdata.json"), "w") as fp:
         json.dump(userdata, fp, indent=2)
 

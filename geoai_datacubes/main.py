@@ -14,9 +14,11 @@ import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
 
-from geoai_datacubes.fetch import resolve_aoi, fetch_sentinel_data, get_profile
+from geoai_datacubes.fetch import (
+    resolve_aoi, resolve_aoi_geometry, fetch_sentinel_data, get_profile,
+)
 from geoai_datacubes.preprocessing import (
-    normalize_band, compute_ndvi, cloud_mask, tile_geotiff,
+    normalize_band, compute_ndvi, cloud_mask, tile_geotiff, clip_to_geometry,
 )
 
 # --------------------------------------------------------------------
@@ -46,8 +48,10 @@ BANDS      = None                              # None -> use the mission's defau
 AOI = {"bbox": [-83.077, 39.964, -82.983, 40.036]}
 
 # (2) Polygon from a shapefile / geopackage / GeoJSON. The polygon's bbox is used.
-#     Requires `geopandas`.
+#     Requires `geopandas`. Add "clip_to_geometry": True to NaN-out pixels
+#     outside the polygon (and inside its holes) after the fetch.
 # AOI = {"shapefile": "/path/to/aoi.shp"}
+# AOI = {"shapefile": "/path/to/aoi.shp", "clip_to_geometry": True}
 
 # (3) Square around a centre point: (lat, lon) + side length in miles.
 #     Example: 5-mile square centred on Mendenhall Lab at OSU.
@@ -94,6 +98,10 @@ if not tiff_files:
 tiff_path = max(tiff_files, key=os.path.getmtime)
 latest_dir = os.path.dirname(tiff_path)
 print(f"Using image from: {tiff_path}")
+
+if AOI.get("clip_to_geometry"):
+    n_out = clip_to_geometry(tiff_path, resolve_aoi_geometry(AOI))
+    print(f"Clipped to the AOI polygon: {n_out} pixels outside it set to NaN.")
 
 with rasterio.open(tiff_path) as src:
     img = np.transpose(src.read(), (1, 2, 0))  # (H, W, bands)

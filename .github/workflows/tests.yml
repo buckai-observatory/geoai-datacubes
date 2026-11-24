@@ -38,12 +38,17 @@ jobs:
 
       - name: Install the package + test deps
         # `[dev]` = pytest + ruff + pre-commit.
-        # `[earthdata]` = earthaccess + h5py + xarray + h5netcdf -- needed
-        #   for the tracks-reader tests (test_atl06_reader, test_tracks)
-        #   that unit-test the earthdata provider without hitting network.
+        # `[earthdata]` = earthaccess + h5py + xarray + h5netcdf, needed
+        #   by the tracks-reader tests (test_atl06_reader, test_tracks).
+        # `[ml]` = torch + torchvision + scikit-image + sklearn + xgboost
+        #   + ultralytics + transformers, needed by the tiler + ml_dl
+        #   tests. As of the torch-out-of-core refactor (Aug 2026) this
+        #   extra is what installs PyTorch; without it, only the
+        #   fetch + fuse + core-preprocessing surface is available. The
+        #   full-matrix job below verifies both surfaces at once.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,earthdata]"
+          python -m pip install -e ".[dev,earthdata,ml]"
 
       - name: Run the test suite
         run: pytest -v --color=yes
@@ -55,3 +60,86 @@ jobs:
         run: |
           ruff check geoai_datacubes tests || true
           ruff format --check geoai_datacubes tests || true
+
+  # Separate lightweight job that verifies the minimal install (no [ml]
+  # extra, no PyTorch, no scikit-image) still imports the fetch and
+  # core-preprocessing surfaces cleanly. Guards against a regression
+  # where a new fetch feature accidentally re-acquires a torch dep at
+  # module top level and silently forces every fetch-only user back to
+  # the ~2 GB install. Runs the dedicated test_minimal_install.py suite
+  # which uses a MetaPathFinder to block torch imports at runtime, but
+  # this job installs the pyproject.toml deps for real -- so if [ml] is
+  # ever moved back into `dependencies` the job's own env grows and the
+  # size check fails.
+  minimal-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install core + [dev] ONLY (no [ml], no torch)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Assert PyTorch is not installed
+        run: |
+          if python -c "import torch" 2>/dev/null; then
+            echo "REGRESSION: torch was installed by the core+dev deps"
+            echo "This means the [ml] extra has leaked back into"
+            echo "core dependencies. See PR #<num> for the rationale."
+            exit 1
+          fi
+          echo "OK: torch is not installed in the minimal-install env"
+
+      - name: Fetch + core-preprocessing surface imports cleanly
+        run: |
+          python -c "from geoai_datacubes.fetch import fetch_sentinel_data"
+          python -c "from geoai_datacubes.preprocessing import fuse_response_tiffs, tile_geotiff, compute_ndvi"
+          echo "OK: fetch + core-preprocessing importable without [ml]"
+
+      - name: Run the minimal-install test suite
+        run: pytest tests/test_minimal_install.py -v --color=yes
+
+  # Locked-env reproducibility check: install from pixi.lock (locked, no
+  # new solve) and run the full test suite. Guards two things:
+  # (a) pixi.lock stays coherent with pyproject.toml -- if a contributor
+  #     bumps a dep in pyproject.toml [tool.pixi.*] without re-running
+  #     `pixi lock`, this job goes red; and
+  # (b) the exact locked env passes tests, so a reviewer / user who
+  #     reproduces via `pixi install -e tests` gets the same result.
+  pixi-locked:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          # Use the version we developed the lockfile against; bumping
+          # this needs a matching `pixi lock` on someone's machine.
+          pixi-version: v0.77.1
+          environments: tests
+          # --locked: hard-fail if pyproject.toml diverges from the lock.
+          # (--frozen would not: it installs the lock as is and skips the
+          # check, which is how a stale lock went unnoticed before.)
+          locked: true
+          # cache=true reuses .pixi across runs on the same lockfile.
+          cache: true
+
+      - name: Check the whole lockfile is current (all environments)
+        # The install above only validates the `tests` environment;
+        # `pixi lock --check` re-solves every environment against the
+        # existing lock and fails if anything would change.
+        run: pixi lock --check
+
+      - name: Run the test suite from the locked env
+        run: pixi run --locked -e tests pytest -v --color=yes

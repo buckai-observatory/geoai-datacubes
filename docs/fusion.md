@@ -4,7 +4,10 @@ Each fetch produces one `<Mission>_full_size.tiff` per scene. To train
 a model on **several missions at once** — typical when combining
 optical (Sentinel-2) with SAR (Sentinel-1) with elevation (DEM) or
 land-cover labels (WorldCover) — you fuse those per-mission cubes onto
-a **common UTM grid** at a chosen resolution.
+a **common UTM grid** at a chosen resolution. The result, a *fused cube*,
+is an ordinary data cube (one multi-band GeoTIFF) whose bands happen to
+come from several missions; the tiler, the exporters and the training
+code treat it exactly like a single-mission cube.
 
 The fusion helper lives in
 [`geoai_datacubes/preprocessing/fusion.py`](../geoai_datacubes/preprocessing/fusion.py)

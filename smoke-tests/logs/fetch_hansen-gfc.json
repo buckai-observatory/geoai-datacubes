@@ -1,7 +1,7 @@
 {
   "test": "fetch_hansen-gfc",
   "mission": "Hansen-GFC",
-  "started_at": "2026-06-22T08:30:42",
+  "started_at": "2026-09-16T17:34:59",
   "status": "passed",
   "aoi": [
     -83.04,
@@ -19,8 +19,33 @@
     "2023-12-31"
   ],
   "resolution_m": 30,
-  "save_folder": "/tmp/geoai_smoke/Hansen-GFC",
-  "elapsed_sec": 17.1,
+  "save_folder": "/tmp/geoai_smoke_final_54848/Hansen-GFC",
+  "acceptance": {
+    "max_nan_fraction": 0.02,
+    "bands": {
+      "treecover2000": {
+        "value_range": [
+          0.0,
+          100.0
+        ]
+      },
+      "lossyear": {
+        "value_range": [
+          0.0,
+          30.0
+        ]
+      },
+      "datamask": {
+        "categorical_values": [
+          0,
+          1,
+          2
+        ],
+        "value_range": null
+      }
+    }
+  },
+  "elapsed_sec": 7.9,
   "bands_returned": [
     "treecover2000",
     "lossyear",
@@ -28,7 +53,7 @@
   ],
   "scene": "Hansen-GFC_v1.11_2023_direct_http",
   "geotiff": {
-    "path": "/tmp/geoai_smoke/Hansen-GFC/Hansen-GFC_v1.11_2023_direct_http/Hansen-GFC_full_size.tiff",
+    "path": "/tmp/geoai_smoke_final_54848/Hansen-GFC/Hansen-GFC_v1.11_2023_direct_http/Hansen-GFC_full_size.tiff",
     "shape": [
       86,
       59,
@@ -40,8 +65,66 @@
       "datamask"
     ],
     "crs": "EPSG:32617",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      29.921966829205967,
+      0.0,
+      325847.03797238035,
+      0.0,
+      -30.139082496076128,
+      4431748.439527453
+    ],
     "nan_fraction_centre_window": 0.0,
-    "size_bytes": 8992
+    "per_band": [
+      {
+        "index": 1,
+        "description": "treecover2000",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 0.0,
+        "max": 47.040164947509766,
+        "mean": 0.6163997650146484,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "lossyear",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 0.0,
+        "max": 23.0,
+        "mean": 0.1641702800989151,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          0,
+          3,
+          7,
+          13,
+          16,
+          19,
+          20,
+          21,
+          23
+        ]
+      },
+      {
+        "index": 3,
+        "description": "datamask",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 1.0,
+        "max": 2.0,
+        "mean": 1.017540454864502,
+        "native_dtype": "float32",
+        "unique_int_codes": [
+          1,
+          2
+        ]
+      }
+    ],
+    "size_bytes": 9404
   },
-  "finished_at": "2026-06-22T08:30:59"
+  "finished_at": "2026-09-16T17:35:07"
 }

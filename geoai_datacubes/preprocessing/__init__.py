@@ -13,6 +13,10 @@ Public API:
 * :class:`LazyTileDataset` -- ``torch.utils.data.Dataset`` that reads
   tile windows on demand from a GeoTIFF cube or a Zarr store; pickle-safe
   for ``DataLoader(num_workers > 0)``.
+* :func:`export_temporal_cube_chunk` / :func:`merge_chunks` -- resumable,
+  SLURM-array-safe export of multi-temporal patch cubes to Zarr.
+* :func:`clip_to_geometry` -- NaN-out pixels outside a polygon AOI
+  (holes included) in a fetched GeoTIFF.
 * :func:`geotiff_to_zarr` -- convert a GeoTIFF cube to Zarr (useful for
   cluster training: zarr chunks parallelise far better than monolithic
   COGs over networked filesystems).
@@ -31,9 +35,67 @@ used by ``tile_geotiff(nan_handling="auto")`` and ML-ready normalisation):
 * :data:`DEFAULT_KIND_NAN_STRATEGY` / :data:`DEFAULT_KIND_NORM`
 """
 
+from typing import TYPE_CHECKING
+
 from .fusion import fuse_response_tiffs
 from .tiler import tile_geotiff, AVAILABLE_AUGMENTATIONS
-from .lazy_dataset import LazyTileDataset, geotiff_to_zarr
+
+# LazyTileDataset (and geotiff_to_zarr, which lives in the same module)
+# require torch. Torch is optional -- it lives behind the [ml] extra so
+# fetch-and-fuse-only users can `pip install geoai-datacubes` without
+# pulling in ~2 GB of PyTorch. Both names are loaded lazily (PEP 562), so
+# `from geoai_datacubes.preprocessing import fuse_response_tiffs` never
+# imports torch, even when torch is installed. If torch is missing the
+# lazy lookup returns stubs that raise a clear ImportError only when the
+# ML surface is actually used.
+_ML_NAMES = ("LazyTileDataset", "geotiff_to_zarr")
+
+# Never true at run time (torch stays unimported). It lets static tools that
+# read the source without running it, such as the quartodoc API-reference
+# build and type checkers, find the two lazily loaded names.
+if TYPE_CHECKING:
+    from .lazy_dataset import LazyTileDataset, geotiff_to_zarr  # noqa: F401
+_ml_extra_hint = (
+    "This name requires the [ml] extra (PyTorch is not installed). "
+    "Install with: `pip install geoai-datacubes[ml]` (or "
+    "`mamba install -n <env> -c conda-forge pytorch torchvision`). "
+    "Fetch and fuse work without [ml]; only the LazyTileDataset / "
+    "geotiff_to_zarr surface is gated."
+)
+
+
+def _is_missing_torch(exc):
+    if not isinstance(exc, ModuleNotFoundError):
+        return False
+    missing = exc.name or ""
+    return missing in ("torch", "torchvision") or missing.startswith(("torch.", "torchvision."))
+
+
+def __getattr__(name):
+    if name not in _ML_NAMES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    try:
+        from . import lazy_dataset
+        obj = getattr(lazy_dataset, name)
+    except ImportError as e:
+        # Only a missing PyTorch means "install the [ml] extra". Any other
+        # import failure (a missing dependency of lazy_dataset, or a torch
+        # build that fails to load) must surface its own message.
+        if not _is_missing_torch(e):
+            raise
+        hint = f"{_ml_extra_hint} (original error: {e})"
+        if name == "LazyTileDataset":
+            class obj:                                                   # noqa: N801
+                def __init__(self, *args, **kwargs):
+                    raise ImportError(hint)
+        else:
+            def obj(*args, **kwargs):
+                raise ImportError(hint)
+        obj.__name__ = name
+    globals()[name] = obj
+    return obj
+
+
 from .band_ops import (
     normalize_band, compute_ndvi, compute_ndwi, compute_dem_gradient_magnitude,
     cloud_mask,
@@ -43,16 +105,24 @@ from .band_ops import (
 )
 from .export_zarr import export_to_zarr
 from .export_lmdb import export_to_lmdb
+from .checkpointed_export import (
+    export_temporal_cube_chunk, merge_chunks, read_patch_meta,
+)
 from .band_select import select_bands, write_label_uint8, BAND_PRESETS
+from .clip import clip_to_geometry
 
 __all__ = [
     "fuse_response_tiffs",
     "tile_geotiff",
+    "clip_to_geometry",
     "AVAILABLE_AUGMENTATIONS",
     "LazyTileDataset",
     "geotiff_to_zarr",
     "export_to_zarr",
     "export_to_lmdb",
+    "export_temporal_cube_chunk",
+    "merge_chunks",
+    "read_patch_meta",
     "normalize_band",
     "compute_ndvi",
     "compute_ndwi",

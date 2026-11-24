@@ -166,6 +166,34 @@ def _cloud_mask_from_spec(qa_band, spec):
     raise ValueError(f"Unknown cloud-mask kind: {kind!r}")
 
 
+def _tile_cloud_mask(src, window, tile_shape, cloud_bands, dilation_px=0):
+    """Combined cloud mask for one tile, optionally dilated by ``dilation_px``.
+
+    Without dilation the mask comes straight from the QA band(s) inside the
+    tile window. With dilation we read a ``dilation_px`` halo around the
+    window (boundless, so edges of the raster are fine), dilate, then crop
+    back to the tile. Dilating the cropped tile alone would let a cloud just
+    outside the window fail to bleed in, so masking would depend on where the
+    tile grid happens to fall relative to the cloud.
+    """
+    h, w = tile_shape
+    d = int(dilation_px)
+    halo = Window(window.col_off - d, window.row_off - d,
+                  window.width + 2 * d, window.height + 2 * d)
+    cloudy = None
+    for bi, spec, _ in cloud_bands:
+        qa = src.read(bi + 1, window=halo, boundless=True, masked=True)
+        # Out-of-raster pixels come back masked; NaN means "no QA info",
+        # which _cloud_mask_from_spec treats as not cloudy.
+        qa = qa.astype(np.float32).filled(np.nan)
+        m = _cloud_mask_from_spec(qa, spec)
+        cloudy = m if cloudy is None else (cloudy | m)
+    if d > 0 and cloudy.any():
+        from scipy.ndimage import binary_dilation
+        cloudy = binary_dilation(cloudy, iterations=d)
+    return cloudy[d:d + h, d:d + w]
+
+
 # ============================================================
 # NaN handling
 # ============================================================
@@ -608,6 +636,8 @@ def tile_geotiff(
                                    # when None
     cloud_mask=False,              # when True, NaN-out cloudy pixels using SCL / BQA / QA_PIXEL
                                    # bands found in the input (then NaN-handling kicks in)
+    cloud_mask_dilation_px=0,      # grow the cloud mask by this many pixels (needs cloud_mask=True);
+                                   # 0 keeps the provider's mask exactly as computed
 ):
     """
     Tile a multi-band GeoTIFF into AI-ready patches with a chosen split strategy.
@@ -647,7 +677,29 @@ def tile_geotiff(
       * ``augment=("noise",)`` -- noise only.
 
     Unknown names raise ``ValueError`` before any tiling work begins.
+
+    Cloud mask dilation
+    -------------------
+    SCL / QA masks tend to under-flag thin cloud edges and shadows, most of
+    all over dark water, which leaves a halo of partly contaminated pixels
+    around every masked cloud. ``cloud_mask_dilation_px=N`` grows the
+    combined cloud mask by ``N`` pixels before it is applied; 1-2 is usually
+    enough. The halo is read from beyond each tile's window, so the result
+    does not depend on where tile edges fall.
+
+    Dilation adds NaN pixels before NaN handling runs, so tiles near clouds
+    are more likely to exceed ``nan_max_fraction`` (and, for
+    ``"interpolate"``, to fall outside ``nan_interp_max_dist``) and be
+    dropped. Re-check those two settings when you turn dilation on.
     """
+    if (isinstance(cloud_mask_dilation_px, bool)
+            or not isinstance(cloud_mask_dilation_px, (int, np.integer))
+            or cloud_mask_dilation_px < 0):
+        raise ValueError(
+            "cloud_mask_dilation_px must be a non-negative integer, "
+            f"got {cloud_mask_dilation_px!r}"
+        )
+
     # Pre-resolve region specs once (uses aoi.py) so we don't repeat work per tile.
     region_bboxes = None
     if split_method == "regions":
@@ -729,6 +781,8 @@ def tile_geotiff(
             if cloud_bands:
                 names = ", ".join(b[2] for b in cloud_bands)
                 print(f"cloud_mask=True: NaN-ing cloudy pixels using {names}")
+                if cloud_mask_dilation_px:
+                    print(f"Dilating the cloud mask by {cloud_mask_dilation_px} px")
             else:
                 print("⚠️  cloud_mask=True but no SCL / BQA / QA_PIXEL band found in input.")
 
@@ -757,10 +811,15 @@ def tile_geotiff(
                 # can still see which pixels were masked and why.
                 n_cloud_this_tile = 0
                 if cloud_bands:
-                    cloudy = np.zeros(img.shape[:2], dtype=bool)
                     qa_idxs = set(b[0] for b in cloud_bands)
-                    for bi, spec, _ in cloud_bands:
-                        cloudy |= _cloud_mask_from_spec(img[..., bi], spec)
+                    if cloud_mask_dilation_px:
+                        cloudy = _tile_cloud_mask(src, window, img.shape[:2],
+                                                  cloud_bands,
+                                                  cloud_mask_dilation_px)
+                    else:
+                        cloudy = np.zeros(img.shape[:2], dtype=bool)
+                        for bi, spec, _ in cloud_bands:
+                            cloudy |= _cloud_mask_from_spec(img[..., bi], spec)
                     n_cloud_this_tile = int(cloudy.sum())
                     if n_cloud_this_tile:
                         for ci in range(img.shape[-1]):
@@ -823,6 +882,7 @@ def tile_geotiff(
                     "tile_split_assigned":     str(split),
                     "tile_nan_handling":       str(nan_handling),
                     "tile_cloud_mask_applied": str(bool(cloud_bands)),
+                    "tile_cloud_mask_dilation_px": str(cloud_mask_dilation_px if cloud_bands else 0),
                     "tile_has_valid_mask_band": str(nan_info["added_mask_band"]),
                     "tile_n_nan_before":       str(nan_info["n_nan_before"]),
                     "tile_n_filled":           str(nan_info["n_filled"]),

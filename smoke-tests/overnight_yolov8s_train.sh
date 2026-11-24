@@ -8,7 +8,7 @@
 #   /tmp/overnight_status    -- single-word status: TRAINING / TRAINED / DONE / TRAIN_FAILED
 set -uo pipefail
 cd /Users/moortgat/Documents/buckAI_observatory/Website/Github/geoai-datacubes
-export PATH=/opt/anaconda3/envs/h2oval/bin:$PATH
+export PATH="${CONDA_PREFIX:-/opt/anaconda3/envs/geoai-cubes}/bin":$PATH
 export PYTHONPATH=/Users/moortgat/Documents/buckAI_observatory/Website/Github/geoai-datacubes
 export OMP_NUM_THREADS=2
 export KMP_DUPLICATE_LIB_OK=TRUE

@@ -1,0 +1,7 @@
+{
+  "test": "fetch_planetscope-4b",
+  "mission": "PlanetScope-4b",
+  "started_at": "2026-09-16T17:34:47",
+  "status": "skipped",
+  "reason": "PL_API_KEY not set in environment (Planet commercial API)"
+}

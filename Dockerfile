@@ -53,7 +53,7 @@ WORKDIR /home/$MAMBA_USER
 RUN micromamba install -n base -y -c conda-forge \
         python=3.11 \
         geoai-py leafmap torchgeo omniwatermask \
-        rasterio gdal pyproj shapely \
+        rasterio gdal libgdal-jp2openjpeg pyproj shapely \
         pystac pystac-client planetary-computer \
         "pytorch>=2.0" "torchvision>=0.15" \
         zarr lmdb scikit-image pillow \
