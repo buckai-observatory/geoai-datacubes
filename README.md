@@ -64,7 +64,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   | `Sentinel-2` / `Sentinel-2-L1C` | 10 m | earthsearch | 4 vis+NIR @ 10 m, 6 red-edge/SWIR @ 20 m; L2A (BOA) and L1C (TOA) |
   | `Landsat` (8 / 9 C2L2) | 30 m | planetary_computer | Long time series; thermal @ 100 m |
   | `NAIP` | 1 m | planetary_computer | US aerial imagery |
-  | `MODIS_SR` (Terra / Aqua) | 500 m | earth_engine | Daily global; sinusoidal tile seams resolved via EE |
+  | `MODIS_SR` (Terra / Aqua) | 500 m | planetary_computer | Daily global; `provider="earth_engine"` removes sinusoidal tile seams |
   | `HLS_S30` / `HLS_L30` | 30 m | planetary_computer | Harmonized Sentinel-2 + Landsat |
   | `PlanetScope-4b` / `PlanetScope-8b` | ~3.5 m | planet | Commercial daily global; API key required |
   </details>
@@ -144,7 +144,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
   | Mission | Native res | Provider | Notes |
   |---|---|---|---|
-  | `MODIS_LST` | 1 km | earth_engine | Daily land-surface temperature |
+  | `MODIS_LST` | 1 km | planetary_computer | Daily land-surface temperature; `provider="earth_engine"` removes tile seams |
   | `JRC-GSW` | 30 m | planetary_computer | Static global surface water (Pekel 2016) |
   | `CryoSat-RDEFT4` † | 25 km | earthdata | Monthly NH sea-ice thickness + freeboard |
   | `Sentinel-5P-NO2` † | 7 km | earthdata | Tropospheric NO₂ (extendable to CO, CH₄, O₃, ...) |

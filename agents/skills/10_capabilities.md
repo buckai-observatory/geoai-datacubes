@@ -113,8 +113,8 @@ and mirrored in the `PROVIDER_AUTO` dict in
 `geoai_datacubes/fetch/fetch_data.py`. Summary:
 
 - Sentinel-2 → `earthsearch` (no per-asset sign step; faster)
-- Sentinel-1, Landsat, NAIP, HLS, PC-only missions → `planetary_computer`
-- MODIS_SR, MODIS_LST, Dynamic-World, JRC-GFC2020, AlphaEarth → `earth_engine`
+- Sentinel-1, Landsat, NAIP, MODIS_SR, MODIS_LST, HLS, PC-only missions → `planetary_computer` (MODIS: `provider="earth_engine"` avoids tile-seam gaps)
+- Dynamic-World, JRC-GFC2020, AlphaEarth → `earth_engine`
 - NISAR-L, GEDI-*, SMAP, ICESat-2, SWOT-HR, CryoSat-RDEFT4 → `earthdata`
 - Hansen-GFC, ArcticDEM, GEBCO-2024 → `direct_http`
 - PlanetScope, Sentinel-5P → not auto-routed; opt in explicitly

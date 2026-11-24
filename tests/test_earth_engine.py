@@ -415,12 +415,12 @@ def test_modis_lst_ee_has_kelvin_scale_factors():
     assert sf["LST_Night"] == 0.02
 
 
-def test_provider_auto_routes_modis_to_earth_engine():
-    # Issue #10: PC single-tile fetch gave ~50% NaN on AOIs straddling
-    # h11v04/h11v05 (e.g. Columbus). Default routing goes to EE now.
+def test_provider_auto_keeps_modis_on_planetary_computer():
+    # The credential-free PC path stays the default; the EE path that fixes
+    # Issue #10 is opt-in via provider="earth_engine".
     from geoai_datacubes.fetch.fetch_data import PROVIDER_AUTO
-    assert PROVIDER_AUTO["MODIS_SR"]  == "earth_engine"
-    assert PROVIDER_AUTO["MODIS_LST"] == "earth_engine"
+    assert PROVIDER_AUTO["MODIS_SR"]  == "planetary_computer"
+    assert PROVIDER_AUTO["MODIS_LST"] == "planetary_computer"
 
 
 # ============================================================

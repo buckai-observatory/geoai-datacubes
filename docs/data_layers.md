@@ -96,7 +96,7 @@ documented here — only the host and the credentialing path.
 >   `GEBCO` stub to a first-class mission.
 >
 > All fourteen have full sections further down, tagged "new in v1.1". MODIS_SR
-> and MODIS_LST also gain the `earth_engine` provider (now their default),
+> and MODIS_LST also gain an opt-in `earth_engine` provider,
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
 
@@ -1351,7 +1351,7 @@ an 8-day window. Effectively daily-cadence in input but stable
 8-day output. Archive runs from 2000 (Terra) and 2002 (Aqua) to
 present.
 **Providers:**
-* **Google Earth Engine** (`MODIS/061/MOD09A1`) — the default since v1.1,
+* **Google Earth Engine** (`MODIS/061/MOD09A1`) — opt-in with `provider="earth_engine"` since v1.1;
   handles the sinusoidal cross-tile mosaic + reprojection to the
   requested CRS server-side.
 * **Microsoft Planetary Computer** (`modis-09A1-061`) — the original
@@ -1388,8 +1388,9 @@ itself gained same-day multi-scene mosaicking so coverage on modern
 dates is usually complete (still in native sinusoidal projection), and
 (b) the new Earth Engine provider mosaics tiles + reprojects out of
 sinusoidal server-side into the requested CRS, so the seam is invisible
-and no client-side reprojection is needed. `PROVIDER_AUTO` routes
-`MODIS_SR` to `earth_engine` by default. Notebook 04 includes a live
+and no client-side reprojection is needed. `PROVIDER_AUTO` keeps
+`MODIS_SR` on `planetary_computer`, which needs no credentials; pass
+`provider="earth_engine"` for the seamless mosaic. Notebook 04 includes a live
 side-by-side demo of both paths.
 
 **Why this matters for downstream tasks:** MODIS is the longest
@@ -1409,7 +1410,7 @@ of these applications.
 and one MYD11A1 from Aqua at ~13:30 LT per day. Archive runs from
 2000 (Terra) / 2002 (Aqua) to present.
 **Providers:**
-* **Google Earth Engine** (`MODIS/061/MOD11A1`) — the default since v1.1.
+* **Google Earth Engine** (`MODIS/061/MOD11A1`) — opt-in with `provider="earth_engine"` since v1.1.
   LST_Day and LST_Night are stored as raw uint16 with a 0.02 → Kelvin
   scale factor; the EE provider applies that scale server-side (via
   the mission's `scale_factors` config), so the downstream
@@ -1435,7 +1436,7 @@ corresponds to LST = 300 K = 26.85 °C. Fill value is 0.
 for gradient-based models.
 
 **Same cross-tile mosaic story as `MODIS_SR`** — see the note in that
-section. `PROVIDER_AUTO` routes `MODIS_LST` to `earth_engine` too.
+section. `PROVIDER_AUTO` keeps `MODIS_LST` on `planetary_computer` too.
 
 **Why this matters for downstream tasks:** the canonical input for
 urban-heat-island work, evapotranspiration retrievals, drought

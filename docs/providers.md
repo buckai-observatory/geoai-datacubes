@@ -44,7 +44,7 @@ Plus the three provider classes added in v1.1:
 | **Dynamic World** | ✅ Only public host | — | — |
 | **JRC-GFC2020** | ✅ Only public host | — | — |
 | **AlphaEarth Foundations (64-dim EO embeddings)** | ✅ Only public host — Google DeepMind, annual mosaics 2017–2025 at 10 m global | — | — |
-| **MODIS_SR / MODIS_LST** | ✅ **Default since v1.1** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
+| **MODIS_SR / MODIS_LST** | ✅ Opt-in with `provider="earth_engine"` (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
 | **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) | — |
 | **ICESat-2 (ATL03/06/08/13)** | — | ✅ NSIDC DAAC; multi-granule tracks aggregation | — |
 | **GEDI L4A / L4B biomass** | — | ✅ ORNL DAAC | — |
@@ -73,7 +73,7 @@ walkthroughs.
 | `Copernicus-DEM-90` | `planetary_computer` | PC-only |
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
-| `MODIS_SR` / `MODIS_LST` | `earth_engine` | **Changed in v1.1**: EE handles sinusoidal tile-seam mosaic + reprojection server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). Old `planetary_computer` path still works via explicit `provider=` override. |
+| `MODIS_SR` / `MODIS_LST` | `planetary_computer` | No credentials needed. For AOIs on a sinusoidal tile seam, pass `provider="earth_engine"`, which mosaics and reprojects server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). |
 | `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
 | `ALOS-PALSAR` / `ALOS-FNF` / `ALOS-DEM` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `ESA-CCI-LC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
@@ -171,11 +171,11 @@ bugs.
   aggregated products are sufficient, prefer `Sentinel-2` +
   `Copernicus-DEM` on the default STAC path.
 
-**Resolved in v1.1.**
-The Earth Engine provider path (`PROVIDER = "earth_engine"`), now the
-default for MODIS, returns MODIS reflectance and LST **directly in UTM** with
+**Resolved in v1.1 (opt-in).**
+The Earth Engine provider path (`PROVIDER = "earth_engine"`) returns MODIS reflectance and LST **directly in UTM** with
 server-side cross-tile mosaicking, closing the sparsity gap for these
-missions. v1.1 also introduces `plan_grid(aoi, resolution)`
+missions. It needs Earth Engine credentials, so `PROVIDER = "auto"`
+keeps MODIS on the anonymous `planetary_computer` path. v1.1 also introduces `plan_grid(aoi, resolution)`
 so every fetch — MODIS included — lands on a deterministic
 AOI-centroid grid regardless of the source scene's native CRS. Both
 are tracked at

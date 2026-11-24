@@ -61,8 +61,10 @@ PROVIDER_AUTO = {
     "Copernicus-DEM": "earthsearch",        # both work; ES has no sign step
     "ESA-WorldCover": "planetary_computer", # ES does not host WorldCover
     "NAIP":           "planetary_computer", # PC only; US aerial imagery
-    "MODIS_SR":       "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
-    "MODIS_LST":      "earth_engine",       # EE handles sinusoidal tile mosaicking (Issue #10)
+    # MODIS stays on the anonymous PC path by default. provider="earth_engine"
+    # mosaics sinusoidal tiles server-side (Issue #10) but needs EE credentials.
+    "MODIS_SR":       "planetary_computer",
+    "MODIS_LST":      "planetary_computer",
     "HLS_S30":        "planetary_computer", # PC only; harmonized S2 leg
     "HLS_L30":        "planetary_computer", # PC only; harmonized Landsat leg
     "JRC-GSW":        "planetary_computer", # PC only; static global surface water

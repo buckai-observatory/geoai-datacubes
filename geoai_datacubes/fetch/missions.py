@@ -487,9 +487,9 @@ MISSION_PROFILES = {
     # This is now handled by the earth_engine provider variant declared
     # below -- EE mosaics tiles and reprojects out of sinusoidal into the
     # requested CRS server-side, so the seam is invisible. PROVIDER_AUTO
-    # routes MODIS_SR to earth_engine by default; the planetary_computer
-    # entry stays for users who explicitly pass provider="planetary_computer"
-    # (and still triggers the >25% NaN warning as a safety guard).
+    # keeps MODIS_SR on planetary_computer by default because that path
+    # needs no credentials; pass provider="earth_engine" for the seamless
+    # mosaic. The PC path still triggers the >25% NaN warning as a guard.
     # ============================================================
     "MODIS_SR": {
         "default_bands": ["B01", "B02"],            # Red, NIR (MODIS convention)
