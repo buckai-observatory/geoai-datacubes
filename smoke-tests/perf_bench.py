@@ -86,7 +86,7 @@ CONFIGS = [
     # --- direct_http (non-STAC providers; free) ---------------------------
     Config("Hansen-GFC      medium", "Hansen-GFC",     "direct_http",         None,           30, "medium", None),
     Config("Hansen-GFC      large",  "Hansen-GFC",     "direct_http",         None,           30, "large",  None),
-    # GEDI-L4B has no provider on main (feature/earth-engine-provider branch only); skipped here.
+    # GEDI-L4B (earthdata, needs NASA Earthdata Login) is not benchmarked here.
 
     # --- sentinelhub (OAuth; skips gracefully if creds missing) ----------
     Config("S2-L1C-SH       medium", "Sentinel-2-L1C", "sentinelhub",         None,           10, "medium", ("2024-06-01", "2024-06-30")),

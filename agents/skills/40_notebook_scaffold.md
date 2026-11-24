@@ -37,9 +37,10 @@ place** — the setup cell — so the notebook stays generic").
 Markdown cell. Match notebook 04's shape: `# <title>` + Colab badge
 + 1-2 paragraph description that names every mission by its exact
 key and states coverage caveats (latitude cap, static-vs-temporal,
-cloud sensitivity) upfront. For branch-only v0.2-preview features,
-keep the `<!-- BRANCH-PREVIEW: ... -->` comment near the badge like
-notebooks 04 / 05 so it's easy to swap at merge time.
+cloud sensitivity) upfront. If the notebook needs code that is only on
+a feature branch, point the Colab badge and the bootstrap `BRANCH` at
+that branch and add a `<!-- BRANCH-PREVIEW: ... -->` comment so both
+are easy to swap back to `main` at merge time.
 
 ## Section 2 — Colab / local bootstrap
 

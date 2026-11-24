@@ -995,8 +995,7 @@ def _fetch_via_stac(
 
     # 4. Determine output grid.
     #
-    # Deterministic-grid convention (issue #35 fix, on the
-    # feature/earth-engine-provider branch): the grid is picked from
+    # Deterministic-grid convention (issue #35 fix): the grid is picked from
     # the AOI centroid alone, not from the returned scene. That means
     # two fetches over the same AOI in different date windows land on
     # byte-identical rasters -- the invariant an AI-ready multi-
@@ -1010,8 +1009,7 @@ def _fetch_via_stac(
     # as ``dst_crs``. For AOIs near an MGRS tile edge or a UTM zone
     # boundary, different date windows returned different first
     # scenes in different UTM zones, so repeat cubes over the "same"
-    # AOI landed on different grids. Fixed on the v0.2 branch;
-    # v0.1.0 users can pin the grid explicitly via ``grid=``.
+    # AOI landed on different grids.
     grid_pinned = grid is not None
     if grid is None:
         grid = plan_grid(roi, resolution)

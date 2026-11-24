@@ -68,7 +68,7 @@ Report to the user in this shape:
 ```
 env: Colab / local / HPC-Slurm
 conda env: <name or none>
-geoai_datacubes: v0.2.0.dev... (or MISS)
+geoai_datacubes: 1.1.0.dev... (or MISS)
 extras present: core, [ml]              (list what's OK)
 extras missing: [earthengine], [geoai]  (list what's MISS)
 ```

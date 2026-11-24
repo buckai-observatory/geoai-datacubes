@@ -268,16 +268,16 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
     # not a fetch bug; it is a real property of a sinusoidal-tiled
     # product clipped to a small sub-window. Marked as known_limitation
     # for this AOI (see docs/providers.md "Known limitations of the
-    # reviewed release" and issue #10). The Earth Engine provider planned for v1.1
-    # (feature/earth-engine-provider) resolves this by returning MODIS
-    # directly in UTM.
+    # reviewed release" and issue #10). The Earth Engine provider, the default
+    # for MODIS since v1.1, resolves this by returning MODIS directly in
+    # UTM; these limits apply to the explicit planetary_computer path.
     "MODIS_SR": {
         "max_nan_fraction": 0.20, "value_range": (-500.0, 20000.0),
         "known_limitation": (
             "MODIS PC path returns native sinusoidal; small non-central "
             "AOIs are sparse after UTM reprojection. See docs/providers.md "
-            "'Known limitations' and issue #10. Resolved on "
-            "feature/earth-engine-provider via the EE provider."
+            "'Known limitations' and issue #10. Resolved by the EE "
+            "provider, the default for MODIS since v1.1."
         ),
     },
     "NAIP":           {"max_nan_fraction": 0.05, "value_range": (0.0, 260.0)},
@@ -298,8 +298,8 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
         "known_limitation": (
             "MODIS LST via PC returns native sinusoidal; small "
             "non-central AOIs can be sparse (LST_Night frequently "
-            "all-NaN over the Columbus smoke AOI). Resolved on the "
-            "EE provider planned for v1.1 (feature/earth-engine-provider). "
+            "all-NaN over the Columbus smoke AOI). Resolved by the "
+            "EE provider, the default for MODIS since v1.1. "
             "See issue #10 and docs/providers.md 'Known limitations'."
         ),
     },

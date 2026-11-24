@@ -13,7 +13,7 @@ useful Earth-observation layers do not sit in any of those homes; their
 canonical distribution is EE. The `earth_engine` provider class wraps EE
 as the sixth backend so those layers slot into `MISSION_PROFILES` with
 zero downstream changes. (A seventh provider — `earthdata` for NASA
-DAACs behind Earthdata Login — lives alongside it on this branch;
+DAACs behind Earthdata Login — was added alongside it;
 see [`earthdata.md`](earthdata.md).)
 
 The first mission wired through this provider is **Dynamic World V1**
@@ -280,7 +280,7 @@ band takes the `mode` across the time window. Time-averaged
 probabilities are the recommended input to downstream models; the mode
 label is convenient for visualisation and coarse train/test splits.
 
-**MODIS_SR / MODIS_LST** — added on this branch to close
+**MODIS_SR / MODIS_LST** — added in v1.1 to close
 [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
 (sinusoidal tile-seam mosaicking). EE handles the cross-tile mosaic and
 reprojection into the requested CRS server-side, so an AOI straddling

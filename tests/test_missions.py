@@ -37,7 +37,7 @@ _EXPECTED_MISSIONS = (
     "GEDI-L4B", "GEDI-L4A",
     "SMAP-L3",
     "GEBCO-2024",
-    "Sentinel-5P-NO2",                            # v0.2 preview: TROPOMI NO2 via tracks flow
+    "Sentinel-5P-NO2",                            # TROPOMI NO2 via tracks flow (v1.1)
     "Sentinel-5P",                                # documented stub (remaining unwired gases)
 )
 

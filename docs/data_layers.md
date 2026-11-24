@@ -3,7 +3,7 @@
 The `geoai-datacubes` pipeline supports **twenty-six** satellite or
 ancillary missions (fifteen direct-observation + eight derived working
 today, plus one documented stub — Sentinel-5P TROPOMI; GEDI L4B and
-GEBCO have graduated to full wiring on the v0.2 branch). `Landsat`,
+GEBCO have graduated to full wiring in v1.1). `Landsat`,
 `Landsat-8`, and `Landsat-9` are
 aliases of the same Landsat 8/9 Collection 2 Level 2 profile and are
 counted once. Each mission exposes a set of named bands that the user
@@ -18,15 +18,12 @@ factor do I divide a Landsat C2 L2 surface-reflectance band by to get a
 real reflectance number?).
 
 The pipeline reads these from STAC providers (Earth Search, Microsoft
-Planetary Computer), from **Google Earth Engine** (added on this
-branch as a v0.2 preview), or from the commercial Planet Orders API.
+Planetary Computer), from **Google Earth Engine** (added in v1.1), or from the commercial Planet Orders API.
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 
-> **v0.2 preview on this branch (`feature/earth-engine-provider`).** Fourteen
-> additional missions are fetchable via two new provider classes and are
-> *not* part of the reviewed v0.1.0 release currently under JOSS review
-> (openjournals/joss-reviews#11034):
+> **New in v1.1.** Fourteen additional missions are fetchable via two
+> provider classes added after the JOSS-reviewed v1.0.0 release:
 >
 > - **Dynamic World V1** (per-Sentinel-2-scene 9-class LULC, Google + WRI,
 >   Brown et al. 2022) — via new `earth_engine` provider.
@@ -98,8 +95,8 @@ documented here — only the host and the credentialing path.
 >   coverage including ocean bathymetry; graduates the previous
 >   `GEBCO` stub to a first-class mission.
 >
-> All fourteen have full sections further down, tagged "v0.2 preview". MODIS_SR
-> and MODIS_LST also gain the `earth_engine` provider on this branch,
+> All fourteen have full sections further down, tagged "new in v1.1". MODIS_SR
+> and MODIS_LST also gain the `earth_engine` provider (now their default),
 > which resolves the historical sinusoidal tile-seam issue
 > ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)).
 
@@ -221,11 +218,11 @@ product with documented per-class quality.
 | KyFromAbove DEM (Kentucky) | `KyFromAbove-DEM` | 2 ft (0.61 m) Phases 2–3; 5 ft (1.52 m) Phase 1 | static (newest phase per tile) | DEM | source in US survey feet, converted to metres at fetch |
 | ALOS PALSAR Annual Mosaic | `ALOS-PALSAR` | 25 m | annual (2015–2021) | HH, HV (+ mask, linci, date) | uint16 DN → γ° dB via `palsar_db` recipe |
 | Sentinel-5P TROPOMI *(stub only)* | `Sentinel-5P` | ~5.5 km | daily | NO2, CO, SO2, CH4, O3, HCHO, AER_AI, AER_LH, CLOUD | NetCDF — not yet wired into the COG fetcher |
-| NISAR L-band SAR *(v0.2 preview)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
-| SMAP L3 soil moisture *(v0.2 preview)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
-| ICESat-2 ATL08 land + vegetation *(v0.2 preview)* | `ICESat-2-ATL08` | 100 m along-track (rasterized at user resolution) | 2018-10-14 → present | h_te_best_fit (terrain height, default) + h_canopy (canopy top height, extra) | ATL06 sibling on the tracks flow; six ATLAS beams; global up to ±88° latitude; NASA Earthdata Login (NSIDC application) |
-| ICESat-2 ATL13 inland water surface heights *(v0.2 preview)* | `ICESat-2-ATL13` | along-track segments (~100 signal photons each; rasterized at user resolution) | 2018-10-14 → present | ht_water_surf (water surface, WGS84 ellipsoid, default) + ht_ortho (orthometric water height, extra) | Third ATLAS-beam mission on the tracks flow after ATL06 / ATL08; six ATLAS beams; segments limited to classified lakes / rivers / reservoirs / estuaries / coastal water; NASA Earthdata Login (NSIDC application) |
-| ICESat-2 ATL03 per-photon geolocated heights *(v0.2 preview)* | `ICESat-2-ATL03` | per-photon returns (rasterized at user resolution) | 2018-10-14 → present | h_ph (per-photon WGS84 ellipsoid height, m) | Foundational photon cloud ATL06 / ATL08 / ATL13 derive from; 6 beams, ~290 M photons and 3-6 GB per granule; reader honours `reader_kwargs["max_points_per_granule"]` (default 100 k random subsample) and `reader_kwargs["min_signal_conf"]` (default 3 = medium+high); NASA Earthdata Login (NSIDC application) |
+| NISAR L-band SAR *(new in v1.1)* | `NISAR-L` | ~20 m native | since 2026-06-17, every ~2-5 days polar / ~6-12 days equatorial | HH, HV, VH, VV (whichever the granule contains) | NASA-ISRO L-band SAR; requires Earthdata Login; via new `earthdata` provider |
+| SMAP L3 soil moisture *(new in v1.1)* | `SMAP-L3` | 9 km (EASE-Grid 2.0 Global, EPSG:6933) | daily global (SPL3SMP_E V006) | soil_moisture, vegetation_water_content, retrieval_qual_flag (+ 5 extras) | NASA L-band radiometer; requires NSIDC Earthdata Login; retrievals inhibited over frozen/snow-covered ground |
+| ICESat-2 ATL08 land + vegetation *(new in v1.1)* | `ICESat-2-ATL08` | 100 m along-track (rasterized at user resolution) | 2018-10-14 → present | h_te_best_fit (terrain height, default) + h_canopy (canopy top height, extra) | ATL06 sibling on the tracks flow; six ATLAS beams; global up to ±88° latitude; NASA Earthdata Login (NSIDC application) |
+| ICESat-2 ATL13 inland water surface heights *(new in v1.1)* | `ICESat-2-ATL13` | along-track segments (~100 signal photons each; rasterized at user resolution) | 2018-10-14 → present | ht_water_surf (water surface, WGS84 ellipsoid, default) + ht_ortho (orthometric water height, extra) | Third ATLAS-beam mission on the tracks flow after ATL06 / ATL08; six ATLAS beams; segments limited to classified lakes / rivers / reservoirs / estuaries / coastal water; NASA Earthdata Login (NSIDC application) |
+| ICESat-2 ATL03 per-photon geolocated heights *(new in v1.1)* | `ICESat-2-ATL03` | per-photon returns (rasterized at user resolution) | 2018-10-14 → present | h_ph (per-photon WGS84 ellipsoid height, m) | Foundational photon cloud ATL06 / ATL08 / ATL13 derive from; 6 beams, ~290 M photons and 3-6 GB per granule; reader honours `reader_kwargs["max_points_per_granule"]` (default 100 k random subsample) and `reader_kwargs["min_signal_conf"]` (default 3 = medium+high); NASA Earthdata Login (NSIDC application) |
 
 ## Quick reference — derived products
 
@@ -240,12 +237,12 @@ product with documented per-class quality.
 | JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | 6 layers | water occurrence / change / season / transitions |
 | Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | served via `direct_http`; canonical forest-loss raster |
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
-| Dynamic World V1 *(v0.2 preview)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
-| JRC GFC2020 V3 *(v0.2 preview)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
-| AlphaEarth Foundations *(v0.2 preview)* | `AlphaEarth` | 10 m | annual mosaics, 2017–2025 | 64 embedding dims (A00..A63) | Google DeepMind 2025; per-pixel L2-normalised to unit length; Earth Engine only |
-| GEDI L4B Biomass *(v0.2 preview)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
-| GEDI L4A Biomass footprints *(v0.2 preview)* | `GEDI-L4A` | 25 m native (rasterised at user resolution) | 2019-04-18 → 2023-03-16 (V2.1) | agbd (per-shot AGBD, Mg/ha) | Loss-less per-shot Parquet sidecar + gridded raster; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap; 1-to-8 beams per granule |
-| GEBCO 2024 Global Bathymetry *(v0.2 preview)* | `GEBCO-2024` | ~463 m (15 arc-sec) | static (2024 release) | elevation, elevation_sub_ice | Global elevation + bathymetry; anonymous BODC/CEDA GeoTIFFs via `direct_http`; ice-surface (default) or sub-ice bedrock variants |
+| Dynamic World V1 *(new in v1.1)* | `Dynamic-World` | 10 m | per Sentinel-2 scene, 2015-06-27–present | LULC + 9 class probabilities | Google + WRI, Brown et al. 2022; Earth Engine only |
+| JRC GFC2020 V3 *(new in v1.1)* | `JRC-GFC2020` | 10 m | static (2020-12-31 baseline) | LULC (binary forest = 1) | EU JRC, Bourgoin et al. 2026; EUDR-compliant; Earth Engine only |
+| AlphaEarth Foundations *(new in v1.1)* | `AlphaEarth` | 10 m | annual mosaics, 2017–2025 | 64 embedding dims (A00..A63) | Google DeepMind 2025; per-pixel L2-normalised to unit length; Earth Engine only |
+| GEDI L4B Biomass *(new in v1.1)* | `GEDI-L4B` | 1 km | static (v2.1, MW019–MW223) | MU, SE (+ V1, V2, PE, MI, QF, NS, NC, PS) | Global gridded AGBD Mg/ha, EASE-Grid 2.0; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap |
+| GEDI L4A Biomass footprints *(new in v1.1)* | `GEDI-L4A` | 25 m native (rasterised at user resolution) | 2019-04-18 → 2023-03-16 (V2.1) | agbd (per-shot AGBD, Mg/ha) | Loss-less per-shot Parquet sidecar + gridded raster; NASA Earthdata Login + ORNL DAAC application; +/-52 deg lat cap; 1-to-8 beams per granule |
+| GEBCO 2024 Global Bathymetry *(new in v1.1)* | `GEBCO-2024` | ~463 m (15 arc-sec) | static (2024 release) | elevation, elevation_sub_ice | Global elevation + bathymetry; anonymous BODC/CEDA GeoTIFFs via `direct_http`; ice-surface (default) or sub-ice bedrock variants |
 
 ---
 
@@ -356,7 +353,7 @@ covers less than 95 % of the AOI.
 
 ---
 
-## NISAR L-band Geocoded Polarimetric Covariance *(v0.2 preview — this branch only)*
+## NISAR L-band Geocoded Polarimetric Covariance *(new in v1.1)*
 
 **Mission name:** `NISAR-L`
 **Provider:** NASA Earthdata (`earthdata`) — Alaska Satellite Facility
@@ -446,7 +443,7 @@ successor to ALOS PALSAR-1 (2006-2011) for:
 
 ---
 
-## ICESat-2 ATL03 per-photon geolocated heights *(v0.2 preview — this branch only)*
+## ICESat-2 ATL03 per-photon geolocated heights *(new in v1.1)*
 
 **Mission name:** `ICESat-2-ATL03`
 **Product:** `ATL03` (Global Geolocated Photon Data), hosted by
@@ -545,7 +542,7 @@ the profile or call level for those workflows.
 
 ---
 
-## ICESat-2 ATL06 land-ice heights *(v0.2 preview — this branch only)*
+## ICESat-2 ATL06 land-ice heights *(new in v1.1)*
 
 **Mission name:** `ICESat-2-ATL06`
 **Product:** `ATL06` (Land Ice Height, Version 006/007 depending on
@@ -592,7 +589,7 @@ Sentinel-1 C-band, and ArcticDEM in the same UTM cube.
 
 ---
 
-## ICESat-2 ATL08 land and vegetation heights *(v0.2 preview — this branch only)*
+## ICESat-2 ATL08 land and vegetation heights *(new in v1.1)*
 
 **Mission name:** `ICESat-2-ATL08`
 **Product:** `ATL08` (Land and Vegetation Height, Version 006/007
@@ -656,7 +653,7 @@ training stack.
 
 ---
 
-## ICESat-2 ATL13 inland water surface heights *(v0.2 preview — this branch only)*
+## ICESat-2 ATL13 inland water surface heights *(new in v1.1)*
 
 **Mission name:** `ICESat-2-ATL13`
 **Product:** `ATL13` (Along-Track Inland Water Surface Height,
@@ -737,7 +734,7 @@ is sparse.
 
 ---
 
-## SWOT L2 KaRIn HR Raster *(v0.2 preview — this branch only)*
+## SWOT L2 KaRIn HR Raster *(new in v1.1)*
 
 **Mission name:** `SWOT-HR`
 **Product:** `SWOT_L2_HR_Raster_250m_2.0` (default) or
@@ -780,7 +777,7 @@ MISSION_PROFILES["SWOT-HR"]["providers"]["earthdata"]["short_name"] = (
 
 ---
 
-## CryoSat-2 RDEFT4 sea-ice thickness *(v0.2 preview — this branch only)*
+## CryoSat-2 RDEFT4 sea-ice thickness *(new in v1.1)*
 
 **Mission name:** `CryoSat-RDEFT4`
 **Product:** `RDEFT4` (NASA GSFC monthly CryoSat-2 Arctic sea-ice
@@ -819,7 +816,7 @@ with NaN so downstream fusion / stats work correctly.
 
 ---
 
-## SMAP L3 Enhanced Soil Moisture *(v0.2 preview — this branch only)*
+## SMAP L3 Enhanced Soil Moisture *(new in v1.1)*
 
 **Mission name:** `SMAP-L3`
 **Product:** `SPL3SMP_E` V006 (Soil Moisture Passive, Level 3, **Enhanced**
@@ -908,7 +905,7 @@ with **NISAR-L** L-band SAR at the same AOI.
 
 ---
 
-## GEDI L4B Gridded Aboveground Biomass Density *(v0.2 preview — this branch only)*
+## GEDI L4B Gridded Aboveground Biomass Density *(new in v1.1)*
 
 **Mission name:** `GEDI-L4B`
 **Product:** `GEDI_L4B_Gridded_Biomass_V2_1_2299` (Global gridded
@@ -979,7 +976,7 @@ edit `MISSION_PROFILES["GEDI-L4B"]["band_meta"]["MU"]["norm"]`.
 
 ---
 
-## GEDI L4A Footprint-Level Aboveground Biomass Density *(v0.2 preview — this branch only)*
+## GEDI L4A Footprint-Level Aboveground Biomass Density *(new in v1.1)*
 
 **Mission name:** `GEDI-L4A`
 **Product:** `GEDI_L4A_AGB_Density_V2_1_2056` (Global 25 m footprint
@@ -1354,7 +1351,7 @@ an 8-day window. Effectively daily-cadence in input but stable
 8-day output. Archive runs from 2000 (Terra) and 2002 (Aqua) to
 present.
 **Providers:**
-* **Google Earth Engine** (`MODIS/061/MOD09A1`) — the default post-v0.2,
+* **Google Earth Engine** (`MODIS/061/MOD09A1`) — the default since v1.1,
   handles the sinusoidal cross-tile mosaic + reprojection to the
   requested CRS server-side.
 * **Microsoft Planetary Computer** (`modis-09A1-061`) — the original
@@ -1412,7 +1409,7 @@ of these applications.
 and one MYD11A1 from Aqua at ~13:30 LT per day. Archive runs from
 2000 (Terra) / 2002 (Aqua) to present.
 **Providers:**
-* **Google Earth Engine** (`MODIS/061/MOD11A1`) — the default post-v0.2.
+* **Google Earth Engine** (`MODIS/061/MOD11A1`) — the default since v1.1.
   LST_Day and LST_Night are stored as raw uint16 with a 0.02 → Kelvin
   scale factor; the EE provider applies that scale server-side (via
   the mission's `scale_factors` config), so the downstream
@@ -1914,7 +1911,7 @@ and long baselines rather than field-scale mapping.
 
 ---
 
-## Dynamic World V1 *(v0.2 preview — this branch only)*
+## Dynamic World V1 *(new in v1.1)*
 
 **Mission name:** `Dynamic-World`
 **Provider:** Google Earth Engine, collection `GOOGLE/DYNAMICWORLD/V1`.
@@ -1969,7 +1966,7 @@ XGBoost.
 
 ---
 
-## JRC Global Forest Cover 2020 V3 *(v0.2 preview — this branch only)*
+## JRC Global Forest Cover 2020 V3 *(new in v1.1)*
 
 **Mission name:** `JRC-GFC2020`
 **Provider:** Google Earth Engine, single image `JRC/GFC2020/V3`.
@@ -2014,7 +2011,7 @@ Notebook 04 is a natural next addition.
 
 ---
 
-## AlphaEarth Foundations satellite embeddings *(v0.2 preview — this branch only)*
+## AlphaEarth Foundations satellite embeddings *(new in v1.1)*
 
 **Mission name:** `AlphaEarth`
 **Provider:** Google Earth Engine, collection `GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL`.
@@ -2181,7 +2178,7 @@ biomass-and-loss feature stack without any optical input.
 
 ---
 
-## GEBCO 2024 Global Bathymetry *(v0.2 preview — this branch only)*
+## GEBCO 2024 Global Bathymetry *(new in v1.1)*
 
 **Mission name:** `GEBCO-2024`
 **Producer:** General Bathymetric Chart of the Oceans (GEBCO), a joint
@@ -2328,7 +2325,7 @@ bands from dominating the early gradients.
 
 ---
 
-## ArcticDEM v4.1 *(v0.2 preview — this branch only)*
+## ArcticDEM v4.1 *(new in v1.1)*
 
 **Mission name:** `ArcticDEM`
 **Producer:** Polar Geospatial Center (PGC), University of Minnesota.

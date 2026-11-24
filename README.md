@@ -22,13 +22,11 @@
 > - **ML / DL on a data cube** — the classification notebook trains and compares Logistic Regression, Random Forest, XGBoost, and a U-Net on a multi-modal fused cube across three Ohio cities, on any ESA WorldCover class you pick at the top.
 >   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/01_classification.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> - **Earth Engine + Dynamic World** (v0.2 preview — this branch only) — Colab-first onramp for the new `earth_engine` data provider. Fetches Google Dynamic World, ESA WorldCover, or the JRC EUDR-compliant GFC2020 forest baseline as a LULC label layer, plus Sentinel-2 + Copernicus DEM; fuses them into a single UTM cube; trains XGBoost end-to-end.
->   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
->   <!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+> - **Earth Engine + Dynamic World** (new in v1.1) — Colab-first onramp for the new `earth_engine` data provider. Fetches Google Dynamic World, ESA WorldCover, or the JRC EUDR-compliant GFC2020 forest baseline as a LULC label layer, plus Sentinel-2 + Copernicus DEM; fuses them into a single UTM cube; trains XGBoost end-to-end.
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
-> - **NISAR L-band SAR + Arctic-calving-glacier datacube** (v0.2 preview — this branch only) — cutting-edge showcase of the new `earthdata` provider fetching **NISAR** L-band SAR (public archive opened 2026-07-20, first proper open L-band SAR archive since ALOS PALSAR-1) alongside Sentinel-1 C-band, ArcticDEM (PGC), and Sentinel-2 optical, fused into one UTM cube over an Arctic ice-cap AOI (default: northern Baffin Island plateau).
->   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
->   <!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+> - **NISAR L-band SAR + Arctic-calving-glacier datacube** (new in v1.1) — cutting-edge showcase of the new `earthdata` provider fetching **NISAR** L-band SAR (public archive opened 2026-07-20, first proper open L-band SAR archive since ALOS PALSAR-1) alongside Sentinel-1 C-band, ArcticDEM (PGC), and Sentinel-2 optical, fused into one UTM cube over an Arctic ice-cap AOI (default: northern Baffin Island plateau).
+>   <a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 >
 > Also Colab-ready: an `opengeos/geoai` integration notebook ([`03_with_opengeos_geoai.ipynb`](notebooks/03_with_opengeos_geoai.ipynb)). See [Try the notebooks](#try-the-notebooks) for the full set. A fifth notebook ([`02_building_detection.ipynb`](notebooks/02_building_detection.ipynb)) is bundled as an in-development scaffold for object detection on NAIP — kept in the repo but not part of the reviewed examples.
 
@@ -56,7 +54,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
 
 ## What it does
 
-- **39 missions in a unified registry, grouped by data modality below.** 23 released in v0.1.0 (under JOSS review) + **16 new v0.2-preview additions on this branch, marked †**. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
+- **44 missions in a unified registry, grouped by data modality below.** Missions added since the JOSS-reviewed v1.0.0 release are marked †. Full per-mission band / resolution / value-range reference in [`docs/data_layers.md`](docs/data_layers.md).
 
   <details>
   <summary><b>Optical (multispectral)</b> — 9 missions</summary>
@@ -95,20 +93,21 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   </details>
 
   <details>
-  <summary><b>Elevation (DEMs) and bathymetry</b> — 8 missions</summary>
+  <summary><b>Elevation (DEMs) and bathymetry</b> — 9 missions</summary>
 
   | Mission | Native res | Provider | Notes |
   |---|---|---|---|
   | `Copernicus-DEM` / `Copernicus-DEM-90` | 30 m / 90 m | earthsearch / planetary_computer | Global TanDEM-X-derived |
   | `ArcticDEM` † | 2 / 10 / 32 m | direct_http | PGC / OSU (>60° N); resolution configurable |
+  | `ALOS-DEM` † | 30 m | planetary_computer | JAXA AW3D30 global DSM |
   | `3DEP` | 10 / 1 m | planetary_computer | US high-res LIDAR-derived |
-  | `3DEP-Lidar-DTM` / `3DEP-Lidar-DSM` | 2 m | planetary_computer | 3DEP lidar bare earth / surface; partial US coverage |
-  | `KyFromAbove-DEM` | 2 ft (0.61 m) / 5 ft | kyfromabove | Kentucky statewide LiDAR; feet converted to metres |
+  | `3DEP-Lidar-DTM` / `3DEP-Lidar-DSM` † | 2 m | planetary_computer | 3DEP lidar bare earth / surface; partial US coverage |
+  | `KyFromAbove-DEM` † | 2 ft (0.61 m) / 5 ft | kyfromabove | Kentucky statewide LiDAR; feet converted to metres; also one mission per survey phase (`KyFromAbove-DEM-Phase1/2/3`) |
   | `GEBCO-2024` † | 15 arc-s (~450 m) | direct_http | Global bathymetry + topography |
   </details>
 
   <details>
-  <summary><b>Land cover / land use</b> — 6 missions</summary>
+  <summary><b>Land cover / land use</b> — 7 missions</summary>
 
   | Mission | Native res | Provider | Notes |
   |---|---|---|---|
@@ -116,6 +115,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   | `USDA-CDL` | 30 m | planetary_computer | US annual crop-type raster |
   | `LCMAP-CONUS` | 30 m | planetary_computer | US annual (NLCD substitute) |
   | `IO-LULC` | 10 m | planetary_computer | Annual global 10-class |
+  | `ESA-CCI-LC` † | 300 m | planetary_computer | Annual global LCCS classes, 1992–2020 |
   | `Dynamic-World` † | 10 m | earth_engine | Per-Sentinel-2-scene 9-class LULC |
   | `JRC-GFC2020` † | 10 m | earth_engine | EUDR-compliant forest-cover baseline |
   </details>
@@ -150,7 +150,7 @@ The repo is designed to lower the entry barrier into Earth-observation ML for an
   | `Sentinel-5P-NO2` † | 7 km | earthdata | Tropospheric NO₂ (extendable to CO, CH₄, O₃, ...) |
   | `SMAP-L3` † | 9 km | earthdata | Daily enhanced soil moisture |
   </details>
-- **Four interchangeable STAC providers** (Earth Search, Microsoft Planetary Computer, Planet Orders, Sentinel Hub) plus a `direct_http` path for non-STAC datasets. **On this v0.2-preview branch: three additional providers — `earth_engine` (Google Earth Engine, unlocks Dynamic World, JRC GFC2020, and MODIS with server-side reprojection), `earthdata` (NASA Earthdata Login, unlocks NISAR L-band, GEDI biomass, SMAP, ICESat-2, SWOT, CryoSat, Sentinel-5P, and the wider NASA DAAC catalogue), and `local_files` (register the user's own local GeoTIFFs as a first-class mission via `register_local_mission(...)` — perfect for airborne LIDAR bathymetry, licensed WorldView / Maxar, or georeferenced drone imagery).** All eight unified behind one dispatcher; the default `PROVIDER = "auto"` routes each mission to its best free host. See [`docs/providers.md`](docs/providers.md) for the trade-offs, capability matrices, and routing table.
+- **Four interchangeable STAC providers** (Earth Search, Microsoft Planetary Computer, Planet Orders, Sentinel Hub) plus a `direct_http` path for non-STAC datasets. **Since v1.1, further providers — `earth_engine` (Google Earth Engine, unlocks Dynamic World, JRC GFC2020, and MODIS with server-side reprojection), `earthdata` (NASA Earthdata Login, unlocks NISAR L-band, GEDI biomass, SMAP, ICESat-2, SWOT, CryoSat, Sentinel-5P, and the wider NASA DAAC catalogue), and `local_files` (register the user's own local GeoTIFFs as a first-class mission via `register_local_mission(...)` — perfect for airborne LIDAR bathymetry, licensed WorldView / Maxar, or georeferenced drone imagery), plus `kyfromabove` for Kentucky's statewide LiDAR DEMs.** All of them unified behind one dispatcher; the default `PROVIDER = "auto"` routes each mission to its best free host. See [`docs/providers.md`](docs/providers.md) for the trade-offs, capability matrices, and routing table.
 - **Declarative per-band metadata.** Every band carries a `kind` and a normalisation recipe; `apply_band_norm` + `get_band_norm` produce ML-ready features in one call without hiding the scale factors.
 - **Multi-mission fusion** onto a common UTM grid via `fuse_response_tiffs(...)` with mission-prefixed band descriptions so provenance survives. See [`docs/fusion.md`](docs/fusion.md).
 - **Robust pre-processing** — smear-protected reprojection, polygon-aware Sentinel-1 same-day mosaicking, cloud / shadow / haze masking via mission-aware QA bands (Sentinel-2 SCL, Landsat BQA, PlanetScope UDM2).
@@ -263,21 +263,19 @@ A complete machine-learning workflow that picks up where the tour leaves off. Fe
 
 A worked example of composing `geoai-datacubes` (data-prep front-end) with `opengeos/geoai` (Wu, 2026, JOSS 11(118):9605 — modelling back-end). Builds fused multi-mission cubes for three Ohio cities and hands them off to `geoai-py` in two patterns: pretrained inference via `geoai.segment_water` on a NAIP scene, and custom training via `select_bands` + `geoai.train_segmentation_landcover` + `geoai.semantic_segmentation`. Trains on Cleveland + Cincinnati and **holds Columbus out entirely** — in-distribution F1 reaches ~0.95 while OOD F1 collapses to ~0.05, an honest illustration of the standard remote-sensing-ML reality of training on a handful of AOIs.
 
-### 4. Earth Engine + Dynamic World (v0.2 preview — this branch only)
+### 4. Earth Engine + Dynamic World (new in v1.1)
 
 [`notebooks/04_earth_engine_dynamic_world.ipynb`](notebooks/04_earth_engine_dynamic_world.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-<!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/04_earth_engine_dynamic_world.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
-Colab-first onramp for the new `earth_engine` data provider added on this branch (not yet merged to `main` — targeted for **v0.2**). Fetches a LULC label layer from one of three sources at a one-line toggle — **Google Dynamic World** (Brown et al. 2022) via Earth Engine, the static 2020/2021 **ESA WorldCover** mosaic, or the **JRC GFC2020 V3** EUDR-compliant global forest-cover baseline (Bourgoin et al. 2026) — plus a **Sentinel-2** RGB+NIR scene and a **Copernicus DEM** tile over the same AOI. Each `LABEL_SOURCE` swaps in its own default AOI + target class automatically (Columbus, OH for "built" / "built-up"; Portsmouth, OH + Shawnee State Forest for "forest") — override the `(lat, lon)` centre + `radius_km` in the setup cell for any other study area. Fuses everything into a single multi-band data cube on a common UTM grid, then trains a lightweight **XGBoost** pixel classifier with a 3-way spatial train / val / test column split and early stopping on the val strip. Includes a bonus section demonstrating the **MODIS cross-tile mosaic fix** ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)) — MODIS via Earth Engine returns seamless, UTM-native data in place of the old `planetary_computer` path that stayed in native sinusoidal projection. See [`docs/providers/earth_engine.md`](docs/providers/earth_engine.md) for the auth / project-ID / Colab-secrets setup walkthrough. Live progress on this branch: [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18).
+Colab-first onramp for the new `earth_engine` data provider. Fetches a LULC label layer from one of three sources at a one-line toggle — **Google Dynamic World** (Brown et al. 2022) via Earth Engine, the static 2020/2021 **ESA WorldCover** mosaic, or the **JRC GFC2020 V3** EUDR-compliant global forest-cover baseline (Bourgoin et al. 2026) — plus a **Sentinel-2** RGB+NIR scene and a **Copernicus DEM** tile over the same AOI. Each `LABEL_SOURCE` swaps in its own default AOI + target class automatically (Columbus, OH for "built" / "built-up"; Portsmouth, OH + Shawnee State Forest for "forest") — override the `(lat, lon)` centre + `radius_km` in the setup cell for any other study area. Fuses everything into a single multi-band data cube on a common UTM grid, then trains a lightweight **XGBoost** pixel classifier with a 3-way spatial train / val / test column split and early stopping on the val strip. Includes a bonus section demonstrating the **MODIS cross-tile mosaic fix** ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)) — MODIS via Earth Engine returns seamless, UTM-native data in place of the old `planetary_computer` path that stayed in native sinusoidal projection. See [`docs/providers/earth_engine.md`](docs/providers/earth_engine.md) for the auth / project-ID / Colab-secrets setup walkthrough.
 
-### 5. NISAR L-band SAR + Arctic calving-glacier datacube (v0.2 preview — this branch only)
+### 5. NISAR L-band SAR + Arctic calving-glacier datacube (new in v1.1)
 
 [`notebooks/05_nisar_arctic_datacube.ipynb`](notebooks/05_nisar_arctic_datacube.ipynb)
-<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/feature/earth-engine-provider/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
-<!-- BRANCH-PREVIEW: swap `feature/earth-engine-provider` -> `main` at merge time -->
+<a href="https://colab.research.google.com/github/buckai-observatory/geoai-datacubes/blob/main/notebooks/05_nisar_arctic_datacube.ipynb" target="_blank" rel="noopener noreferrer"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"/></a>
 
-Cutting-edge showcase of the new `earthdata` and ArcticDEM providers added on this branch. Fetches **NISAR L-band SAR** (`NISAR_L2_GCOV_PROVISIONAL_V1`, NASA-ISRO mission whose public data archive opened just **7 weeks before this notebook was written** — 2026-07-20 — the first proper open L-band SAR archive since ALOS PALSAR-1 shut down in 2011) via the new `earthdata` provider (NASA CMR + Earthdata Login), alongside **Sentinel-1 C-band SAR**, **ArcticDEM v4.1** (PGC / Ian Howat's group, via `direct_http` on AWS Open Data — 32 m polar-stereo mosaic, higher-resolution complement to Copernicus DEM in Arctic AOIs), and optional **Sentinel-2** optical over an Arctic calving-glacier / ice-cap AOI. The specific target is set in **exactly one place** — the setup cell — so the notebook stays generic across Arctic targets; default is northern Baffin Island plateau (chosen because NISAR has 9+ dual-pol granules and S1 has 7+ dual-pol RTC scenes there, so both L-band polarisations plus the L-vs-C-band comparison are guaranteed to work). Fuses everything into a single multi-band UTM cube on a common grid, then does a direct **L-band vs C-band comparison at the same polarisation (HH)** side-by-side over the ice — the two disagree in a physically meaningful way, and the notebook explains why. Includes an **OSM basemap panel** that shows the AOI location before any big fetches, a **granule-footprint AOI picker** that guarantees good NISAR coverage without hand-tuning coordinates, and the standard three-mode auth pattern (`EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` env vars, `~/.netrc`, interactive; legacy `EDL_USERNAME`/`EDL_PASSWORD` names also accepted) mirroring notebook 04's EE story. See [`docs/providers/earthdata.md`](docs/providers/earthdata.md) for the auth walkthrough. Live progress on this branch: [PR #18](https://github.com/buckai-observatory/geoai-datacubes/pull/18).
+Cutting-edge showcase of the new `earthdata` and ArcticDEM providers. Fetches **NISAR L-band SAR** (`NISAR_L2_GCOV_PROVISIONAL_V1`, NASA-ISRO mission whose public data archive opened just **7 weeks before this notebook was written** — 2026-07-20 — the first proper open L-band SAR archive since ALOS PALSAR-1 shut down in 2011) via the new `earthdata` provider (NASA CMR + Earthdata Login), alongside **Sentinel-1 C-band SAR**, **ArcticDEM v4.1** (PGC / Ian Howat's group, via `direct_http` on AWS Open Data — 32 m polar-stereo mosaic, higher-resolution complement to Copernicus DEM in Arctic AOIs), and optional **Sentinel-2** optical over an Arctic calving-glacier / ice-cap AOI. The specific target is set in **exactly one place** — the setup cell — so the notebook stays generic across Arctic targets; default is northern Baffin Island plateau (chosen because NISAR has 9+ dual-pol granules and S1 has 7+ dual-pol RTC scenes there, so both L-band polarisations plus the L-vs-C-band comparison are guaranteed to work). Fuses everything into a single multi-band UTM cube on a common grid, then does a direct **L-band vs C-band comparison at the same polarisation (HH)** side-by-side over the ice — the two disagree in a physically meaningful way, and the notebook explains why. Includes an **OSM basemap panel** that shows the AOI location before any big fetches, a **granule-footprint AOI picker** that guarantees good NISAR coverage without hand-tuning coordinates, and the standard three-mode auth pattern (`EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` env vars, `~/.netrc`, interactive; legacy `EDL_USERNAME`/`EDL_PASSWORD` names also accepted) mirroring notebook 04's EE story. See [`docs/providers/earthdata.md`](docs/providers/earthdata.md) for the auth walkthrough.
 
 ### ⚠️ Work in progress: object detection on NAIP
 

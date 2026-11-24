@@ -1,13 +1,12 @@
 # Provider trade-offs: convenience vs throughput at scale
 
-The pipeline supports **39 missions** end-to-end (v0.1.0 release: 23;
-**+16 v0.2-preview additions on this branch**) across up to **eight
+The pipeline supports **44 missions** end-to-end across **nine
 interchangeable providers** — four STAC-based, one commercial, plus
-`direct_http` for non-STAC anonymous COGs, `earth_engine` for
-Google Earth Engine, `earthdata` for anything hosted by a NASA
-DAAC behind Earthdata Login, and `local_files` for the user's own
-local rasters (registered at runtime). Five of the eight need no
-credentials. The default `PROVIDER = "auto"` routes each mission to
+`direct_http` for non-STAC anonymous COGs, `kyfromabove` for
+Kentucky's statewide LiDAR DEMs, `earth_engine` for Google Earth
+Engine, `earthdata` for anything hosted by a NASA DAAC behind
+Earthdata Login, and `local_files` for the user's own local rasters
+(registered at runtime). Six of the nine need no credentials. The default `PROVIDER = "auto"` routes each mission to
 the best free option.
 
 This document covers two axes: **(1) capability** — which provider
@@ -16,18 +15,11 @@ band math — and **(2) throughput** — the same provider that wins for
 one AOI on a laptop can lose by an order of magnitude on a
 continent-scale workflow.
 
-> **v0.2-preview on this branch (`feature/earth-engine-provider`).**
-> Three new provider classes and fifteen new missions land on this
-> branch and are documented here alongside the reviewed v0.1.0
-> providers. `main` currently ships only the first five providers
-> (STAC + direct_http).
-
 ---
 
 ## Quick capability matrix
 
-The four STAC-based providers plus `direct_http` (unchanged from
-v0.1.0):
+The four STAC-based providers plus `direct_http`:
 
 | | `earthsearch` | `planetary_computer` | `planet` (commercial) | `sentinelhub` (advanced) | `direct_http` |
 |---|---|---|---|---|---|
@@ -43,7 +35,7 @@ v0.1.0):
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) | No |
 | **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, ESA-CCI-LC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs | Missions with no STAC / no auth (Hansen GFC and similar) |
 
-Plus three new provider classes on this branch (**v0.2 preview**):
+Plus the three provider classes added in v1.1:
 
 | | `earth_engine` | `earthdata` | `local_files` |
 |---|---|---|---|
@@ -52,7 +44,7 @@ Plus three new provider classes on this branch (**v0.2 preview**):
 | **Dynamic World** | ✅ Only public host | — | — |
 | **JRC-GFC2020** | ✅ Only public host | — | — |
 | **AlphaEarth Foundations (64-dim EO embeddings)** | ✅ Only public host — Google DeepMind, annual mosaics 2017–2025 at 10 m global | — | — |
-| **MODIS_SR / MODIS_LST** | ✅ **Default on this branch** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
+| **MODIS_SR / MODIS_LST** | ✅ **Default since v1.1** (server-side sinusoidal-tile mosaicking, closes [Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)); reprojects to target UTM automatically | — | — |
 | **NISAR-L (L-band SAR)** | — | ✅ Only public host (via ASF DAAC) | — |
 | **ICESat-2 (ATL03/06/08/13)** | — | ✅ NSIDC DAAC; multi-granule tracks aggregation | — |
 | **GEDI L4A / L4B biomass** | — | ✅ ORNL DAAC | — |
@@ -81,16 +73,16 @@ walkthroughs.
 | `Copernicus-DEM-90` | `planetary_computer` | PC-only |
 | `ESA-WorldCover` | `planetary_computer` | Earth Search does not host WorldCover |
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
-| `MODIS_SR` / `MODIS_LST` *(v0.2 preview)* | `earth_engine` | **Changed on branch**: EE handles sinusoidal tile-seam mosaic + reprojection server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). Old `planetary_computer` path still works via explicit `provider=` override. |
+| `MODIS_SR` / `MODIS_LST` | `earth_engine` | **Changed in v1.1**: EE handles sinusoidal tile-seam mosaic + reprojection server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). Old `planetary_computer` path still works via explicit `provider=` override. |
 | `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
 | `ALOS-PALSAR` / `ALOS-FNF` / `ALOS-DEM` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `ESA-CCI-LC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
-| `ArcticDEM` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous AWS Open Data COGs (PGC S3) |
-| `GEBCO-2024` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous BODC/CEDA per-tile GeoTIFFs |
-| `Dynamic-World` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
-| `JRC-GFC2020` *(v0.2 preview)* | `earth_engine` | Google Earth Engine only |
-| `AlphaEarth` *(v0.2 preview)* | `earth_engine` | Google DeepMind, EE-only. 64-dim per-pixel foundation-model embeddings, annual mosaics 2017–2025 |
-| `NISAR-L` *(v0.2 preview)* | `earthdata` | ASF DAAC only; requires NASA Earthdata Login |
+| `ArcticDEM` | `direct_http` | Non-STAC anonymous AWS Open Data COGs (PGC S3) |
+| `GEBCO-2024` | `direct_http` | Non-STAC anonymous BODC/CEDA per-tile GeoTIFFs |
+| `Dynamic-World` | `earth_engine` | Google Earth Engine only |
+| `JRC-GFC2020` | `earth_engine` | Google Earth Engine only |
+| `AlphaEarth` | `earth_engine` | Google DeepMind, EE-only. 64-dim per-pixel foundation-model embeddings, annual mosaics 2017–2025 |
+| `NISAR-L` | `earthdata` | ASF DAAC only; requires NASA Earthdata Login |
 | `PlanetScope-4b` / `PlanetScope-8b` | not auto-routed | Commercial — opt in with `PROVIDER="planet"` |
 | `Sentinel-5P` | not routed (stubbed) | Sentinel-5P: NetCDF reader pending. |
 
@@ -115,14 +107,14 @@ down that's the provider's ceiling, not ours. Rough shape:
 | `sentinelhub` | Free Sentinel Hub OAuth | Free tier gives ~30k "processing units" per month; heavy runs consume the tier quickly. Paid tiers scale linearly. | Server-side clip + band math means fewer bytes moved per PU than STAC-fetch-then-clip. |
 | `planet` | `PL_API_KEY` (commercial) | Commercial usage-based billing; NICFI / Education programs offer higher no-cost caps. Consult your Planet contract before large orders. | Orders API adds a queue-and-clip step. |
 
-The `earthdata` (NASA CMR), `earth_engine` (Google Earth Engine), and `local_files` provider classes are on the `feature/earth-engine-provider` branch, planned for v1.1, and will be added to this table with their own credential-setup walkthroughs when that branch lands on `main`.
+The `earthdata` (NASA CMR), `earth_engine` (Google Earth Engine), and `local_files` provider classes have their own credential-setup walkthroughs in [`providers/earthdata.md`](providers/earthdata.md), [`providers/earth_engine.md`](providers/earth_engine.md), and [`providers/local_files.md`](providers/local_files.md).
 
 **Estimating cost before you fetch.** For track-heavy earthdata products
 with big per-file sizes (Sentinel-5P TROPOMI ~600 MB/file, ATL03
 500 MB – 2 GB/file), the earthdata fetcher prints an estimated total
 download size before the download starts and enforces per-mission
 `max_download_gb` / `max_granules` caps set in `MISSION_PROFILES`
-(introduced on the `feature/earth-engine-provider` branch after an ATL03 fetch accidentally pulled 28 GB in a
+(introduced in v1.1 after an ATL03 fetch accidentally pulled 28 GB in a
 smoke test). Users doing intentional bulk aggregation can override
 these in code. Adding the same estimate + cap to the STAC provider
 paths is tracked as a UX improvement for a later release (raised during JOSS review at
@@ -179,18 +171,17 @@ bugs.
   aggregated products are sufficient, prefer `Sentinel-2` +
   `Copernicus-DEM` on the default STAC path.
 
-**Resolution planned for v1.1 (post-review, on `feature/earth-engine-provider`).**
-An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on that
-branch returns MODIS reflectance and LST **directly in UTM** with
+**Resolved in v1.1.**
+The Earth Engine provider path (`PROVIDER = "earth_engine"`), now the
+default for MODIS, returns MODIS reflectance and LST **directly in UTM** with
 server-side cross-tile mosaicking, closing the sparsity gap for these
-missions. The same branch also introduces `plan_grid(aoi, resolution)`
+missions. v1.1 also introduces `plan_grid(aoi, resolution)`
 so every fetch — MODIS included — lands on a deterministic
 AOI-centroid grid regardless of the source scene's native CRS. Both
 are tracked at
 [`#10`](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
 and [`#35`](https://github.com/buckai-observatory/geoai-datacubes/issues/35)
-and live on the `feature/earth-engine-provider` branch, not on the
-reviewed `main` branch. They ship in v1.1, when that branch lands on `main`.
+.
 
 ### 2. Sentinel Hub authenticated path is supported but not exercised in CI
 
@@ -369,7 +360,7 @@ repo because of that.
 any STAC catalogue but expose anonymous HTTPS COG URLs directly --
 Hansen Global Forest Change on Google Cloud Storage was the reference
 case; ArcticDEM v4.1 (PGC AWS Open Data) and GEBCO 2024 (BODC/CEDA
-per-tile GeoTIFFs) followed on the v0.2 branch. Planned next
+per-tile GeoTIFFs) followed in v1.1. Planned next
 additions: Lang 2023 canopy height and Tolan 2024 1-m CHM. The
 pipeline calls a per-mission tile-callback (declared in
 `MISSION_PROFILES[<mission>]["providers"]["direct_http"]`) that turns

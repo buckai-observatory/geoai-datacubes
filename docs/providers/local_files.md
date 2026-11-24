@@ -195,7 +195,7 @@ Idempotent (won't error if the mission wasn't registered).
 
 | Reader | Status | Notes |
 |---|---|---|
-| `geotiff` | shipping (v0.2-preview) | Any rasterio-openable GeoTIFF; multi-band via `band_map`. |
+| `geotiff` | shipping (v1.1) | Any rasterio-openable GeoTIFF; multi-band via `band_map`. |
 | `netcdf_var` | planned | xarray + h5netcdf, per-variable; will reuse the `manifest.json` schema for CRS overrides where the NetCDF lacks a CF `crs` variable. |
 | `hdf5` | planned | Generic HDF5, dataset path in the manifest. |
 | `las_laz` | not planned in this provider | Point-cloud LIDAR is a fundamentally different data model; the ICESat-2 / GEDI tracks-reader pattern would fit better. Track separately. |
