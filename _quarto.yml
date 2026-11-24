@@ -84,7 +84,7 @@ website:
       - text: PyPI
         href: https://pypi.org/project/geoai-datacubes/
       - text: JOSS
-        href: https://joss.theoj.org/papers/41c1ac5fdbfc1a4a4ee3b79cd8e4ee00
+        href: https://doi.org/10.21105/joss.11034
 
   sidebar:
     style: docked
