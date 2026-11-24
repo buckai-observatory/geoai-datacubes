@@ -39,6 +39,7 @@
 | **Copernicus-DEM** | 30 m | Global | Default for 3D view; NAD83 (may need reprojection) |
 | **Copernicus-DEM-90** | 90 m | Global | Coarser, fewer artifacts in some regions |
 | **3DEP** | 10 m | USA | High-res US elevation |
+| **3DEP-Lidar-DTM / -DSM** | 2 m | Parts of USA | Lidar bare earth / surface; fall back to 3DEP where empty |
 | **KyFromAbove-DEM** | 2 ft (0.61 m) | Kentucky | Statewide LiDAR DEM; slope/aspect/hillshade via `terrain` |
 | **ArcticDEM** | 10 m | Arctic only | Calibrated for polar regions |
 | **GEBCO-2024** | 100 m | Global | Bathymetry + topography |
