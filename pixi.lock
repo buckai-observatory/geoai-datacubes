@@ -38582,6 +38582,7 @@ packages:
   - requests>=2.28
   - pillow>=9.0
   - rasterio>=1.3
+  - pyproj>=3.4
   - pystac>=1.10
   - pystac-client>=0.7
   - planetary-computer>=1.0
@@ -38606,13 +38607,19 @@ packages:
   - contextily>=1.4 ; extra == 'notebooks'
   - python-dotenv>=1.0 ; extra == 'planet'
   - sentinelhub>=3.10 ; extra == 'planet'
+  - earthengine-api>=0.1.400 ; extra == 'earthengine'
+  - earthaccess>=0.11 ; extra == 'earthdata'
+  - h5py>=3.0 ; extra == 'earthdata'
+  - xarray>=2023.1 ; extra == 'earthdata'
+  - h5netcdf>=1.0 ; extra == 'earthdata'
   - ruff>=0.5 ; extra == 'dev'
   - pytest>=7.0 ; extra == 'dev'
   - pre-commit>=3.5 ; extra == 'dev'
   - quartodoc>=0.10 ; extra == 'dev'
   - griffe<2 ; extra == 'dev'
   - contextily>=1.4 ; extra == 'dev'
-  - geoai-datacubes[geoai,ml,notebooks,planet] ; extra == 'all'
+  - geopy>=2.3 ; extra == 'demo'
+  - geoai-datacubes[demo,earthdata,earthengine,geoai,ml,notebooks,planet] ; extra == 'all'
   requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/12/87/48361531f70b1f87928b045df868a9fd4e253d9ae087fa4cf3f7113be363/watchdog-6.0.0-cp312-cp312-macosx_10_13_x86_64.whl
   name: watchdog
