@@ -1,0 +1,63 @@
+{
+  "_note": "Historical provenance for the 13 perf_bench_*.jsonl files in this directory. Written 2026-09-24 in response to JOSS review follow-up (@gmarupilla, openjournals/joss-reviews#11034): reviewers doing third-party re-aggregation want the exact source commit and environment for the runs. Retroactive package pinning is best-effort — the runs themselves did not capture pip freeze; future runs will, per the enhanced _machine_fingerprint() in perf_bench.py.",
+
+  "source_commit": {
+    "sha": "8a4a2e39cd7adc3a6fea0d0a3ae61e0e44638303",
+    "short_sha": "8a4a2e3",
+    "date_utc": "2026-09-03T21:48:57Z",
+    "subject": "perf benchmark harness + docs/performance page (JOSS @betolink Performance checkbox) (#27)",
+    "note": "This is the commit that introduced smoke-tests/perf_bench.py and its aggregator. Runs happened 2026-09-03 19:55 UTC through 21:11 UTC, spanning ~2 hours around this merge. Fetch-code paths that time the runs exercise (fetch_data.py:_fetch_via_stac and _direct_fetch._fetch_via_direct_http) were not changed between 2026-08-20 and 2026-09-16, so `git checkout 8a4a2e3` reproduces the code that produced these numbers."
+  },
+
+  "runs": [
+    {
+      "file": "perf_bench_laptop-quick_20260903T195520Z.jsonl",
+      "machine": "laptop-cellular", "runs_in_group": 1,
+      "note": "First run; three configs mis-declared (S1-RTC bands lowercased, 3DEP-seamless vs 3DEP, Landsat time range) -- fixed in the -retry-* files."
+    },
+    {"file": "perf_bench_laptop-quick2_20260903T195803Z.jsonl",  "machine": "laptop-cellular", "runs_in_group": 2},
+    {"file": "perf_bench_laptop-quick3_20260903T195907Z.jsonl",  "machine": "laptop-cellular", "runs_in_group": 3},
+    {"file": "perf_bench_laptop-cellular_20260903T200131Z.jsonl", "machine": "laptop-cellular", "runs_in_group": 1, "note": "Full config sweep, first pass."},
+    {"file": "perf_bench_laptop-cellular-run2_20260903T204842Z.jsonl", "machine": "laptop-cellular", "runs_in_group": 2},
+    {"file": "perf_bench_laptop-cellular-run3_20260903T210238Z.jsonl", "machine": "laptop-cellular", "runs_in_group": 3},
+    {"file": "perf_bench_laptop-retry_20260903T201551Z.jsonl",           "machine": "laptop-cellular", "runs_in_group": 1},
+    {"file": "perf_bench_laptop-retry-3DEP_20260903T201623Z.jsonl",      "machine": "laptop-cellular", "runs_in_group": 1},
+    {"file": "perf_bench_laptop-retry-Landsat-8_20260903T201612Z.jsonl", "machine": "laptop-cellular", "runs_in_group": 1},
+    {"file": "perf_bench_laptop-retry-S1-RTC_20260903T201601Z.jsonl",    "machine": "laptop-cellular", "runs_in_group": 1},
+    {"file": "perf_bench_unity-cluster_20260903T203746Z.jsonl",      "machine": "unity-cluster", "runs_in_group": 1},
+    {"file": "perf_bench_unity-cluster-run2_20260903T205507Z.jsonl", "machine": "unity-cluster", "runs_in_group": 2},
+    {"file": "perf_bench_unity-cluster-run3_20260903T211054Z.jsonl", "machine": "unity-cluster", "runs_in_group": 3}
+  ],
+
+  "environments": {
+    "laptop-cellular": {
+      "hostname_short": "Mac",
+      "os": "Darwin",
+      "os_release": "24.5.0",
+      "arch": "arm64",
+      "python": "3.11.15",
+      "cpu_count": 10,
+      "mem_gb": 16.0,
+      "network": "cellular tethering",
+      "conda_env": "geoai-cubes on Anaconda3",
+      "packages_note": "Pip freeze not captured at run time. The conda env was created via the recommended mamba recipe in README.md at commit 8a4a2e3, so rasterio/pystac/planetary-computer/etc. are the conda-forge versions current on 2026-09-03. Reproduce by fresh `mamba create` from that README revision. Future runs of perf_bench.py capture these versions in the JSONL header directly."
+    },
+    "unity-cluster": {
+      "hostname_short": "unity-batch",
+      "os": "Linux",
+      "arch": "x86_64",
+      "python": "3.12",
+      "cpu_count": 4,
+      "mem_gb": 16.0,
+      "note": "Batch partition, 32-core Xeon (4 requested)"
+    }
+  },
+
+  "reproduce": {
+    "checkout": "git checkout 8a4a2e3",
+    "install":  "mamba env create from the README mamba recipe at that commit",
+    "run":      "python smoke-tests/perf_bench.py --configs credfree --label mylaptop  # or SLURM equivalent from perf_bench.slurm",
+    "aggregate": "python smoke-tests/perf_bench_agg.py --out smoke-tests/perf_logs --machine laptop-cellular --machine unity-cluster",
+    "expected":  "Table arithmetic matches docs/performance.qmd within displayed precision when the same 3 runs per config are aggregated; absolute wall times will differ per machine + network."
+  }
+}

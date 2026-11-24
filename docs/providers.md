@@ -41,7 +41,7 @@ v0.1.0):
 | **NAIP (1 m US aerial)** | — | ✅ | — | — | — |
 | **Hansen-GFC** | — | — | — | — | ✅ Only public path (anonymous GCS COGs) |
 | **Server-side band math** | No | No | Server-side clip-to-AOI | Yes (evalscripts) | No |
-| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs | Missions with no STAC / no auth (Hansen GFC and similar) |
+| **Best for** | Sentinel-2 (skip the per-asset sign step) | Sentinel-1 RTC, Landsat, NAIP, MODIS, HLS, ALOS, USDA-CDL, LCMAP, IO-LULC, ESA-CCI-LC, Chloris-Biomass, 3DEP, JRC-GSW | High-res commercial PlanetScope; users with Planet/NICFI/Education access | Production runs, custom band math, very large ROIs | Missions with no STAC / no auth (Hansen GFC and similar) |
 
 Plus three new provider classes on this branch (**v0.2 preview**):
 
@@ -83,7 +83,7 @@ walkthroughs.
 | `NAIP` | `planetary_computer` | PC is the only public host for NAIP |
 | `MODIS_SR` / `MODIS_LST` *(v0.2 preview)* | `earth_engine` | **Changed on branch**: EE handles sinusoidal tile-seam mosaic + reprojection server-side ([Issue #10](https://github.com/buckai-observatory/geoai-datacubes/issues/10)). Old `planetary_computer` path still works via explicit `provider=` override. |
 | `HLS_S30` / `HLS_L30` / `JRC-GSW` / `3DEP` | `planetary_computer` | PC-only for these missions |
-| `ALOS-PALSAR` / `ALOS-FNF` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
+| `ALOS-PALSAR` / `ALOS-FNF` / `ALOS-DEM` / `USDA-CDL` / `LCMAP-CONUS` / `IO-LULC` / `ESA-CCI-LC` / `Chloris-Biomass` | `planetary_computer` | PC-only |
 | `Hansen-GFC` | `direct_http` | Non-STAC anonymous Google Cloud Storage COGs |
 | `ArcticDEM` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous AWS Open Data COGs (PGC S3) |
 | `GEBCO-2024` *(v0.2 preview)* | `direct_http` | Non-STAC anonymous BODC/CEDA per-tile GeoTIFFs |
@@ -100,6 +100,134 @@ tiling, export) doesn't care which one was used.
 
 Switching to a paid / advanced provider (Sentinel Hub or Planet) needs
 a one-time credential setup; see [`credentials.md`](credentials.md).
+
+## Usage rates and quotas at a glance
+
+Each provider hosts its own throttle / rate-limit story. The pipeline
+never adds its own quota on top, so if a provider 429s or slows you
+down that's the provider's ceiling, not ours. Rough shape:
+
+| Provider | Credentials | Practical ceiling for interactive / notebook use | Notes |
+|---|---|---|---|
+| `earthsearch` | None | Anonymous S3 throttles kick in at high concurrency. Fine for single AOIs; may 503 intermittently during many-scene mosaics. | AWS Open Data buckets in fixed regions — geographic latency dominates cost outside the bucket's home region. See "Earth Search" section below. |
+| `planetary_computer` | None | Higher per-asset throttle ceilings than anonymous S3; SAS-signed URLs cached via a CDN. Comfortable for hundreds of concurrent reads. | Egress inside Azure is free; outside is bandwidth-limited by the CDN. See "Microsoft Planetary Computer" below. |
+| `direct_http` | None | No provider-side rate limit for the Hansen / ArcticDEM / GEBCO / PGC-hosted anonymous tiles; you're bandwidth-limited by their web-server region. | Every direct_http mission is a static-mosaic per tile, so cache-friendly. |
+| `sentinelhub` | Free Sentinel Hub OAuth | Free tier gives ~30k "processing units" per month; heavy runs consume the tier quickly. Paid tiers scale linearly. | Server-side clip + band math means fewer bytes moved per PU than STAC-fetch-then-clip. |
+| `planet` | `PL_API_KEY` (commercial) | Commercial usage-based billing; NICFI / Education programs offer higher no-cost caps. Consult your Planet contract before large orders. | Orders API adds a queue-and-clip step. |
+
+The `earthdata` (NASA CMR), `earth_engine` (Google Earth Engine), and `local_files` provider classes are on the `feature/earth-engine-provider` branch, planned for v1.1, and will be added to this table with their own credential-setup walkthroughs when that branch lands on `main`.
+
+**Estimating cost before you fetch.** For track-heavy earthdata products
+with big per-file sizes (Sentinel-5P TROPOMI ~600 MB/file, ATL03
+500 MB – 2 GB/file), the earthdata fetcher prints an estimated total
+download size before the download starts and enforces per-mission
+`max_download_gb` / `max_granules` caps set in `MISSION_PROFILES`
+(introduced on the `feature/earth-engine-provider` branch after an ATL03 fetch accidentally pulled 28 GB in a
+smoke test). Users doing intentional bulk aggregation can override
+these in code. Adding the same estimate + cap to the STAC provider
+paths is tracked as a UX improvement for a later release (raised during JOSS review at
+openjournals/joss-reviews#11034).
+
+---
+
+## Known limitations of the reviewed release (v0.1)
+
+The **v0.1 release** covers the missions and providers documented in
+the capability matrix above. Two provider-level scope caveats worth
+knowing before you commit a downstream project to the current release:
+
+### 1. MODIS via Planetary Computer keeps the native sinusoidal grid
+
+`MODIS_SR` and `MODIS_LST` on the default `PROVIDER = "auto"` path
+route to Planetary Computer, which serves MODIS Terra/Aqua reflectance
+and land-surface temperature in the **native sinusoidal projection**.
+On the v0.1 STAC fetch path, `_fetch_via_stac` keeps the source CRS
+when it is already projected — so the output GeoTIFF is in the
+**MODIS sinusoidal grid**, not UTM. For AOIs smaller than a MODIS
+granule and sitting non-centrally within one sinusoidal tile,
+windowing the source produces a valid GeoTIFF that is mostly nodata —
+reproducibly ~83% NaN in the default smoke-test AOI over Columbus,
+OH. This is not a fetch bug: the STAC provider is returning the
+correct raw scenes, and the window arithmetic is faithful; the
+sparsity is a real property of a sinusoidal-tiled product clipped to
+a small non-central sub-window.
+
+**When this bites you.** Any workflow that runs `MODIS_SR` /
+`MODIS_LST` through the default STAC provider on an AOI smaller than
+a MODIS granule and near a tile boundary will see the same sparse
+coverage. The smoke-test log for these missions is therefore marked
+as **`known_limitation`** rather than `passed` — the fetch itself
+is correct, and the `known_limitation` marker carries a reason
+string in `smoke-tests/logs/fetch_modis-sr.json` naming the cause
+and workarounds. The acceptance-check logic was tightened in
+response to [`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19);
+`known_limitation` downgrades ONLY the `nan_fraction` check for
+these missions. Any structural failure (missing CRS, missing
+transform, wrong band count, invalid categorical codes, infinity
+values, value-range violations) still surfaces as a hard `failed`
+verdict even on MODIS — so `known_limitation` does not hide real
+bugs.
+
+**Workarounds now (v0.1):**
+
+* Enlarge the AOI so it straddles two or more granules and pick a
+  central subset from the fused mosaic.
+* Reproject the sinusoidal output to your own target CRS
+  post-fetch (rasterio's `reproject` with `resampling=nearest` for
+  categorical MODIS layers).
+* For land-cover / vegetation-index applications where 250 m or 500 m
+  aggregated products are sufficient, prefer `Sentinel-2` +
+  `Copernicus-DEM` on the default STAC path.
+
+**Resolution planned for v1.1 (post-review, on `feature/earth-engine-provider`).**
+An Earth Engine provider path (`PROVIDER = "earth_engine"`) added on that
+branch returns MODIS reflectance and LST **directly in UTM** with
+server-side cross-tile mosaicking, closing the sparsity gap for these
+missions. The same branch also introduces `plan_grid(aoi, resolution)`
+so every fetch — MODIS included — lands on a deterministic
+AOI-centroid grid regardless of the source scene's native CRS. Both
+are tracked at
+[`#10`](https://github.com/buckai-observatory/geoai-datacubes/issues/10)
+and [`#35`](https://github.com/buckai-observatory/geoai-datacubes/issues/35)
+and live on the `feature/earth-engine-provider` branch, not on the
+reviewed `main` branch. They ship in v1.1, when that branch lands on `main`.
+
+### 2. Sentinel Hub authenticated path is supported but not exercised in CI
+
+`PROVIDER = "sentinelhub"` gives access to the paid / free-tier
+Sentinel Hub Process API for server-side band math, custom evalscripts,
+and heavy-throughput production runs (see the "Sentinel Hub"
+deep-dive section below). The code path is implemented and functional
+for callers with a free-tier OAuth credential, and the interactive
+walkthrough in [`credentials.md`](credentials.md) covers first-time
+setup.
+
+**What's not covered by v0.1 automated tests.** No smoke test in
+[`smoke-tests/`](../smoke-tests/) exercises the `sentinelhub` provider
+path — every current smoke test is either `earthsearch`,
+`planetary_computer`, or `direct_http`, so that the CI matrix runs
+credential-free. The Sentinel Hub path therefore has less regression
+coverage than the free-provider paths for v0.1. Users who need it
+should treat it as **community-verified** rather than
+**CI-verified** — bug reports are welcome and will be fixed with the
+same turnaround as the free-provider paths.
+
+**Adding CI coverage** without leaking a shared free-tier OAuth
+credential is tracked at
+[`#1`](https://github.com/buckai-observatory/geoai-datacubes/issues/1)
+and is planned for a future release. It is not blocking users today;
+it is an internal-QA improvement.
+
+### Reviewed scope summary
+
+Everything else in the capability matrix runs in the CI smoke suite
+against the default provider routing on the AOI in
+[`smoke-tests/_run_fetch.py`](../smoke-tests/_run_fetch.py), with
+per-mission acceptance criteria enforced (nan-fraction cap, value
+range, categorical-code enumeration; see
+[`#19`](https://github.com/buckai-observatory/geoai-datacubes/issues/19)).
+A machine-readable summary of the most recent run lives at
+[`smoke-tests/logs/`](../smoke-tests/logs/).
 
 ---
 

@@ -19,7 +19,7 @@ mosaicking, NaN edges, categorical-band nearest-neighbour resampling,
 cloud filtering, and band selection automatically.
 """
 
-from .aoi import resolve_aoi
+from .aoi import resolve_aoi, resolve_aoi_geometry, validate_query
 from .missions import (
     MISSION_PROFILES,
     get_profile,
@@ -34,6 +34,7 @@ from .fetch_data import (
     fetch_planet,
     fetch_local_files,
     fetch_kyfromabove,
+    fetch_direct_http,
 )
 from ._local_files import register_local_mission, unregister_local_mission
 from .parallel_fetch import fetch_many_in_parallel
@@ -42,6 +43,8 @@ from .timeseries import fetch_time_series, TimeSeriesEntry
 
 __all__ = [
     "resolve_aoi",
+    "resolve_aoi_geometry",
+    "validate_query",
     "MISSION_PROFILES",
     "get_profile",
     "get_provider_config",
@@ -55,6 +58,7 @@ __all__ = [
     "fetch_kyfromabove",
     "register_local_mission",
     "unregister_local_mission",
+    "fetch_direct_http",
     "fetch_many_in_parallel",
     # Issue #35: deterministic multi-temporal grids
     "Grid",

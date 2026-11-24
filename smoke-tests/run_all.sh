@@ -59,6 +59,8 @@ TESTS=(
     smoke-tests/fetch_usda-cdl.sh
     smoke-tests/fetch_lcmap-conus.sh
     smoke-tests/fetch_io-lulc.sh
+    smoke-tests/fetch_alos-dem.sh
+    smoke-tests/fetch_esa-cci-lc.sh
     smoke-tests/fetch_chloris-biomass.sh
     smoke-tests/fetch_sentinel-5p.sh
 )

@@ -207,6 +207,7 @@ product with documented per-class quality.
 | Landsat 8 / 9 Collection 2 Level 2 | `Landsat` | 30 m optical, 100 m thermal | 16 days per satellite (8 days combined) | 7 reflectance + 1 thermal + 1 QA | uint16 DN with scale + offset |
 | Copernicus DEM (GLO-30) | `Copernicus-DEM` | ~30 m (1 arc-second) | static | DEM | metres above the EGM2008 geoid (typically −400 to +9000) |
 | Copernicus DEM (GLO-90) | `Copernicus-DEM-90` | ~90 m (3 arc-second) | static | DEM | metres above the EGM2008 geoid |
+| ALOS World 3D-30m (AW3D30) | `ALOS-DEM` | ~30 m (1 arc-second) | static | DEM | metres (surface model, int16) |
 | PlanetScope 4-band (PSScene legacy) | `PlanetScope-4b` | ~3 m | up to daily | B, G, R, NIR + 8 UDM2 layers | 0–10000 DN |
 | PlanetScope 8-band (SuperDove) | `PlanetScope-8b` | ~3 m | up to daily | 8 spectral + 8 UDM2 layers | 0–10000 DN |
 | NAIP (US aerial imagery) | `NAIP` | ~1 m (0.6 m for newer) | every 2–3 years per state | R, G, B, NIR | 0–255 (uint8) |
@@ -235,6 +236,7 @@ product with documented per-class quality.
 | USDA Cropland Data Layer | `USDA-CDL` | 30 m | annual (2008–2021) | cropland + 6 frequency layers | ~100 US crop classes; ML on Landsat + ancillary |
 | LCMAP CONUS (NLCD substitute) | `LCMAP-CONUS` | 30 m | annual (1985–2021) | lcpri + 4 ancillary | 8-class US LULC + change |
 | IO + Esri Annual LULC | `IO-LULC` | 10 m | annual (2017–2023) | LULC | 9-class global, ML on S2 |
+| ESA CCI Land Cover | `ESA-CCI-LC` | 300 m | annual (1992–2020) | LCCS + 3 QA layers | 37 UN-FAO LCCS classes; longest annual global record |
 | JRC Global Surface Water | `JRC-GSW` | 30 m | static (Landsat 1984–2021 synth) | 6 layers | water occurrence / change / season / transitions |
 | Hansen Global Forest Change | `Hansen-GFC` | 30 m | annual (v1.11 = 2023) | treecover2000, lossyear, gain, datamask, first, last | served via `direct_http`; canonical forest-loss raster |
 | Chloris Aboveground Biomass | `Chloris-Biomass` | ~4.6 km | annual (2003–2019) | biomass + change + WM variants | coarse global biomass; CC-BY-NC-SA |
@@ -1160,6 +1162,36 @@ smoother GLO-90 is preferred.
 
 ---
 
+## ALOS World 3D-30m (AW3D30, JAXA)
+
+**Mission name:** `ALOS-DEM`
+**Source:** JAXA, from ALOS PRISM optical stereo imagery acquired
+2006–2011.
+**Provider:** Microsoft Planetary Computer, collection `alos-dem`.
+**Spatial resolution:** ~30 m (1 arc-second), one int16 COG per
+1° × 1° lat/lon tile in EPSG:4326.
+**Temporal coverage:** static (single release).
+**Licence:** free to use with attribution ("© JAXA").
+
+| Band | Description |
+|---|---|
+| DEM | Surface elevation in metres (DSM: includes canopy and building tops) |
+
+**Value range:** typically −400 m to +9000 m, the same physical range
+as the Copernicus DEMs.
+
+**Normalisation for ML:** `("mean_subtract", 1000.0)`, the same recipe
+as Copernicus DEM.
+
+**Why this matters:** an independent second global 30 m surface model.
+AW3D30 comes from optical stereo while Copernicus DEM comes from
+TanDEM-X radar interferometry, so they fail in different places
+(optical stereo in persistent cloud, radar over water and steep
+slopes). Fetching both gives a cross-check, or a fallback where one
+has voids or artefacts.
+
+---
+
 ## ESA WorldCover (10 m global land cover)
 
 **Mission name:** `ESA-WorldCover`
@@ -1837,6 +1869,51 @@ you need the annual cadence.
 
 ---
 
+## ESA CCI Land Cover (ESA Climate Change Initiative / C3S)
+
+**Mission name:** `ESA-CCI-LC`
+**Provider:** Microsoft Planetary Computer, collection `esa-cci-lc`.
+**Spatial resolution:** 300 m, one COG per 45° × 45° tile in EPSG:4326.
+**Temporal:** annual, 1992–2020 (ESA CCI v2.0.7 for 1992–2015, C3S
+v2.1.1 for 2016–2020). Pick the year with `TIME_RANGE`.
+**Coverage:** global.
+**Licence:** free to use with attribution (ESA CCI / C3S data policy).
+
+| Band | Description |
+|---|---|
+| LCCS | UN-FAO Land Cover Classification System class (categorical; 0 = no data) |
+| current_pixel_state | 1 land, 2 water, 3 snow, 4 cloud, 5 cloud shadow (QA) |
+| observation_count | Number of valid satellite observations behind the pixel (QA) |
+| change_count | Number of class changes over the full record (QA) |
+| processed_flag | 1 = processed, 0 = not processed. **Not fetched by default**; see below. |
+
+**Class IDs (37):** 10, 11, 12 cropland (rainfed / herbaceous /
+tree cover), 20 irrigated cropland, 30, 40 cropland–natural mosaics,
+50–90 tree cover by leaf type, 100, 110 tree/shrub–herbaceous mosaics,
+120–122 shrubland, 130 grassland, 140 lichens and mosses, 150–153
+sparse vegetation, 160, 170 flooded tree cover, 180 flooded shrub or
+herbaceous, 190 urban, 200–202 bare areas, 210 water, 220 permanent
+snow and ice.
+
+**Normalisation for ML:** `LCCS` is declared with a 37-class `one_hot`
+recipe on `band_meta`; as a target, use `label_remap` as with
+ESA-WorldCover (e.g. `{190: 1}` for urban). The QA bands pass through
+unchanged.
+
+**`processed_flag` is opt-in.** The source marks some pixels as no-data
+(255) in `processed_flag` even where `LCCS` holds a valid class. Because
+NaN in a QA band makes `tile_geotiff(nan_handling="auto")` drop the whole
+tile, the band is left out of the defaults. Request it explicitly with
+`bands=["LCCS", "processed_flag"]` if you need it.
+
+**Why this matters:** the longest consistent annual global land-cover
+record in the pipeline, reaching back to 1992, well before Sentinel-2
+(2015) and the 10 m products (`ESA-WorldCover`, `IO-LULC`). The 300 m
+pixel is coarse, so use it for regional to continental change studies
+and long baselines rather than field-scale mapping.
+
+---
+
 ## Dynamic World V1 *(v0.2 preview — this branch only)*
 
 **Mission name:** `Dynamic-World`
@@ -2223,6 +2300,7 @@ work over major metros.
 | Landsat C2 L2 (B10 thermal) | `x * 0.00341802 + 149.0` (Kelvin); subtract 273.15 to centre on 0 °C |
 | Copernicus DEM (GLO-30) | per-AOI mean-subtract; optionally add gradient magnitude as a second channel |
 | Copernicus DEM (GLO-90) | per-AOI mean-subtract (same `("mean_subtract", 1000.0)` recipe as GLO-30) |
+| ALOS-DEM (AW3D30) | per-AOI mean-subtract (same `("mean_subtract", 1000.0)` recipe as Copernicus DEM) |
 | ESA WorldCover | do not normalise; use as label or as embedded categorical input |
 | PlanetScope 4-band / 8-band | `x / 10000.0` then `clip(0, 1)` |
 | NAIP | `x / 255.0` (standard 8-bit RGB+NIR) |
@@ -2238,6 +2316,7 @@ work over major metros.
 | USDA-CDL (`cropland`) | do not normalise — `passthrough` raw class IDs; use `label_remap={class_id: 1}` for binary targets. `confidence` divides by 100; per-crop frequency layers divide by 255. |
 | LCMAP-CONUS | `lcpri` / `lcsec`: `("one_hot", (1, …, 8))`; `lcpconf` / `lcsconf` divide by 100; `lcachg` passthrough |
 | IO-LULC | `("one_hot", (1, 2, 4, 5, 7, 8, 9, 10, 11))`; same as ESA-WorldCover, use as label or embedded categorical |
+| ESA-CCI-LC | `LCCS`: 37-class `one_hot`, or use as a label via `label_remap`; QA bands passthrough |
 | Chloris-Biomass | `biomass` / `biomass_wm`: `("divide", 500.0)`; `biomass_change` / `..._wm`: `("linear", -100, 100)` |
 | Hansen-GFC | `treecover2000`: divide by 100; `lossyear` / `gain` / `datamask`: passthrough (categorical / QA); `first` / `last`: `("linear", 0, 255)` |
 
@@ -2316,13 +2395,14 @@ work for each category is linked.
 
 ### Second-tier free public rasters (planned)
 
-VIIRS, GOES-R ABI, CHIRPS, ERA5 / ERA5-Land, ESA CCI Land Cover,
-MERIT DEM / MERIT Hydro, PACE OCI, Dynamic World — all free, all
+VIIRS, GOES-R ABI, CHIRPS, ERA5 / ERA5-Land, MERIT DEM / MERIT Hydro,
+PACE OCI, Dynamic World — all free, all
 gridded, all integrable with the existing STAC + COG pipeline. They
 open up time-series climate, atmospheric chemistry, and near-real-time
 land-cover workflows on top of the forest / biomass missions already
 wired in (`ALOS-PALSAR`, `ALOS-FNF`, `Hansen-GFC`, `Chloris-Biomass`).
-Tracked in
+ESA CCI Land Cover (`ESA-CCI-LC`) and ALOS World 3D (`ALOS-DEM`) from
+this list are now included. Tracked in
 [Issue #7](https://github.com/buckai-observatory/geoai-datacubes/issues/7).
 
 ### Raster-shaped LIDAR / altimetry products (planned)

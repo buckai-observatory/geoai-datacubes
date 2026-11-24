@@ -15,6 +15,8 @@ We recommend [mamba](https://github.com/conda-forge/miniforge) (a drop-in conda 
 
 If you already have conda installed and prefer not to switch, substitute `conda` for `mamba` in the commands below.
 
+> **If the mamba/conda install below runs into any dependency issues** — for example a PyTorch ↔ libprotobuf ABI mismatch, or another conda-forge package landing at a version that conflicts with something else the solver picked — **skip to [Reproducible locked install with `pixi`](#reproducible-locked-install-with-pixi-optional) below and use that path instead** (`pixi install -e notebooks --locked`, then `pixi run -e notebooks jupyter lab`; use `full` instead of `notebooks` for notebook 03). It installs from a frozen, CI-tested lockfile that avoids re-solving against the moving conda-forge target, and reliably works around exactly that class of drift.
+
 ## 3. Install the package
 
 The package ships with a `pyproject.toml` that declares the **core data
@@ -37,7 +39,7 @@ by all notebooks in this repo:
 mamba create -y -n geoai-cubes -c conda-forge \
     python=3.11 \
     geoai-py leafmap torchgeo omniwatermask \
-    rasterio gdal pyproj shapely \
+    rasterio gdal libgdal-jp2openjpeg pyproj shapely \
     pystac pystac-client planetary-computer \
     "pytorch>=2.0" "torchvision>=0.15" \
     zarr lmdb scikit-image pillow \
@@ -60,11 +62,29 @@ This single env is enough for every notebook in the repo:
 
 ### Slimmer installs (only the deps you'll actually use)
 
-If you don't want the full ML / DL / notebook stack, drop the
-corresponding packages from the `mamba create` line. The four named
-slices in `pyproject.toml` are documented as `pip install -e ".[<slice>]"`
-recipes for users who already have a working conda env and just want to
-add the missing pieces:
+Core `pip install geoai-datacubes` gives you the **fetch + fuse**
+surface plus the raster-side preprocessing helpers (`compute_ndvi`,
+`fuse_response_tiffs`, `tile_geotiff`, band-meta normalisation). It
+does **not** install PyTorch. Total footprint: ~200 MB of Python
+wheels plus GDAL / rasterio system libraries.
+
+Add optional extras for the pieces you actually need. Only the extra
+you install adds to your footprint, so a fetch-only user pays no ML
+tax:
+
+| Extra | Adds | Enables | Approx. extra install size |
+|---|---|---|---|
+| (core) | — | Every mission fetch, provider dispatch, AOI validation, fusion, tiling, band math, NaN handling, cloud-mask decoding, per-band norms | — |
+| `[ml]` | PyTorch, torchvision, scikit-image, scikit-learn, XGBoost, Ultralytics YOLO, transformers, HF hub | `LazyTileDataset`, `geotiff_to_zarr`, tiler augmentation (rotate / inpaint), all of `geoai_datacubes.ml_dl` | ~2 GB |
+| `[geoai]` | opengeos/geoai + leafmap + torchgeo + omniwatermask | Foundation-model wrappers (Prithvi, Clay, DOFA, SatMAE, DINOv3), pretrained task-specific models, notebook 03 integration | ~1 GB (also pulls torch, so implies `[ml]`-ish footprint) |
+| `[earthdata]` | earthaccess, h5py, xarray, h5netcdf | NASA DAAC fetches (NISAR, ICESat-2, SWOT, CryoSat, GEDI, SMAP, Sentinel-5P, ...) | ~30 MB |
+| `[earthengine]` | earthengine-api | Google Earth Engine fetches (Dynamic World, JRC-GFC2020, MODIS with server-side reproject) | ~50 MB |
+| `[notebooks]` | jupyterlab, ipywidgets, seaborn, geopandas, contextily | Running / editing the shipped notebooks locally | ~200 MB |
+| `[planet]` | python-dotenv, sentinelhub | Commercial Planet Orders + Sentinel Hub provider paths | ~10 MB |
+| `[dev]` | pytest, ruff, pre-commit | Running the test suite, linting, contributing | ~10 MB |
+| `[all]` | Every extra above | Everything | ~4 GB |
+
+Install syntax:
 
 ```bash
 pip install -e ".[ml]"            # + scikit-learn, XGBoost, Ultralytics YOLO, transformers
@@ -74,16 +94,19 @@ pip install -e ".[planet]"        # + Planet Orders + Sentinel Hub (commercial p
 pip install -e ".[earthengine]"   # + Google Earth Engine provider (Dynamic World, JRC-GFC2020, MODIS with EE tile-mosaicking)
 pip install -e ".[earthdata]"     # + NASA Earthdata provider (NISAR L-band SAR, GEDI, SMAP, ICESat-2, ...)
 pip install -e ".[all]"           # everything above
+pip install geoai-datacubes[ml,earthdata]    # multiple extras — comma-separated inside brackets
+pip install -e ".[dev,earthdata]"            # from a local clone
 ```
 
-The corresponding conda-forge names are: `geoai-py leafmap torchgeo
-omniwatermask` for `[geoai]`; `scikit-learn xgboost ultralytics
-transformers huggingface_hub` for `[ml]`; `jupyterlab ipywidgets seaborn
+The corresponding conda-forge names are: `pytorch torchvision
+scikit-image scikit-learn xgboost ultralytics transformers
+huggingface_hub` for `[ml]`; `geoai-py leafmap torchgeo omniwatermask`
+for `[geoai]`; `earthaccess h5py xarray h5netcdf` for `[earthdata]`;
+`earthengine-api` for `[earthengine]`; `jupyterlab ipywidgets seaborn
 geopandas contextily` for `[notebooks]`; `python-dotenv sentinelhub`
-for `[planet]`; `earthengine-api` for `[earthengine]`;
-`earthaccess h5py` for `[earthdata]`. The `pip` recipes are convenient
-when you already have a working conda env, and pin slightly faster on
-a few fast-moving ML packages (ultralytics, transformers).
+for `[planet]`. The `pip` recipes are convenient when you already
+have a working conda env, and pin slightly faster on a few
+fast-moving ML packages (ultralytics, transformers).
 
 For `[earthengine]` and `[earthdata]` in particular, **mamba is
 strongly preferred over pip** — both pull in cloud-provider auth stacks
@@ -92,6 +115,15 @@ have shadowed pip-installed packages in this project's env before. See
 [`docs/providers/earth_engine.md`](providers/earth_engine.md) and
 [`docs/providers/earthdata.md`](providers/earthdata.md) for the full
 auth setups and the credential-selection modes.
+
+> **v1.0.0 note.** Prior to v1.0.0, `torch`, `torchvision`, and
+> `scikit-image` were core dependencies -- fetch-only users paid the
+> full 2 GB PyTorch install even if they never touched a model.
+> That's fixed as of v1.0.0: those three moved to `[ml]`. If you
+> `pip install geoai-datacubes` today and try to use
+> `LazyTileDataset` or `geotiff_to_zarr`, you'll get a clear
+> ImportError telling you to add `[ml]`. See
+> [CHANGELOG.md](../CHANGELOG.md) for the full rationale.
 
 ### Docker (zero-install, full stack + JupyterLab)
 
@@ -114,10 +146,98 @@ docker run -p 127.0.0.1:8888:8888 \
     ghcr.io/buckai-observatory/geoai-datacubes:latest
 ```
 
-Tags follow the PyPI version (`:0.1.0`, `:0.1`, `:latest`). On academic
+Tags follow the PyPI version (for example `:1.0.0`, `:1.0`, `:latest`). On academic
 HPC clusters with Apptainer / Singularity, the image can be pulled
 directly: `apptainer pull docker://ghcr.io/buckai-observatory/geoai-datacubes:latest`.
 See the [`Dockerfile`](../Dockerfile) for the exact build recipe.
+
+### Reproducible locked install with `pixi` (optional)
+
+If you want the *exact* environment we develop and test against —
+same package versions, cross-platform reproducible, one command —
+install [`pixi`](https://pixi.sh) and use the committed `pixi.lock`.
+The lockfile is regenerated on every dependency change and pinned in
+git. Two CI jobs exercise it: `pixi-locked` in
+`.github/workflows/tests.yml` installs the `tests` environment with
+`--locked`, checks that every environment in the lock is current and runs
+the test suite; `notebooks` in `.github/workflows/notebooks.yml` installs
+the `notebooks` environment with `--locked` on a macOS (Apple silicon)
+runner and executes notebooks 00 and 01 top to bottom with
+`smoke-tests/run_notebook.py`, which also checks that the kernel is the
+environment's own Python. A second job in the same workflow installs the
+`full` environment and executes notebook 03 the same way, weekly and on
+request, in a reduced "smoke" mode (`GEOAI_DATACUBES_SMOKE=1`: smaller areas,
+a cropped scene for the water model, 2 training epochs), because the
+full-size notebook is too heavy for a free CI machine.
+
+```bash
+# One-time: install pixi (a ~5 MB self-contained binary)
+curl -fsSL https://pixi.sh/install.sh | bash          # macOS / Linux
+# or: powershell  -c "iwr -useb https://pixi.sh/install.ps1 | iex"   (Windows)
+
+# In a fresh clone of the repo (a normal `git clone`, not a shallow one):
+pixi install --locked                  # -> default env (core, no ML)
+pixi install -e tests --locked         # -> default + [dev,ml,earthdata], test-runnable
+pixi install -e full --locked          # -> everything (default + every extra)
+
+# Run things in a locked env without activating it:
+pixi run pytest                     # -> uses whichever env has pytest
+pixi run -e tests pytest -v
+pixi run test                       # -> shortcut for the same, see [tool.pixi.tasks]
+
+# Or activate a shell in the env:
+pixi shell -e tests
+pixi run -e notebooks jupyter lab   # notebooks 00 + 01
+pixi run -e full jupyter lab        # notebook 03 as well
+```
+
+`--locked` installs exactly the package set recorded in `pixi.lock` and
+stops with an error if `pixi.lock` and `pyproject.toml` disagree. It never
+solves, so it does not depend on what conda-forge has published since the
+lockfile was made. (Without the flag pixi re-solves, and rewrites
+`pixi.lock`, when the two disagree. `--frozen` installs the lockfile as it
+is, without even checking that it is current.)
+
+Named environments and what they include:
+
+| Env | Includes | Best for |
+|---|---|---|
+| `default` | Core only (fetch + fuse + tile + band math) | Data-acquisition-only users |
+| `ml` | + `[ml]` (PyTorch, scikit-learn, XGBoost, scikit-image) | Scripts and tests on the ML/DL side; has no Jupyter |
+| `earthdata` | + `[earthdata]` | NASA DAAC fetches (NISAR, ICESat-2, ...) |
+| `notebooks` | `[notebooks]` (JupyterLab, basemap, geopandas) + `[ml]` | Notebooks 00 and 01 (about 2.5 GB) |
+| `dev` | + `[dev]` | Contributing (linter, pytest, pre-commit) |
+| `tests` | `dev` + `ml` + `earthdata` | What CI runs — reproduces the green build exactly |
+| `full` | Every feature | All three reviewed notebooks, including 03, which needs `geoai-py` (about 3.6 GB) |
+
+Two things to know about pixi environments:
+
+- **They are separate installs, not layers.** `pixi install -e ml` after
+  `pixi install -e notebooks` gives you two independent environments, each
+  with its own Python; it does not add PyTorch to the `notebooks` one. Pick
+  the one environment that has everything you need (`notebooks` for
+  notebooks 00 and 01, `full` for notebook 03).
+- **Start Jupyter from inside the environment**, with
+  `pixi run -e notebooks jupyter lab` (or `pixi run -e full jupyter lab`).
+  Inside a `pixi shell` of an environment that has no JupyterLab, such as
+  `ml`, the `jupyter` command falls through to any Jupyter installed
+  elsewhere on your machine, and its kernel is then not the environment's
+  Python, so packages that are installed look missing.
+
+Notebook 01 ships cached models. Its Random Forest cache is a
+scikit-learn pickle and is only loaded under the scikit-learn version that
+wrote it; in an environment with a different version (including this
+locked one) the notebook retrains it once, in about three minutes, and
+keeps the result in the git-ignored `notebooks/_ml_outputs/model_cache/`.
+
+The pixi config lives in `pyproject.toml` under `[tool.pixi.*]`
+sections. You never need to edit `pixi.lock` by hand — after
+changing a dep (in either the pip `[project.dependencies]` block or
+the pixi feature blocks), run `pixi lock` to regenerate.
+
+`pixi.lock` covers **linux-64, osx-arm64, osx-64, win-64** as of this
+release. Adding another target is one command:
+`pixi project platform add <triple>` then `pixi lock`.
 
 ### Pip-only fallback (when conda / mamba isn't available)
 
@@ -136,6 +256,90 @@ want to use the package without modifying it, drop the `-e`. The flat
 `requirements.txt` file is preserved for tooling that doesn't read
 `pyproject.toml` extras (e.g. the `smoke-tests/check_env.sh --pip`
 import check).
+
+### Known install-time gotchas
+
+<details>
+<summary><b>Missing JPEG-2000 codec: <code>ERROR 4: Unable to open ... JP2OpenJPEG driver is unavailable</code></b></summary>
+
+**Why it matters.** ESA distributes Sentinel-2 bands as JPEG-2000
+(`.jp2`) files. Some public STAC buckets (notably Element 84's Earth
+Search Sentinel-2 L2A collection) serve these `.jp2` assets directly
+rather than converting to Cloud-Optimised GeoTIFF. Reading them
+requires the GDAL `JP2OpenJPEG` driver, which in turn requires the
+`libopenjp2` shared library to be present at runtime.
+
+**Status by installer** (as of 2026):
+
+| Installer | Ships JP2 support by default? | If not, fix |
+|---|---|---|
+| **conda-forge / mamba** | ❌ Split package — `gdal` doesn't imply the codec | Already added to the recommended `mamba create` line in Section 3. If you rolled your own env, `mamba install -n <env> -c conda-forge libgdal-jp2openjpeg`. |
+| **PyPI wheel (`pip install rasterio`)** | ✅ Yes — manylinux / macOS / Windows wheels bundle a GDAL built `--with-openjpeg` | Nothing to do. Verify with the diagnostic at the bottom of this callout. |
+| **apt (`libgdal-dev` on Ubuntu 22.04+)** | ✅ Yes | Nothing to do. |
+| **Homebrew (`brew install gdal`)** | ✅ Yes — the formula lists openjpeg as a dependency | Nothing to do. |
+| **MacPorts** | ❌ Base port lacks it | `sudo port install gdal +openjpeg` |
+| **Colab** | ✅ Yes — bundled GDAL wheel includes every codec | Nothing to do. |
+
+**Diagnostic** — regardless of installer, this one-liner tells you
+whether JP2 is available in your current Python env:
+
+```python
+from osgeo import gdal
+print([gdal.GetDriver(i).GetDescription()
+       for i in range(gdal.GetDriverCount())
+       if 'JP2' in gdal.GetDriver(i).GetDescription()])
+# Expected: ['JP2OpenJPEG'] (or similar)
+# Empty list -> codec is missing
+```
+
+If `osgeo` is not importable (the GDAL Python bindings are not part of
+every environment, including the pixi ones), ask rasterio instead:
+
+```python
+import rasterio
+with rasterio.Env() as env:
+    print(sorted(d for d in env.drivers() if "JP2" in d))
+```
+
+**Symptom you'll actually see when it's missing**:
+`rasterio.errors.RasterioIOError: ... JP2OpenJPEG driver is unavailable`
+during a Sentinel-2 fetch.
+
+Reported during JOSS review: openjournals/joss-reviews#11034.
+
+</details>
+
+<details>
+<summary><b>Python aborts with <code>OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized</code> (macOS)</b></summary>
+
+Two copies of the OpenMP runtime are loaded in one process. On macOS this
+almost always means a package installed with `pip` that bundles its own
+`libomp` (the PyPI wheels of `torch`, `xgboost` and `lightgbm` do) sits
+next to conda-forge's `llvm-openmp`, which the conda-forge `pytorch`,
+`scikit-learn` and `xgboost` builds share. Find the pip-installed copy with
+`pip list | grep -i -E "torch|xgboost|lightgbm"` (conda-forge builds show
+their channel in `mamba list` instead), `pip uninstall` it, and reinstall
+the same package from conda-forge (`mamba install -c conda-forge xgboost`).
+Setting `KMP_DUPLICATE_LIB_OK=TRUE` only silences the check and can give
+wrong results; do not use it. Keeping every package in one environment from
+one channel, or using the pixi lockfile, avoids the problem.
+
+</details>
+
+<details>
+<summary><b>A package is installed according to <code>mamba list</code>, but <code>import</code> in the notebook fails</b></summary>
+
+The notebook kernel is almost certainly running a different Python than the
+environment you installed into. Check with `import sys; print(sys.executable)`
+in a cell (the first code cell of each shipped notebook prints it): the path
+should be inside the environment, e.g. `.../envs/geoai-cubes/bin/python` or
+`.../.pixi/envs/notebooks/bin/python`. If it is not, either pick that kernel
+in Jupyter, or start Jupyter from inside the environment
+(`mamba activate geoai-cubes` then `jupyter lab`, or
+`pixi run -e notebooks jupyter lab`). The same mismatch makes a
+`mamba install` or `pip install` look like it had no effect.
+
+</details>
 
 ## 4. Choose what to download
 
@@ -213,7 +417,7 @@ stacks them onto a common UTM grid for ML.
 | Format | Example | Use when |
 |---|---|---|
 | **Rectangular bbox** | `{"bbox": [lon_min, lat_min, lon_max, lat_max]}` | You already have the corners in WGS84. |
-| **Polygon file** | `{"shapefile": "/path/to/aoi.shp"}` (or `.gpkg`, `.geojson`) | You have an existing polygon. Requires `geopandas`. The polygon's bounding box is used. |
+| **Polygon file** | `{"shapefile": "/path/to/aoi.shp"}` (or `.gpkg`, `.geojson`) | You have an existing polygon. Requires `geopandas`. The polygon's bounding box is used; add `"clip_to_geometry": True` to also set pixels outside the polygon (and inside any holes) to NaN after the fetch. |
 | **Square around a point** | `{"center": (40.0067, -83.0305), "side_miles": 5}` | You know roughly where, just want a square AOI of size N miles. |
 | **Native S2 tile around a point** | `{"tile_around": (40.0067, -83.0305)}` | Quickest first look — returns the full ~100×100 km MGRS tile containing the point. |
 

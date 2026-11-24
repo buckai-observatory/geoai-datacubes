@@ -25,11 +25,13 @@ plus pipeline tests for `tile_geotiff(nan_handling="auto")`.
 | `fetch_jrc-gsw.sh`           | JRC Global Surface Water (static)                   | yes |
 | `fetch_3dep.sh`              | USGS 3DEP DEM (US-only, static)                     | yes |
 | `fetch_copernicus-dem-90.sh` | Copernicus GLO-90 DEM (static)                      | yes |
+| `fetch_alos-dem.sh`          | ALOS World 3D-30m DSM (static)                      | yes |
 | `fetch_alos-palsar.sh`       | ALOS PALSAR L-band SAR annual mosaic                | yes |
 | `fetch_alos-fnf.sh`          | ALOS Forest / Non-Forest annual mosaic              | yes |
 | `fetch_usda-cdl.sh`          | USDA Cropland Data Layer (US-only)                  | yes |
 | `fetch_lcmap-conus.sh`       | LCMAP CONUS annual LULC (US-only)                   | yes |
 | `fetch_io-lulc.sh`           | IO + Esri annual LULC (global)                      | yes |
+| `fetch_esa-cci-lc.sh`        | ESA CCI Land Cover, 300 m annual (global)           | yes |
 | `fetch_chloris-biomass.sh`   | Chloris aboveground biomass (global, CC-BY-NC-SA)   | yes |
 | `fetch_hansen-gfc.sh`        | Hansen Global Forest Change v1.11 (`direct_http`)   | yes |
 | `fetch_planetscope-4b.sh`    | PlanetScope 4-band — **skipped without `PL_API_KEY`** | yes |
@@ -73,7 +75,7 @@ To run against a specific Python environment, activate it before
 invoking the script:
 
 ```bash
-mamba activate h2oval
+mamba activate geoai-cubes
 bash smoke-tests/fetch_sentinel-2.sh
 
 # or, one-shot:

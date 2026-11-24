@@ -1,0 +1,113 @@
+{
+  "test": "fetch_naip",
+  "mission": "NAIP",
+  "started_at": "2026-09-16T17:33:14",
+  "status": "passed",
+  "aoi": [
+    -83.0335,
+    40.005,
+    -83.0275,
+    40.0085
+  ],
+  "bands_requested": [
+    "R",
+    "G",
+    "B",
+    "NIR"
+  ],
+  "time_range": [
+    "2023-01-01",
+    "2023-12-31"
+  ],
+  "resolution_m": 1,
+  "save_folder": "/tmp/geoai_smoke_final_54848/NAIP",
+  "acceptance": {
+    "max_nan_fraction": 0.05,
+    "value_range": [
+      0.0,
+      260.0
+    ]
+  },
+  "elapsed_sec": 17.2,
+  "bands_returned": [
+    "R",
+    "G",
+    "B",
+    "NIR"
+  ],
+  "scene": "NAIP_2023-05-21_oh_m_4008364_se_17_030_20230521_20231018",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/NAIP/NAIP_2023-05-21_oh_m_4008364_se_17_030_20230521_20231018/NAIP_full_size.tiff",
+    "shape": [
+      401,
+      522,
+      4
+    ],
+    "bands": [
+      "R",
+      "G",
+      "B",
+      "NIR"
+    ],
+    "crs": "EPSG:26917",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      0.9981202087311567,
+      0.0,
+      326427.19858662016,
+      0.0,
+      -0.9979628717754399,
+      4430681.418614282
+    ],
+    "nan_fraction_centre_window": 0.0,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "R",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 56.27584457397461,
+        "max": 226.8436279296875,
+        "mean": 121.51797485351562,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "G",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 81.76944732666016,
+        "max": 227.44158935546875,
+        "mean": 137.20094299316406,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 3,
+        "description": "B",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 97.56082916259766,
+        "max": 226.60926818847656,
+        "mean": 133.56106567382812,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 4,
+        "description": "NIR",
+        "nan_fraction": 0.0,
+        "infinite_fraction": 0.0,
+        "min": 107.18449401855469,
+        "max": 240.26666259765625,
+        "mean": 204.29345703125,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 2943484
+  },
+  "finished_at": "2026-09-16T17:33:32"
+}

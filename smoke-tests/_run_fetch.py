@@ -83,13 +83,24 @@ DEFAULT_BANDS = {
     "LCMAP-CONUS":      ["lcpri", "lcpconf"],
     "IO-LULC":          ["LULC"],
     "Chloris-Biomass":  ["biomass"],
+    "ALOS-DEM":         ["DEM"],
+    "ESA-CCI-LC":       ["LCCS"],
 }
 DEFAULT_DATES = {
     # Optical: clear summer-2024 window over the US Midwest.
     "Sentinel-2":     ("2024-06-15", "2024-06-30"),
-    "Sentinel-2-L1C": ("2024-06-15", "2024-06-30"),
+    # L1C smoke widened to two months so the cloud filter has more
+    # candidate scenes to pick from on PC (Columbus in mid-summer can
+    # have long fractional-cloud stretches that reject every scene at
+    # a 20% default cap in a 2-week window).
+    "Sentinel-2-L1C": ("2024-06-01", "2024-07-31"),
     "Sentinel-1":     ("2024-06-15", "2024-06-30"),
-    "Landsat":        ("2024-06-15", "2024-07-15"),
+    # Widened 2026-09-16 from one month to three months: Landsat 8+9
+    # combined revisit is 8 days but the default cloud filter (20%)
+    # can reject every pass over Columbus in a rainy June. Three
+    # months gives ~12 potential passes -- at least one usually clears
+    # the filter.
+    "Landsat":        ("2024-05-15", "2024-08-15"),
     "MODIS_SR":       ("2024-06-15", "2024-07-15"),
     "MODIS_LST":      ("2024-06-15", "2024-06-30"),
     "HLS_S30":        ("2024-06-15", "2024-06-30"),
@@ -110,6 +121,8 @@ DEFAULT_DATES = {
     "LCMAP-CONUS":    ("2020-01-01", "2020-12-31"),     # annual
     "IO-LULC":        ("2020-01-01", "2020-12-31"),     # annual; year-tiled items
     "Chloris-Biomass": ("2018-01-01", "2018-12-31"),    # annual; 2003-2019 available
+    "ALOS-DEM":       ("2020-01-01", "2020-12-31"),     # static (AW3D30)
+    "ESA-CCI-LC":     ("2020-01-01", "2020-12-31"),     # annual; 1992-2020 available
 }
 DEFAULT_RES = {
     "Sentinel-2":     10,  "Sentinel-2-L1C": 10,  "Sentinel-1":     10,
@@ -122,6 +135,7 @@ DEFAULT_RES = {
     "Copernicus-DEM-90": 90,  "USDA-CDL":       30,
     "LCMAP-CONUS":    30,  "IO-LULC":         10,
     "Chloris-Biomass": 5000,   # ~4.6 km, round up
+    "ALOS-DEM":        30,     "ESA-CCI-LC":     300,
 }
 TIGHT_AOI_MISSIONS = {"NAIP", "PlanetScope-4b", "PlanetScope-8b"}
 
@@ -182,53 +196,119 @@ DEFAULT_ACCEPTANCE: Dict[str, Any] = {
 }
 
 ACCEPTANCE: Dict[str, Dict[str, Any]] = {
-    # ---- Optical multispectral (reflectance 0..1; some noise + cloud) ----
-    # Sentinel-2 / Landsat / HLS: spectral bands are reflectance (0..1
-    # with a small allowance for BOA overshoot). SCL / BQA / Fmask are
-    # categorical QA and get band-specific overrides so they aren't
-    # rejected for being out of the reflectance range.
+    # ---- Optical multispectral: scaled digital-number output ----
+    #
+    # NOTE ON UNITS. The fetcher writes each mission's *native* pixel
+    # representation, not post-normalisation reflectance. For every
+    # optical mission below the value_range is therefore expressed in
+    # the fetched GeoTIFF's own units (see docs/data_layers.md
+    # "Typical value range" column):
+    #
+    #   * Sentinel-2 L2A / L1C: uint16 DN, reflectance x 10000. Since
+    #     processing baseline 04.00 (2022-01-25) a per-scene offset
+    #     (typically -1000) is applied, so a fresh scene can carry
+    #     small negatives. Bright targets (snow, sun-glint) can exceed
+    #     10000. Range [-2000, 20000] catches genuine corruption while
+    #     accepting the full baseline-04 valid range.
+    #   * Landsat C2 L2 surface reflectance: uint16 DN, scale 2.75e-5
+    #     with offset -0.2. Valid raw DN 7273..43636 (reflectance
+    #     0..1); fill 0 and 65535 both appear as artefacts. Range
+    #     [0, 65535].
+    #   * HLS S30/L30: harmonised to Sentinel-2 conventions; same
+    #     DN x 10000 encoding as S2.
+    #   * MODIS_SR (MOD09A1 / MYD09A1 8-day surface reflectance):
+    #     int16 DN, scale 1e-4. Valid range -100..16000. Range
+    #     [-500, 20000].
+    #   * PlanetScope: uint16 DN, scale 1e-4 similar to MODIS.
+    #   * NAIP: uint8 0..255 raw.
+    #
+    # Callers who want post-normalisation reflectance use
+    # apply_band_norm / get_band_norm from geoai_datacubes -- the
+    # smoke suite intentionally validates what the fetcher writes,
+    # not what the tiler produces after normalisation.
+    #
+    # SCL / BQA / Fmask are categorical QA and get band-specific
+    # overrides so they aren't rejected for being outside the
+    # spectral-band DN range.
     "Sentinel-2": {
-        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "max_nan_fraction": 0.30, "value_range": (-2000.0, 20000.0),
         "bands": {
             # SCL codes 0..11 (see Sentinel-2 L2A PUG).
             "SCL": {"categorical_values": set(range(0, 12)), "value_range": None},
         },
     },
     "Sentinel-2-L1C": {
-        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "max_nan_fraction": 0.30, "value_range": (0.0, 20000.0),
     },
     "Landsat": {
-        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "max_nan_fraction": 0.30, "value_range": (0.0, 65535.0),
         "bands": {
             # BQA is a packed bitfield; only sanity-check that it's an
-            # integer band with a plausible upper bound.
+            # integer band. Value range disabled because BQA can span
+            # the full uint16 space.
             "BQA": {"categorical_values": None, "value_range": None},
         },
     },
     "HLS_S30": {
-        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "max_nan_fraction": 0.30, "value_range": (-2000.0, 20000.0),
         "bands": {
             "Fmask": {"categorical_values": None, "value_range": None},
         },
     },
     "HLS_L30": {
-        "max_nan_fraction": 0.30, "value_range": (0.0, 1.5),
+        "max_nan_fraction": 0.30, "value_range": (-2000.0, 20000.0),
         "bands": {
             "Fmask": {"categorical_values": None, "value_range": None},
         },
     },
-    "MODIS_SR":       {"max_nan_fraction": 0.20, "value_range": (0.0, 1.5)},
+    # MODIS via Planetary Computer returns native sinusoidal projection.
+    # The Columbus AOI in this smoke suite is small (~2 km) and lies
+    # non-centrally within a MODIS granule, so on-the-fly reprojection
+    # to UTM leaves a majority of pixels NaN (~83% observed). This is
+    # not a fetch bug; it is a real property of a sinusoidal-tiled
+    # product clipped to a small sub-window. Marked as known_limitation
+    # for this AOI (see docs/providers.md "Known limitations of the
+    # reviewed release" and issue #10). The Earth Engine provider planned for v1.1
+    # (feature/earth-engine-provider) resolves this by returning MODIS
+    # directly in UTM.
+    "MODIS_SR": {
+        "max_nan_fraction": 0.20, "value_range": (-500.0, 20000.0),
+        "known_limitation": (
+            "MODIS PC path returns native sinusoidal; small non-central "
+            "AOIs are sparse after UTM reprojection. See docs/providers.md "
+            "'Known limitations' and issue #10. Resolved on "
+            "feature/earth-engine-provider via the EE provider."
+        ),
+    },
     "NAIP":           {"max_nan_fraction": 0.05, "value_range": (0.0, 260.0)},
     "PlanetScope-4b": {"max_nan_fraction": 0.20, "value_range": (0.0, 20000.0)},
     "PlanetScope-8b": {"max_nan_fraction": 0.20, "value_range": (0.0, 20000.0)},
 
-    # ---- Thermal (Kelvin) ----
-    "MODIS_LST":      {"max_nan_fraction": 0.30, "value_range": (200.0, 340.0)},
+    # ---- Thermal ----
+    # MODIS LST is int16 DN with scale 0.02; e.g. 15821 raw = 316 K.
+    # We validate the raw DN range (0..20000) here, matching what the
+    # fetcher writes. Users who want Kelvin call get_band_norm /
+    # apply_band_norm with the ``kelvin_to_celsius_norm`` recipe.
+    # LST_Night can be entirely NaN over small non-central AOIs on
+    # short time ranges (Terra/Aqua overpass geometry + partial-tile
+    # coverage) -- documented as a per-band known limitation so the
+    # smoke test surfaces it without hard-failing.
+    "MODIS_LST": {
+        "max_nan_fraction": 0.30, "value_range": (0.0, 20000.0),
+        "known_limitation": (
+            "MODIS LST via PC returns native sinusoidal; small "
+            "non-central AOIs can be sparse (LST_Night frequently "
+            "all-NaN over the Columbus smoke AOI). Resolved on the "
+            "EE provider planned for v1.1 (feature/earth-engine-provider). "
+            "See issue #10 and docs/providers.md 'Known limitations'."
+        ),
+    },
 
     # ---- DEMs (metres, permit sub-sea-level) ----
     "Copernicus-DEM":    {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
     "Copernicus-DEM-90": {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
     "3DEP":              {"max_nan_fraction": 0.05, "value_range": (-500.0, 5000.0)},
+    "ALOS-DEM":          {"max_nan_fraction": 0.02, "value_range": (-500.0, 9000.0)},
 
     # ---- Hydrology (percent occurrence 0..100) ----
     "JRC-GSW":        {"max_nan_fraction": 0.02, "value_range": (0.0, 100.0)},
@@ -261,14 +341,30 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
             "datamask":      {"categorical_values": {0, 1, 2}, "value_range": None},
         },
     },
-    "Chloris-Biomass": {"max_nan_fraction": 0.10, "value_range": (0.0, 1000.0)},
+    # Chloris biomass is served as scaled int16 DN (typical raw values
+    # 0..20000 for Mg/ha at scale 0.01 -- e.g. 15680 raw ~= 156.8 Mg/ha).
+    # The mission-native tile is at ~4.6 km, so a 2 km AOI resolves to
+    # a single pixel after reprojection: the range check has to accept
+    # the raw DN, not the post-scale Mg/ha.
+    "Chloris-Biomass": {"max_nan_fraction": 0.10, "value_range": (0.0, 50000.0)},
 
     # ---- Categorical land cover ----
     "ESA-WorldCover": {"max_nan_fraction": 0.02,
                         "categorical_values": {10, 20, 30, 40, 50, 60, 70,
                                                 80, 90, 95, 100}},
+    # ALOS-FNF (JAXA Global Forest / Non-Forest, 2015 onwards, 4-class):
+    #   1 = Dense forest, 2 = Non-dense forest, 3 = Non-forest, 4 = Water
+    # Older legacy versions used 0-3 only; keep 0 in the set as a
+    # backward-compat safety valve for older catalogue entries.
     "ALOS-FNF":       {"max_nan_fraction": 0.02,
-                        "categorical_values": {0, 1, 2, 3}},
+                        "categorical_values": {0, 1, 2, 3, 4}},
+    # ESA CCI LC: UN-FAO LCCS codes (0 = no data).
+    "ESA-CCI-LC":     {"max_nan_fraction": 0.02,
+                        "categorical_values": {
+                            10, 11, 12, 20, 30, 40, 50, 60, 61, 62, 70, 71,
+                            72, 80, 81, 82, 90, 100, 110, 120, 121, 122,
+                            130, 140, 150, 151, 152, 153, 160, 170, 180,
+                            190, 200, 201, 202, 210, 220}},
     "IO-LULC":        {
         "max_nan_fraction": 0.30,   # 10 m tiles have visible edges in mosaics
         "categorical_values": {1, 2, 4, 5, 7, 8, 9, 10, 11},
@@ -276,9 +372,15 @@ ACCEPTANCE: Dict[str, Dict[str, Any]] = {
     "LCMAP-CONUS": {
         "max_nan_fraction": 0.05,
         "bands": {
-            # lcpri: primary class 1-8; lcpconf: 0-100 confidence.
+            # lcpri: primary class 1-8; lcpconf: 0-100 confidence with
+            # fill / nodata values encoded in the 200..255 range in
+            # some LCMAP releases (200/201/202 appear in the Columbus
+            # smoke AOI). Range widened to 0..255 to accept fill codes
+            # without spuriously rejecting the fetch; the tighter
+            # confidence-in-percent semantics belong in downstream
+            # analysis, not at fetch-time acceptance.
             "lcpri":   {"categorical_values": {1, 2, 3, 4, 5, 6, 7, 8}, "value_range": None},
-            "lcpconf": {"value_range": (0.0, 100.0)},
+            "lcpconf": {"value_range": (0.0, 255.0)},
         },
     },
     # USDA-CDL has ~250 codes; do the integer-valued check but not the
@@ -330,6 +432,28 @@ def skip_reason(mission: str) -> str | None:
             return "PL_API_KEY not set in environment (Planet commercial API)"
     if mission == "Sentinel-5P":
         return "Sentinel-5P is a documented stub; STAC items are NetCDF, not COG"
+    if mission == "Sentinel-2-L1C":
+        # Earth Search hosts L1C as .jp2; Planetary Computer does not
+        # host L1C at all. Reading JP2 needs GDAL's JP2OpenJPEG driver,
+        # which is an optional plugin in some conda-forge installs.
+        # The recommended install recipe includes libgdal-jp2openjpeg;
+        # older envs may lack it. Detect and skip in that case rather
+        # than hard-fail on a fixable install gap.
+        try:
+            from rasterio.env import GDALVersion  # noqa: F401
+            from rasterio.drivers import raster_driver_extensions
+            exts = raster_driver_extensions()
+            drivers = {v.lower() for v in exts.values()}
+            if "jp2openjpeg" not in drivers and "jp2kak" not in drivers:
+                return (
+                    "GDAL JP2 driver (libgdal-jp2openjpeg) is not "
+                    "available. Earth Search hosts Sentinel-2 L1C as "
+                    ".jp2 and PC does not host L1C at all. Install "
+                    "libgdal-jp2openjpeg (see docs/install.md) and "
+                    "re-run."
+                )
+        except Exception:
+            pass  # let the fetch attempt itself surface any other issue
     return None
 
 
@@ -344,7 +468,23 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
     the fetch itself has already exercised the whole raster; this is
     just for a snapshot summary big enough to be representative but
     small enough to keep the smoke test fast.
+
+    Per-band summary includes:
+
+    * ``nan_fraction`` -- fraction of pixels that are NaN
+    * ``infinite_fraction`` -- fraction that are +inf or -inf (any
+      non-zero value is treated as a hard failure in
+      :func:`check_acceptance`, because a georeferenced product should
+      not contain infinities)
+    * ``unique_int_codes`` -- for bands whose finite pixels round to
+      integers within 1e-3, the sorted list of unique codes (capped at
+      128; ``"too_many"`` if the band has more distinct codes than
+      that). Drives categorical acceptance checks against every code
+      actually present, not just min/max.
+    * ``min`` / ``max`` / ``mean`` -- computed from finite pixels only
+      (NaNs and infinities excluded).
     """
+    from rasterio.transform import Affine
     with rasterio.open(path) as src:
         descs = list(src.descriptions or [])
         max_side = 256
@@ -369,27 +509,85 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
             finite = band[np.isfinite(band)]
             b_desc = descs[i] if i < len(descs) else None
             b_nan  = float(np.isnan(band).mean()) if band.size else 1.0
+            b_inf  = (
+                float((np.isposinf(band) | np.isneginf(band)).mean())
+                if band.size else 0.0
+            )
             if finite.size:
                 b_min  = float(finite.min())
                 b_max  = float(finite.max())
                 b_mean = float(finite.mean())
             else:
                 b_min = b_max = b_mean = float("nan")
+
+            # Raw counts for the exact checks in ``check_acceptance``.
+            # Fractions get rounded to 4 dp for the JSON log's
+            # readability, but 1/(256*256) rounds to 0.0000 -- so the
+            # ``if inf_frac > 0`` gate would silently miss a sparse
+            # +inf pixel. Track integer counts here so the check can
+            # use them directly. Regression case from the JOSS review
+            # follow-up (openjournals/joss-reviews#11034,
+            # buckai-observatory/geoai-datacubes#19).
+            b_nan_count = int(np.isnan(band).sum())
+            b_inf_count = int(
+                (np.isposinf(band) | np.isneginf(band)).sum()
+            )
+
+            # Integer-code enumeration for the categorical check.
+            # A band is "integer-valued" if every finite pixel is
+            # within 1e-3 of the nearest integer (accounts for float32
+            # rounding after reprojection). Cap raised from 128 to
+            # 65536 so a uint16-space categorical (e.g. WorldCover
+            # with sparse extra codes, or a raw byte-packed QA) still
+            # gets validated against the declared allowed set instead
+            # of falling into a "too many, skip check" branch. Above
+            # the cap the band is almost certainly continuous, not
+            # categorical; ``check_acceptance`` turns that into a
+            # violation when the mission declares a categorical set.
+            _UNIQUE_CAP = 65536
+            unique_int_codes: Any = None
+            if finite.size:
+                rounded = np.round(finite)
+                if np.max(np.abs(finite - rounded)) < 1e-3:
+                    uu = np.unique(rounded.astype(np.int64))
+                    if uu.size <= _UNIQUE_CAP:
+                        unique_int_codes = [int(x) for x in uu]
+                    else:
+                        unique_int_codes = "too_many"
+
             per_band.append({
                 "index":              i + 1,
                 "description":        b_desc,
                 "nan_fraction":       round(b_nan, 4),
+                "nan_count":          b_nan_count,
+                "infinite_fraction":  round(b_inf, 4),
+                "infinite_count":     b_inf_count,
                 "min":                None if not np.isfinite(b_min) else b_min,
                 "max":                None if not np.isfinite(b_max) else b_max,
                 "mean":               None if not np.isfinite(b_mean) else b_mean,
                 "native_dtype":       str(src.dtypes[i]),
+                "unique_int_codes":   unique_int_codes,
             })
 
+        # ``src.transform`` is *always* an Affine in rasterio -- if no
+        # georeferencing was written it returns the identity Affine
+        # (1, 0, 0, 0, 1, 0). ``transform_present`` therefore hides
+        # the "no georeferencing" case behind a truthy check. Compare
+        # against the identity explicitly so a missing transform is a
+        # hard violation in check_acceptance.
+        _identity = Affine.identity()
         return {
             "shape": [src.height, src.width, src.count],
             "bands": descs,
             "crs":   str(src.crs) if src.crs else None,
             "transform_present": src.transform is not None,
+            "transform_is_georeferenced": (
+                src.transform is not None and src.transform != _identity
+            ),
+            "transform_affine": [
+                src.transform.a, src.transform.b, src.transform.c,
+                src.transform.d, src.transform.e, src.transform.f,
+            ] if src.transform is not None else None,
             "nan_fraction_centre_window": round(nan_frac_overall, 4),
             "per_band": per_band,
             "size_bytes": path.stat().st_size,
@@ -400,33 +598,64 @@ def validate_geotiff(path: Path) -> Dict[str, Any]:
 # Acceptance: compare validate_geotiff's summary against the per-mission
 # criteria dict. Returns (verdict, violations, warnings) where verdict is
 # "passed" | "known_limitation" | "failed".
+#
+# Violation-kind tagging. Every violation is classified so the verdict
+# logic can decide which are downgradable to ``known_limitation`` and
+# which always fail. The ``known_limitation`` marker on a mission is
+# for legitimate coverage limitations (a mission that genuinely can't
+# provide clean pixels for this AOI); it MUST NOT swallow structural
+# failures (missing CRS, wrong band count), infinity, value-range, or
+# invalid-categorical violations. Only ``nan_fraction`` violations
+# downgrade. Regression cases from the JOSS review follow-up
+# (openjournals/joss-reviews#11034, issue #19).
 # --------------------------------------------------------------------------
+
+# Only violations of these kinds downgrade to ``known_limitation`` when
+# a mission has a ``known_limitation`` marker set. Everything else
+# stays ``failed``.
+_DOWNGRADABLE_KINDS = frozenset({"nan_fraction"})
+
+
+def _add(violations: List[Tuple[str, str]], kind: str, msg: str) -> None:
+    """Append a tagged violation. Kind drives verdict downgrade logic."""
+    violations.append((kind, msg))
+
+
 def check_acceptance(
     mission: str,
     requested_bands: List[str],
     summary: Dict[str, Any],
 ) -> Tuple[str, List[str], List[str]]:
     crit = _acceptance_for(mission)
-    violations: List[str] = []
+    # Tagged (kind, msg) tuples; flattened to strings on return.
+    violations: List[Tuple[str, str]] = []
     warnings:   List[str] = []
 
     # ---- Structural checks ----
     if not summary.get("crs"):
-        violations.append("no CRS in output GeoTIFF")
-    if not summary.get("transform_present"):
-        violations.append("no georeferencing transform in output GeoTIFF")
+        _add(violations, "structural", "no CRS in output GeoTIFF")
+    # ``transform_is_georeferenced`` is False if the Affine transform
+    # is missing OR is the identity (rasterio never returns ``None``,
+    # so the old ``transform_present`` check always passed even when
+    # a mission wrote a georeferencing-free GeoTIFF).
+    if not summary.get("transform_is_georeferenced",
+                        summary.get("transform_present", False)):
+        aff = summary.get("transform_affine")
+        _add(violations, "structural",
+             f"output GeoTIFF has no georeferencing transform "
+             f"(identity Affine{f' {aff}' if aff else ''})")
 
     if "band_count" in crit:
         actual = summary["shape"][2]
         if actual != crit["band_count"]:
-            violations.append(
-                f"band_count expected {crit['band_count']}, got {actual}"
-            )
+            _add(violations, "structural",
+                 f"band_count expected {crit['band_count']}, got {actual}")
 
     got_bands = summary.get("bands") or []
     missing = [b for b in requested_bands if b not in got_bands]
     if missing:
-        violations.append(f"missing requested bands: {missing}")
+        _add(violations, "structural",
+             f"missing requested bands: {missing}")
 
     # ---- Per-band checks ----
     per_band = summary.get("per_band", [])
@@ -442,49 +671,139 @@ def check_acceptance(
         ov = band_overrides.get(tag, {})
         max_nan = ov.get("max_nan_fraction", crit.get("max_nan_fraction"))
         vrange  = ov["value_range"]        if "value_range"        in ov else crit.get("value_range")
+        # "unset" sentinel: caller didn't touch categorical_values at all
+        # (so we skip the check). Any other value -- including None --
+        # means the caller wants a categorical check. See the
+        # ``categorical_values=None`` branch below.
         cats    = ov["categorical_values"] if "categorical_values" in ov else crit.get("categorical_values", "unset")
 
+        # NaN cap. This is the only kind of violation that a mission's
+        # ``known_limitation`` marker can downgrade -- see the verdict
+        # section below and the block comment above.
         if max_nan is not None and pb["nan_fraction"] > max_nan:
-            violations.append(
-                f"{tag}: nan_fraction {pb['nan_fraction']} exceeds "
-                f"cap {max_nan}"
-            )
+            _add(violations, "nan_fraction",
+                 f"{tag}: nan_fraction {pb['nan_fraction']} exceeds "
+                 f"cap {max_nan}")
+
+        # Infinity is *always* a hard violation, and never downgraded.
+        # A georeferenced product should never contain +inf/-inf; if
+        # it does the producer wrote it or the fusion pipeline
+        # over/underflowed a scaling step. Use the raw integer count,
+        # not the 4-dp-rounded fraction: 1/(256*256) rounds to 0 and
+        # the old ``inf_frac > 0`` gate silently missed a sparse
+        # infinity pixel. (JOSS review follow-up #19.)
+        inf_count = pb.get("infinite_count")
+        if inf_count is None:
+            # Backwards-compat with logs written before the count was
+            # exposed. Use the fraction, but do not trust its 4-dp
+            # rounding -- if it's exactly 0 it MIGHT still be
+            # non-zero at the pixel level; err on the side of a
+            # warning, not silent pass.
+            inf_frac = pb.get("infinite_fraction", 0.0) or 0.0
+            if inf_frac > 0:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values "
+                     f"({inf_frac*100:.2f}% of sampled pixels)")
+        elif inf_count > 0:
+            total_px = summary["shape"][0] * summary["shape"][1]
+            # Prefer count when small; add the fraction when it's
+            # numerically meaningful.
+            if inf_count < 10:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values ({inf_count} "
+                     f"pixel(s) in the sample)")
+            else:
+                _add(violations, "infinity",
+                     f"{tag}: contains infinity values ({inf_count} "
+                     f"pixels ~= {100*inf_count/max(total_px,1):.2f}% "
+                     f"of the ROI)")
+
         # Value-range and categorical checks skipped for all-NaN bands
         # (the NaN violation above already flags them).
         if pb["min"] is None:
             continue
+
         if vrange is not None:
             lo, hi = vrange
             if pb["min"] < lo or pb["max"] > hi:
-                violations.append(
-                    f"{tag}: value range [{pb['min']:.3g}, {pb['max']:.3g}] "
-                    f"outside expected [{lo}, {hi}]"
-                )
-        if cats != "unset" and cats is not None:
-            # Our fusion pipeline writes float32 for every band (to
-            # carry NaN through), so we do not warn on non-int dtype
-            # -- categorical bands come back as integer-valued float32
-            # after reprojection. We only sanity-check that the sampled
-            # min/max round to codes in the declared set.
-            if _looks_integer_valued(pb["min"]) and _looks_integer_valued(pb["max"]):
-                for edge, name in [(pb["min"], "min"), (pb["max"], "max")]:
-                    if int(round(edge)) not in cats:
-                        warnings.append(
-                            f"{tag}: {name}={edge} not in declared "
-                            f"categorical set {sorted(cats)[:8]}..."
-                        )
-            else:
-                warnings.append(
-                    f"{tag}: categorical mission but sampled min/max "
-                    f"({pb['min']}, {pb['max']}) are not integer-valued"
-                )
+                _add(violations, "value_range",
+                     f"{tag}: value range [{pb['min']:.3g}, {pb['max']:.3g}] "
+                     f"outside expected [{lo}, {hi}]")
+
+        # ---- Categorical checks ----
+        # Three cases the caller can express via ``categorical_values``:
+        #
+        #   "unset"      : caller did not declare this band categorical
+        #                  -> skip.
+        #   None         : declared categorical but the code set is
+        #                  intentionally left unspecified (e.g. Landsat
+        #                  BQA packed bitfield, USDA-CDL ~250 codes).
+        #                  Enforce integer-valued dtype ONLY (a
+        #                  fractional value here is a resampling bug).
+        #   set of ints  : the declared allowed set. Every unique code
+        #                  in the sample must be a member of it. Also
+        #                  enforce integer-valued dtype.
+        #
+        # Prior bug (#19 follow-up): the ``if cats != "unset" and cats
+        # is not None:`` guard silently dropped the ``None`` case, so
+        # 2.5 in a USDA-CDL cropland band passed. Handled explicitly
+        # here now.
+        if cats != "unset":
+            got_codes = pb.get("unique_int_codes")
+
+            if got_codes is None:
+                # Sample contains non-integer values -- resampling bug
+                # on a band declared categorical.
+                _add(violations, "categorical",
+                     f"{tag}: categorical mission but sampled pixels "
+                     f"are not integer-valued (min={pb['min']}, "
+                     f"max={pb['max']}) -- likely a resampling bug "
+                     f"(should use nearest-neighbour for categorical bands)")
+            elif got_codes == "too_many":
+                # >65k unique codes -- almost certainly a mislabeled
+                # continuous band. When the caller declared an
+                # explicit allowed set we know invalid codes are
+                # present; when the allowed set is None we can't be
+                # sure, so downgrade to warning.
+                if cats is None:
+                    warnings.append(
+                        f"{tag}: >65k distinct codes in sample -- "
+                        f"integer-only check skipped for this band"
+                    )
+                else:
+                    _add(violations, "categorical",
+                         f"{tag}: >65k distinct codes in sample against "
+                         f"a declared set of {len(cats)} allowed value(s) "
+                         f"({sorted(cats)[:8]}{'...' if len(cats) > 8 else ''}) "
+                         f"-- band is not the expected categorical")
+            elif cats is not None:
+                # Small enough set that we enumerated everything; do
+                # the actual set-membership check.
+                invalid = [c for c in got_codes if c not in cats]
+                if invalid:
+                    allowed_preview = sorted(cats)[:8]
+                    _add(violations, "categorical",
+                         f"{tag}: {len(invalid)} invalid categorical "
+                         f"code(s) {sorted(invalid)[:8]} "
+                         f"(allowed: {allowed_preview}"
+                         f"{'...' if len(cats) > 8 else ''})")
 
     # ---- Verdict ----
     if not violations:
         return ("passed", [], warnings)
-    if crit.get("known_limitation"):
-        return ("known_limitation", violations, warnings)
-    return ("failed", violations, warnings)
+
+    # Downgrade to ``known_limitation`` ONLY when every remaining
+    # violation is of a downgradable kind AND the mission has a
+    # ``known_limitation`` marker declared. Structural / infinity /
+    # value_range / categorical violations always fail; they are real
+    # bugs regardless of the coverage caveat.
+    has_marker = bool(crit.get("known_limitation"))
+    non_downgradable = [(k, m) for k, m in violations
+                        if k not in _DOWNGRADABLE_KINDS]
+    if has_marker and not non_downgradable:
+        return ("known_limitation",
+                [m for _k, m in violations], warnings)
+    return ("failed", [m for _k, m in violations], warnings)
 
 
 # --------------------------------------------------------------------------
@@ -496,6 +815,14 @@ def main():
     ap.add_argument("--bands", help="Comma-separated band list (overrides default)")
     ap.add_argument("--aoi", help="lon_min,lat_min,lon_max,lat_max (overrides default)")
     ap.add_argument("--date-range", help="ISO date1,ISO date2 (overrides default)")
+    ap.add_argument("--provider", default="auto",
+                    help="Force a specific provider ('auto' for the default "
+                         "routing, or one of earthsearch / planetary_computer / "
+                         "sentinelhub / planet / direct_http). Used by the "
+                         "Sentinel-2 L1C smoke to pin planetary_computer -- "
+                         "Earth Search hosts L1C as JP2 which needs an "
+                         "optional libgdal-jp2openjpeg install; PC hosts it "
+                         "as COG with no extra deps.")
     args = ap.parse_args()
 
     mission = args.mission
@@ -557,7 +884,7 @@ def main():
         data, final_bands = fetch_sentinel_data(
             mission, bands, dates, aoi,
             resolution=res, save_folder=str(save_folder),
-            provider="auto",
+            provider=args.provider,
         )
     except Exception as e:
         record.update(

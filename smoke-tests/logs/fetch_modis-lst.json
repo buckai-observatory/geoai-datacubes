@@ -1,0 +1,91 @@
+{
+  "test": "fetch_modis-lst",
+  "mission": "MODIS_LST",
+  "started_at": "2026-09-16T17:34:29",
+  "status": "known_limitation",
+  "aoi": [
+    -83.04,
+    39.995,
+    -83.02,
+    40.018
+  ],
+  "bands_requested": [
+    "LST_Day",
+    "LST_Night"
+  ],
+  "time_range": [
+    "2024-06-15",
+    "2024-06-30"
+  ],
+  "resolution_m": 1000,
+  "save_folder": "/tmp/geoai_smoke_final_54848/MODIS_LST",
+  "acceptance": {
+    "max_nan_fraction": 0.3,
+    "value_range": [
+      0.0,
+      20000.0
+    ],
+    "known_limitation": "MODIS LST via PC returns native sinusoidal; small non-central AOIs can be sparse (LST_Night frequently all-NaN over the Columbus smoke AOI). Resolved on the v0.2 EE provider (feature/earth-engine-provider). See issue #10 and docs/providers.md 'Known limitations'."
+  },
+  "elapsed_sec": 4.9,
+  "bands_returned": [
+    "LST_Day",
+    "LST_Night"
+  ],
+  "scene": "MODIS_LST_2024-06-30_MYD11A1.A2024182.h11v05.061.2024183231731",
+  "geotiff": {
+    "path": "/tmp/geoai_smoke_final_54848/MODIS_LST/MODIS_LST_2024-06-30_MYD11A1.A2024182.h11v05.061.2024183231731/MODIS_LST_full_size.tiff",
+    "shape": [
+      3,
+      5,
+      2
+    ],
+    "bands": [
+      "LST_Day",
+      "LST_Night"
+    ],
+    "crs": "PROJCS[\"unnamed\",GEOGCS[\"Unknown datum based upon the custom spheroid\",DATUM[\"Not specified (based on custom spheroid)\",SPHEROID[\"Custom spheroid\",6371007.181,0]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Sinusoidal\"],PARAMETER[\"longitude_of_center\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+    "transform_present": true,
+    "transform_is_georeferenced": true,
+    "transform_affine": [
+      817.2098082754761,
+      0.0,
+      -7073894.325465019,
+      0.0,
+      -852.4953984875852,
+      4449803.5900016725
+    ],
+    "nan_fraction_centre_window": 0.8333,
+    "per_band": [
+      {
+        "index": 1,
+        "description": "LST_Day",
+        "nan_fraction": 0.6667,
+        "infinite_fraction": 0.0,
+        "min": 15821.0029296875,
+        "max": 15853.4404296875,
+        "mean": 15834.611328125,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      },
+      {
+        "index": 2,
+        "description": "LST_Night",
+        "nan_fraction": 1.0,
+        "infinite_fraction": 0.0,
+        "min": null,
+        "max": null,
+        "mean": null,
+        "native_dtype": "float32",
+        "unique_int_codes": null
+      }
+    ],
+    "size_bytes": 2154
+  },
+  "violations": [
+    "LST_Day: nan_fraction 0.6667 exceeds cap 0.3",
+    "LST_Night: nan_fraction 1.0 exceeds cap 0.3"
+  ],
+  "known_limitation_reason": "MODIS LST via PC returns native sinusoidal; small non-central AOIs can be sparse (LST_Night frequently all-NaN over the Columbus smoke AOI). Resolved on the v0.2 EE provider (feature/earth-engine-provider). See issue #10 and docs/providers.md 'Known limitations'.",
+  "finished_at": "2026-09-16T17:34:34"
+}
