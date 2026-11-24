@@ -36,6 +36,9 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.23885990"
     description: "Version DOI for v1.0.0 (the version reviewed in JOSS)"
+  - type: doi
+    value: "10.5281/zenodo.24515392"
+    description: "Version DOI for v1.1.0"
 keywords:
   - remote sensing
   - earth observation
