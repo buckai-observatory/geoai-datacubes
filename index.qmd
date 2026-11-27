@@ -12,7 +12,7 @@ toc: false
 <img src="site_images/BuckAI_logo_transp.png" alt="BuckAI Observatory Logo" height="115" style="flex-shrink:0;">
 <div style="flex:1; min-width:280px;">
 <div style="font-size:2.4rem; font-weight:700; line-height:1.1;">geoai-datacubes</div>
-<div style="font-size:1.05rem; opacity:0.75; margin-top:10px; line-height:1.45;">An open-source Python pipeline that turns raw multi-mission satellite imagery into AI-ready data cubes for machine-learning and deep-learning workflows. From one configuration block: fetch, co-register, fuse, tile — 26 missions, 4 providers, one common UTM grid.</div>
+<div style="font-size:1.05rem; opacity:0.75; margin-top:10px; line-height:1.45;">An open-source Python pipeline that turns raw multi-mission satellite imagery into AI-ready data cubes for machine-learning and deep-learning workflows. From one configuration block: fetch, co-register, fuse, tile — 44 missions, 9 providers, one common UTM grid.</div>
 </div>
 </div>
 ```
@@ -59,7 +59,7 @@ Install the package and run the pipeline against a default AOI in ten minutes.
 Four providers unified behind one dispatcher, feeding 26 satellite missions and derived products.
 
 - [Providers](docs/providers.md) — Element 84, Planetary Computer, Planet, `direct_http`
-- [Data layers](docs/data_layers.md) — the 26-mission catalogue with band / range / normalisation reference
+- [Data layers](docs/data_layers.md) — the 44-mission catalogue with band / range / normalisation reference
 - [Adding a mission](docs/adding_a_mission.md) — how to wire in a new one
 
 :::

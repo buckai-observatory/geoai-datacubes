@@ -16,12 +16,12 @@ English + shell/Python blocks + filesystem references.
 
 `geoai-datacubes` is a BuckAI Observatory pipeline that turns raw
 satellite scenes into **AI-ready, multi-mission, fused data cubes**.
-39 missions (optical, SAR, LIDAR/altimetry, DEM/bathymetry, LULC,
+44 missions (optical, SAR, LIDAR/altimetry, DEM/bathymetry, LULC,
 biomass, thermal, hydrology, cryosphere, atmosphere, soil) behind one
 `fetch_sentinel_data(mission, bands, time_range, roi, resolution=...)`
 call and one `fuse_response_tiffs(...)` fusion step, dispatched across
-seven interchangeable providers (four STAC + `direct_http` +
-`earth_engine` + `earthdata`).
+nine interchangeable providers (four STAC + `direct_http` +
+`earth_engine` + `earthdata` + `kyfromabove` + `local_files`).
 
 Reference material you should consult before making up anything:
 
@@ -193,7 +193,7 @@ touches them, but you may jump straight to any of them.
 | Skill | Purpose | Load when |
 |---|---|---|
 | `skills/00_bootstrap.md` | Env sniff → install → smoke test | Session start, or after `ImportError` |
-| `skills/10_capabilities.md` | Enumerate 39 missions; answer "which mission for X?" | User asks what's available; you need to check a band before promising it |
+| `skills/10_capabilities.md` | Enumerate 44 missions; answer "which mission for X?" | User asks what's available; you need to check a band before promising it |
 | `skills/15_mission_reference.md` | Quick-reference tables for all missions (res, bands, best-for, decision tree) | User asks "what's available?" and you want instant lookup instead of reading docs |
 | `skills/20_build_cube.md` | End-to-end fetch + fuse workflow | User wants a cube (the common case) |
 | `skills/30_auth.md` | Per-provider credential setup | 401 / 403 / `EulaNotAccepted` / EE `Initialize` failure |

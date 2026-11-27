@@ -20,7 +20,7 @@ geoai-datacubes/
 │   ├── fusion.md                      # multi-mission fusion
 │   ├── configuration.md               # parameter tables + pipeline scripts
 │   ├── credentials.md                 # Sentinel Hub + Planet credential setup
-│   ├── data_layers.md                 # 26-mission band / range / normalisation reference
+│   ├── data_layers.md                 # 44-mission band / range / normalisation reference
 │   ├── adding_a_mission.md            # how to wire a new mission profile
 │   └── HPC_QUICKSTART.md              # cluster-side install + SLURM training
 ├── notebooks/
@@ -44,7 +44,7 @@ geoai-datacubes/
     ├── main.py                        # CLI entry: edit USER INPUT, then `python -m geoai_datacubes.main`
     ├── fetch/                         # data acquisition
     │   ├── aoi.py                     # AOI helpers (bbox / shapefile / centre+miles / S2-tile)
-    │   ├── missions.py                # the 26-mission registry (MISSION_PROFILES)
+    │   ├── missions.py                # the 44-mission registry (MISSION_PROFILES)
     │   ├── fetch_data.py              # generic STAC dispatcher + SH + Planet drivers
     │   ├── _direct_fetch.py           # direct_http path for non-STAC datasets
     │   ├── config.py                  # SH OAuth env helper

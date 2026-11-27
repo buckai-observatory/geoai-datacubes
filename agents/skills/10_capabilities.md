@@ -45,10 +45,11 @@ Optical (multispectral, 9)    Sentinel-2, Sentinel-2-L1C, Landsat,
 SAR (3)                       Sentinel-1, NISAR-L, ALOS-PALSAR
 LIDAR / altimetry (6)         ICESat-2 ATL03/06/08/13, GEDI-L4A,
                               SWOT-HR
-DEM + bathymetry (5)          Copernicus-DEM, Copernicus-DEM-90,
-                              ArcticDEM, 3DEP, 3DEP-Lidar-DTM, 3DEP-Lidar-DSM, KyFromAbove-DEM, GEBCO-2024
-LULC (6)                      ESA-WorldCover, USDA-CDL, LCMAP-CONUS,
-                              IO-LULC, Dynamic-World, JRC-GFC2020
+DEM + bathymetry (9)          Copernicus-DEM, Copernicus-DEM-90,
+                              ArcticDEM, ALOS-DEM, 3DEP, 3DEP-Lidar-DTM, 3DEP-Lidar-DSM, KyFromAbove-DEM, GEBCO-2024
+LULC (7)                      ESA-WorldCover, USDA-CDL, LCMAP-CONUS,
+                              IO-LULC, ESA-CCI-LC, Dynamic-World,
+                              JRC-GFC2020
 Biomass / forest (4)          GEDI-L4B, Chloris-Biomass, ALOS-FNF,
                               Hansen-GFC
 Foundation-model              AlphaEarth  (64-dim per-pixel EO
@@ -58,7 +59,7 @@ Thermal, hydro, cryo,         MODIS_LST, JRC-GSW, CryoSat-RDEFT4,
 atmosphere, soil (5)          Sentinel-5P-NO2, SMAP-L3
 ```
 
-39 total; keys in `MISSION_PROFILES` are the exact strings you pass
+44 total; keys in `MISSION_PROFILES` are the exact strings you pass
 to `fetch_sentinel_data(mission=..., ...)`.
 
 ## Pattern — "which missions match X?"
