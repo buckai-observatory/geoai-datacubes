@@ -1,12 +1,12 @@
 # Data layers reference
 
-The `geoai-datacubes` pipeline supports **twenty-six** satellite or
-ancillary missions (fifteen direct-observation + eight derived working
-today, plus one documented stub — Sentinel-5P TROPOMI; GEDI L4B and
-GEBCO have graduated to full wiring in v1.1). `Landsat`,
-`Landsat-8`, and `Landsat-9` are
-aliases of the same Landsat 8/9 Collection 2 Level 2 profile and are
-counted once. Each mission exposes a set of named bands that the user
+The `geoai-datacubes` pipeline supports **44** satellite or ancillary
+missions, plus one documented stub (`Sentinel-5P`, the full TROPOMI
+product list; its tropospheric NO2 product is wired as
+`Sentinel-5P-NO2` through the `earthdata` provider). `Landsat`,
+`Landsat-8`, and `Landsat-9` are aliases of the same Landsat 8/9
+Collection 2 Level 2 profile and are counted once, as are the
+per-phase `KyFromAbove-DEM-Phase1/2/3` variants of `KyFromAbove-DEM`. Each mission exposes a set of named bands that the user
 can pick freely from a `BANDS_<mission>` configuration list. This
 document is the canonical reference for what each band is, at what
 resolution, in what value range, and how it tends to be normalised for
@@ -18,7 +18,10 @@ factor do I divide a Landsat C2 L2 surface-reflectance band by to get a
 real reflectance number?).
 
 The pipeline reads these from STAC providers (Earth Search, Microsoft
-Planetary Computer), from **Google Earth Engine** (added in v1.1), or from the commercial Planet Orders API.
+Planetary Computer, Sentinel Hub), from the commercial Planet Orders
+API, from anonymous COGs (`direct_http`), and, since v1.1, from Google
+Earth Engine, NASA Earthdata, KyFromAbove, or the user's own local
+files. See [`providers.md`](providers.md).
 The provider choice does not change the band names or properties
 documented here — only the host and the credentialing path.
 

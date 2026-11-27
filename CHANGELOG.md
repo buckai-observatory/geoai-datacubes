@@ -7,7 +7,13 @@ Joachim Moortgat.
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- Documentation: the landing page, the architecture, data-layers and
+  project-structure pages and the agent guides now give the current 44 missions and nine providers; the
+  architecture diagram lists every provider and its missions as in
+  `MISSION_PROFILES`. The agent capability table adds ALOS-DEM and
+  ESA-CCI-LC.
 
 ## Released versions
 

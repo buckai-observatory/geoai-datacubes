@@ -67,27 +67,39 @@ override it at call time.
 
 ```{mermaid}
 flowchart LR
-    MP["MISSION_PROFILES (26 missions)"]
+    MP["MISSION_PROFILES (44 missions)"]
     ES["earthsearch"]
     PC["planetary_computer"]
     PL["planet"]
     SH["sentinelhub"]
     DH["direct_http"]
+    EE["earth_engine"]
+    ED["earthdata"]
+    KY["kyfromabove"]
+    LF["local_files"]
 
-    ES_M["Sentinel-2 L2A and L1C, Copernicus DEM, MERIT DEM, NASA DEM, ESA WorldCover"]
-    PC_M["Sentinel-1 RTC, Landsat-8 and 9 C2 L2, NAIP, 3DEP, MODIS, ALOS PALSAR and FNF, IO-LULC"]
-    PL_M["PlanetScope 3 m daily (requires credentials)"]
-    SH_M["Sentinel-2 L1C, Sentinel-3 OLCI (requires credentials)"]
-    DH_M["Hansen GFC, Lang 2023, Tolan 2024, GEDI L4B"]
+    ES_M["Sentinel-2 L2A and L1C, Sentinel-1, Landsat, Copernicus DEM"]
+    PC_M["Sentinel-2, Sentinel-1 RTC, Landsat, HLS, MODIS, NAIP, Copernicus DEM 30 and 90 m, ALOS DEM, 3DEP and 3DEP lidar, ALOS PALSAR and FNF, ESA WorldCover, ESA CCI-LC, IO-LULC, USDA CDL, LCMAP, JRC GSW, Chloris biomass"]
+    PL_M["PlanetScope 4-band and 8-band (requires credentials)"]
+    SH_M["Sentinel-2, Sentinel-1, Landsat (requires credentials)"]
+    DH_M["ArcticDEM, Hansen GFC, GEBCO 2024"]
+    EE_M["MODIS, Dynamic World, JRC GFC2020, AlphaEarth embeddings (requires an Earth Engine project)"]
+    ED_M["NISAR L-band, ICESat-2 ATL03/06/08/13, GEDI L4A and L4B, SWOT HR, CryoSat-2, SMAP L3, Sentinel-5P NO2 (requires Earthdata Login)"]
+    KY_M["KyFromAbove DEM, also per survey phase"]
+    LF_M["the user's own GeoTIFFs, registered at run time"]
 
     MP --> ES --> ES_M
     MP --> PC --> PC_M
     MP --> PL --> PL_M
     MP --> SH --> SH_M
     MP --> DH --> DH_M
+    MP --> EE --> EE_M
+    MP --> ED --> ED_M
+    MP --> KY --> KY_M
+    MP --> LF --> LF_M
 ```
 
 Provider trade-offs, credential setup, and per-provider rate-limit
 guidance live in [`docs/providers.md`](providers.md). The full
-26-mission table (per-mission bands, native resolution, value ranges,
+44-mission table (per-mission bands, native resolution, value ranges,
 provider assignment) lives in [`docs/data_layers.md`](data_layers.md).
